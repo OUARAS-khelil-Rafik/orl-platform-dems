@@ -8,10 +8,10 @@ export function SeedDataButton() {
   const [isSeeding, setIsSeeding] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
 
-  const pedagogicalCollections = ['videos', 'clinicalCases', 'qcms', 'diagrams'] as const;
+  const pedagogicalCollections = ['videos', 'clinicalCases', 'qcms', 'openQuestions', 'diagrams'] as const;
 
   const clearData = async () => {
-    if (!confirm('Voulez-vous vraiment SUPPRIMER TOUTES les données (vidéos, cas, qcm, schémas, paiements) ?')) return;
+    if (!confirm('Voulez-vous vraiment SUPPRIMER TOUTES les données (vidéos, cas, QCM, questions ouvertes, schémas, paiements) ?')) return;
     
     setIsClearing(true);
     try {
@@ -33,7 +33,7 @@ export function SeedDataButton() {
   };
 
   const seedData = async () => {
-    if (!confirm("Cette action va SUPPRIMER les contenus pédagogiques existants (vidéos, cas, qcm, schémas) puis recréer des données de test. Continuer ?")) return;
+    if (!confirm("Cette action va SUPPRIMER les contenus pédagogiques existants (vidéos, cas, QCM, questions ouvertes, schémas) puis recréer des données de test. Continuer ?")) return;
     
     setIsSeeding(true);
     try {
@@ -291,7 +291,39 @@ export function SeedDataButton() {
         await addDoc(collection(db, 'qcms'), qcm as any);
       }
 
-      // 4. Seed Diagrams (un schéma par vidéo)
+      // 4. Seed Open Questions (une ou plusieurs questions ouvertes par vidéo)
+      const openQuestions = [
+        {
+          videoId: videoRefs[0],
+          question: "Expliquez le rôle fonctionnel de la chaîne ossiculaire dans la transmission du son.",
+          answer:
+            "La chaîne ossiculaire (marteau, enclume, étrier) transmet et amplifie les vibrations du tympan vers la fenêtre ovale, permettant le passage de l'onde mécanique vers l'oreille interne.",
+          reference: "Cours d'anatomie ORL – oreille moyenne.",
+          createdAt: now,
+        },
+        {
+          videoId: videoRefs[1],
+          question: "Quels critères cliniques vous font proposer une septoplastie chez un patient obstructif ?",
+          answer:
+            "La décision repose sur une obstruction nasale chronique invalidante, corrélée à une déviation septale objectivée à l'examen, et persistante malgré un traitement médical bien conduit.",
+          reference: "Recommandations ORL sur l'obstruction nasale chronique.",
+          createdAt: now,
+        },
+        {
+          videoId: videoRefs[2],
+          question: "Pourquoi la rééducation vocale est-elle prioritaire avant toute chirurgie des nodules bénins ?",
+          answer:
+            "Parce qu'elle corrige les comportements vocaux à risque, réduit l'inflammation phonotraumatique et permet souvent une amélioration clinique sans geste invasif.",
+          reference: "Cours de laryngologie DEMS – prise en charge de la dysphonie fonctionnelle.",
+          createdAt: now,
+        },
+      ];
+
+      for (const openQuestion of openQuestions) {
+        await addDoc(collection(db, 'openQuestions'), openQuestion as any);
+      }
+
+      // 5. Seed Diagrams (un schéma par vidéo)
       const diagrams = [
         {
           videoId: videoRefs[0],

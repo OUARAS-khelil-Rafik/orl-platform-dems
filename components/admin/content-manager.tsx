@@ -1,12 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { motion } from 'motion/react';
-import { Video, FileText, HelpCircle, Image as ImageIcon, Plus, Save, X, Loader2, Trash2, Edit2 } from 'lucide-react';
+import { Video, FileText, HelpCircle, Image as ImageIcon, MessageSquare, Plus, Save, X, Loader2, Trash2, Edit2 } from 'lucide-react';
 import { db, collection, addDoc, getDocs, deleteDoc, doc, updateDoc } from '@/lib/local-data';
 
 export function AdminContentManager() {
-  const [activeTab, setActiveTab] = useState<'video' | 'qcm' | 'case' | 'diagram'>('video');
+  const [activeTab, setActiveTab] = useState<'video' | 'qcm' | 'case' | 'openQuestion' | 'diagram'>('video');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
@@ -14,25 +13,29 @@ export function AdminContentManager() {
   const [videos, setVideos] = useState<any[]>([]);
   const [qcms, setQcms] = useState<any[]>([]);
   const [cases, setCases] = useState<any[]>([]);
+  const [openQuestions, setOpenQuestions] = useState<any[]>([]);
   const [diagrams, setDiagrams] = useState<any[]>([]);
 
   const [editingVideoId, setEditingVideoId] = useState<string | null>(null);
   const [editingQcmId, setEditingQcmId] = useState<string | null>(null);
   const [editingCaseId, setEditingCaseId] = useState<string | null>(null);
+  const [editingOpenQuestionId, setEditingOpenQuestionId] = useState<string | null>(null);
   const [editingDiagramId, setEditingDiagramId] = useState<string | null>(null);
 
   const fetchData = async () => {
     try {
-      const [videosSnap, qcmsSnap, casesSnap, diagramsSnap] = await Promise.all([
+      const [videosSnap, qcmsSnap, casesSnap, openQuestionsSnap, diagramsSnap] = await Promise.all([
         getDocs(collection(db, 'videos')),
         getDocs(collection(db, 'qcms')),
         getDocs(collection(db, 'clinicalCases')),
+        getDocs(collection(db, 'openQuestions')),
         getDocs(collection(db, 'diagrams'))
       ]);
       
       setVideos(videosSnap.docs.map(d => ({ id: d.id, ...d.data() })));
       setQcms(qcmsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
       setCases(casesSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setOpenQuestions(openQuestionsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
       setDiagrams(diagramsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
     } catch (error) {
       console.error("Error fetching data:", error);
@@ -63,11 +66,30 @@ export function AdminContentManager() {
     subspecialty: 'otologie',
     section: 'anatomie',
     isFreeDemo: false,
-    price: 0,
-    packId: ''
+    price: 0
   });
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
+
+  const QCM_OPTION_LABELS = ['A', 'B', 'C', 'D', 'E'];
+  const getDefaultQcmOptions = () => QCM_OPTION_LABELS.map(() => '');
+  const normalizeQcmOptions = (options: unknown): string[] => {
+    const fallback = getDefaultQcmOptions();
+    if (!Array.isArray(options)) return fallback;
+    return fallback.map((_, index) => {
+      const value = options[index];
+      return typeof value === 'string' ? value : '';
+    });
+  };
+  const getDefaultCaseQuestionOptions = () => QCM_OPTION_LABELS.map(() => '');
+  const normalizeCaseQuestionOptions = (options: unknown): string[] => {
+    const fallback = getDefaultCaseQuestionOptions();
+    if (!Array.isArray(options)) return fallback;
+    return fallback.map((_, index) => {
+      const value = options[index];
+      return typeof value === 'string' ? value : '';
+    });
+  };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -124,11 +146,11 @@ export function AdminContentManager() {
   const [qcmData, setQcmData] = useState({
     videoId: '',
     question: '',
-    options: ['', '', '', ''],
+    options: getDefaultQcmOptions(),
     mode: 'single' as 'single' | 'multiple',
     correctOptionIndexes: [] as number[],
     explanation: '',
-    images: [] as string[],
+    reference: '',
   });
 
   const handleVideoSubmit = async (e: React.FormEvent) => {
@@ -138,13 +160,9 @@ export function AdminContentManager() {
     setSuccessMessage('');
 
     try {
-      const normalizedPackId = videoData.isFreeDemo
-        ? ''
-        : (videoData.packId?.trim() || videoData.subspecialty);
-
       const payload = {
         ...videoData,
-        packId: normalizedPackId,
+        packId: videoData.isFreeDemo ? '' : videoData.subspecialty,
       };
 
       if (editingVideoId) {
@@ -171,8 +189,7 @@ export function AdminContentManager() {
         subspecialty: 'otologie',
         section: 'anatomie',
         isFreeDemo: false,
-        price: 0,
-        packId: ''
+        price: 0
       });
     } catch (error: any) {
       console.error('Error adding/updating video:', error);
@@ -191,8 +208,7 @@ export function AdminContentManager() {
       subspecialty: video.subspecialty || 'otologie',
       section: video.section || 'anatomie',
       isFreeDemo: video.isFreeDemo || false,
-      price: video.price || 0,
-      packId: video.packId || ''
+      price: video.price || 0
     });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -205,6 +221,10 @@ export function AdminContentManager() {
     }
     if (qcmData.options.some(opt => !opt.trim())) {
       setErrorMessage('Veuillez remplir toutes les options.');
+      return;
+    }
+    if (qcmData.correctOptionIndexes.length === 0) {
+      setErrorMessage('Veuillez sélectionner au moins une bonne réponse.');
       return;
     }
 
@@ -225,7 +245,7 @@ export function AdminContentManager() {
             ? qcmData.correctOptionIndexes[0]
             : 0,
         explanation: qcmData.explanation,
-        images: qcmData.images,
+        reference: qcmData.reference,
       };
 
       if (editingQcmId) {
@@ -248,11 +268,11 @@ export function AdminContentManager() {
       setQcmData({
         videoId: qcmData.videoId, // garder la vidéo sélectionnée
         question: '',
-        options: ['', '', '', ''],
+        options: getDefaultQcmOptions(),
         mode: 'single',
         correctOptionIndexes: [],
         explanation: '',
-        images: [],
+        reference: '',
       });
     } catch (error: any) {
       console.error('Error adding/updating QCM:', error);
@@ -277,11 +297,11 @@ export function AdminContentManager() {
     setQcmData({
       videoId: qcm.videoId || '',
       question: qcm.question || '',
-      options: qcm.options || ['', '', '', ''],
+      options: normalizeQcmOptions(qcm.options),
       mode,
       correctOptionIndexes,
       explanation: qcm.explanation || '',
-      images: qcm.images || [],
+      reference: qcm.reference || '',
     });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -292,60 +312,69 @@ export function AdminContentManager() {
     setQcmData({ ...qcmData, options: newOptions });
   };
 
-  const handleQcmImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const [openQuestionData, setOpenQuestionData] = useState({
+    videoId: '',
+    question: '',
+    answer: '',
+    reference: '',
+  });
 
-    setIsUploading(true);
-    setUploadProgress(0);
+  const handleOpenQuestionSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!openQuestionData.videoId) {
+      setErrorMessage('Veuillez sélectionner une vidéo.');
+      return;
+    }
+
+    setIsSubmitting(true);
     setErrorMessage('');
-
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('upload_preset', process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET || 'dems_ent_videos');
+    setSuccessMessage('');
 
     try {
-      const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME || 'demo';
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`);
-
-      xhr.upload.onprogress = (event) => {
-        if (event.lengthComputable) {
-          const progress = Math.round((event.loaded / event.total) * 100);
-          setUploadProgress(progress);
-        }
+      const payload = {
+        ...openQuestionData,
       };
 
-      xhr.onload = () => {
-        if (xhr.status === 200) {
-          const response = JSON.parse(xhr.responseText);
-          setQcmData(prev => ({
-            ...prev,
-            images: [...(prev.images || []), response.secure_url],
-          }));
-          setSuccessMessage('Figure de QCM ajoutée avec succès !');
-        } else {
-          const error = JSON.parse(xhr.responseText);
-          setErrorMessage(`Erreur de téléchargement de la figure du QCM: ${error.error?.message || 'Inconnue'}`);
-        }
-        setIsUploading(false);
-      };
-
-      xhr.onerror = () => {
-        setErrorMessage('Erreur réseau lors du téléchargement de la figure du QCM.');
-        setIsUploading(false);
-      };
-
-      xhr.send(formData);
-    } catch (error) {
-      console.error('Upload QCM figure error:', error);
-      setErrorMessage('Une erreur inattendue est survenue lors du téléchargement de la figure du QCM.');
-      setIsUploading(false);
-    } finally {
-      if (e.target) {
-        e.target.value = '';
+      if (editingOpenQuestionId) {
+        await updateDoc(doc(db, 'openQuestions', editingOpenQuestionId), {
+          ...payload,
+          updatedAt: new Date().toISOString(),
+        });
+        setSuccessMessage('Question ouverte mise à jour avec succès !');
+        setEditingOpenQuestionId(null);
+      } else {
+        await addDoc(collection(db, 'openQuestions'), {
+          ...payload,
+          createdAt: new Date().toISOString(),
+        });
+        setSuccessMessage('Question ouverte ajoutée avec succès !');
       }
+
+      fetchData();
+
+      setOpenQuestionData({
+        videoId: openQuestionData.videoId,
+        question: '',
+        answer: '',
+        reference: '',
+      });
+    } catch (error: any) {
+      console.error('Error adding/updating open question:', error);
+      setErrorMessage(error.message || 'Une erreur est survenue.');
+    } finally {
+      setIsSubmitting(false);
     }
+  };
+
+  const handleEditOpenQuestion = (item: any) => {
+    setEditingOpenQuestionId(item.id);
+    setOpenQuestionData({
+      videoId: item.videoId || '',
+      question: item.question || '',
+      answer: item.answer || '',
+      reference: item.reference || '',
+    });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   // Clinical Case Form State
@@ -511,16 +540,17 @@ export function AdminContentManager() {
       } else if (kind === 'select') {
         question = {
           ...base,
-          options: ['', '', '', ''],
+          options: getDefaultCaseQuestionOptions(),
           correctOptionIndex: 0,
           explanation: '',
           images: [] as string[],
         };
       } else {
-        // QCM (plusieurs bonnes réponses possibles)
+        // QCM avec mode choix unique ou multiple
         question = {
           ...base,
-          options: ['', '', '', ''],
+          options: getDefaultCaseQuestionOptions(),
+          qcmMode: 'single' as 'single' | 'multiple',
           correctOptionIndexes: [] as number[],
           explanation: '',
           images: [] as string[],
@@ -573,8 +603,8 @@ export function AdminContentManager() {
       }
 
       const options = Array.isArray(existing?.options) && existing.options.length
-        ? existing.options
-        : ['', '', '', ''];
+        ? normalizeCaseQuestionOptions(existing.options)
+        : getDefaultCaseQuestionOptions();
 
       if (kind === 'select') {
         return {
@@ -586,10 +616,17 @@ export function AdminContentManager() {
       }
 
       // QCM multi-réponses
+      const fallbackSingleIndex = typeof existing?.correctOptionIndex === 'number'
+        ? existing.correctOptionIndex
+        : 0;
+      const existingIndexes: number[] = Array.isArray(existing?.correctOptionIndexes)
+        ? existing.correctOptionIndexes
+        : [];
       return {
         ...base,
         options,
-        correctOptionIndexes: Array.isArray(existing?.correctOptionIndexes) ? existing.correctOptionIndexes : [],
+        qcmMode: existing?.qcmMode === 'multiple' ? 'multiple' : 'single',
+        correctOptionIndexes: existingIndexes.length > 0 ? existingIndexes : [fallbackSingleIndex],
         explanation: existing?.explanation || ''
       };
     });
@@ -790,10 +827,12 @@ export function AdminContentManager() {
   const getVideoExtensionStats = (videoId: string) => {
     const caseCount = cases.filter((entry) => entry.videoId === videoId).length;
     const qcmCount = qcms.filter((entry) => entry.videoId === videoId).length;
+    const openQuestionCount = openQuestions.filter((entry) => entry.videoId === videoId).length;
     const diagramCount = diagrams.filter((entry) => entry.videoId === videoId).length;
     return {
       caseCount,
       qcmCount,
+      openQuestionCount,
       diagramCount,
       isComplete: caseCount > 0 && qcmCount > 0 && diagramCount > 0,
     };
@@ -828,6 +867,15 @@ export function AdminContentManager() {
         >
           <HelpCircle className="w-4 h-4" />
           QCMs
+        </button>
+        <button
+          onClick={() => setActiveTab('openQuestion')}
+          className={`flex items-center gap-2 px-6 py-4 text-sm font-medium transition-colors whitespace-nowrap ${
+            activeTab === 'openQuestion' ? 'text-medical-600 border-b-2 border-medical-600 bg-medical-50' : 'text-slate-600 hover:bg-slate-50'
+          }`}
+        >
+          <MessageSquare className="w-4 h-4" />
+          Questions Ouvertes
         </button>
         <button
           onClick={() => setActiveTab('diagram')}
@@ -889,8 +937,7 @@ export function AdminContentManager() {
                       subspecialty: 'otologie',
                       section: 'anatomie',
                       isFreeDemo: false,
-                      price: 0,
-                      packId: ''
+                      price: 0
                     });
                   }}
                   className="text-sm text-slate-500 hover:text-slate-700"
@@ -1027,22 +1074,6 @@ export function AdminContentManager() {
                   />
                 </div>
               )}
-
-              {!videoData.isFreeDemo && (
-                <div className="space-y-2 md:col-span-2">
-                  <label className="text-sm font-medium text-slate-700">Identifiant de pack / spécialité</label>
-                  <input
-                    type="text"
-                    value={videoData.packId}
-                    onChange={(e) => setVideoData({ ...videoData, packId: e.target.value })}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all"
-                    placeholder="Ex: otologie"
-                  />
-                  <p className="text-xs text-slate-500">
-                    Si vide, la sous-spécialité sélectionnée est utilisée automatiquement.
-                  </p>
-                </div>
-              )}
             </div>
 
             <div className="pt-4 border-t border-slate-200 flex justify-end">
@@ -1071,6 +1102,7 @@ export function AdminContentManager() {
                         <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
                           <span className="px-2 py-1 rounded-full bg-slate-200 text-slate-700">Cas: {stats.caseCount}</span>
                           <span className="px-2 py-1 rounded-full bg-slate-200 text-slate-700">QCM: {stats.qcmCount}</span>
+                          <span className="px-2 py-1 rounded-full bg-slate-200 text-slate-700">Questions ouvertes: {stats.openQuestionCount}</span>
                           <span className="px-2 py-1 rounded-full bg-slate-200 text-slate-700">Schemas: {stats.diagramCount}</span>
                           <span
                             className={`px-2 py-1 rounded-full font-medium ${
@@ -1127,9 +1159,11 @@ export function AdminContentManager() {
                       setQcmData({
                         videoId: '',
                         question: '',
-                        options: ['', '', '', ''],
-                        correctOptionIndex: 0,
-                        explanation: ''
+                        options: getDefaultQcmOptions(),
+                        mode: 'single',
+                        correctOptionIndexes: [],
+                        explanation: '',
+                        reference: '',
                       });
                     }}
                     className="text-sm text-slate-500 hover:text-slate-700"
@@ -1172,7 +1206,17 @@ export function AdminContentManager() {
                   <label className="text-sm font-medium text-slate-700">Type de QCM</label>
                   <select
                     value={qcmData.mode}
-                    onChange={(e) => setQcmData({ ...qcmData, mode: e.target.value as 'single' | 'multiple' })}
+                    onChange={(e) => {
+                      const nextMode = e.target.value as 'single' | 'multiple';
+                      setQcmData((prev) => ({
+                        ...prev,
+                        mode: nextMode,
+                        correctOptionIndexes:
+                          nextMode === 'single'
+                            ? (prev.correctOptionIndexes.length > 0 ? [prev.correctOptionIndexes[0]] : [])
+                            : prev.correctOptionIndexes,
+                      }));
+                    }}
                     className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all bg-white text-sm"
                     title="Type de QCM"
                     aria-label="Type de QCM"
@@ -1186,103 +1230,70 @@ export function AdminContentManager() {
                 </div>
 
                 <div className="space-y-4">
-                  <label className="text-sm font-medium text-slate-700">Options de réponse</label>
-                  {qcmData.options.map((option, index) => (
-                    <div key={index} className="flex items-center gap-4">
-                      <input
-                        type="checkbox"
-                        checked={qcmData.correctOptionIndexes.includes(index)}
-                        onChange={(e) => {
-                          const checked = e.target.checked;
-                          setQcmData(prev => {
-                            let nextIndexes = Array.isArray(prev.correctOptionIndexes)
-                              ? [...prev.correctOptionIndexes]
-                              : [];
+                  <label className="text-sm font-medium text-slate-700">Options de réponse (A, B, C, D, E)</label>
+                  {QCM_OPTION_LABELS.map((optionLabel, index) => (
+                    <div key={optionLabel} className="flex items-center gap-4">
+                      {qcmData.mode === 'single' ? (
+                        <input
+                          type="radio"
+                          name="main-qcm-correct-option"
+                          checked={qcmData.correctOptionIndexes.includes(index)}
+                          onChange={() =>
+                            setQcmData((prev) => ({
+                              ...prev,
+                              correctOptionIndexes: [index],
+                            }))
+                          }
+                          className="text-medical-600 focus:ring-medical-500 mt-1 h-4 w-4 border-slate-300"
+                          title="Marquer comme bonne réponse"
+                        />
+                      ) : (
+                        <input
+                          type="checkbox"
+                          checked={qcmData.correctOptionIndexes.includes(index)}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            setQcmData((prev) => {
+                              let nextIndexes = Array.isArray(prev.correctOptionIndexes)
+                                ? [...prev.correctOptionIndexes]
+                                : [];
 
-                            if (prev.mode === 'single') {
-                              nextIndexes = checked ? [index] : [];
-                            } else {
                               if (checked) {
                                 if (!nextIndexes.includes(index)) {
                                   nextIndexes.push(index);
                                 }
                               } else {
-                                nextIndexes = nextIndexes.filter(i => i !== index);
+                                nextIndexes = nextIndexes.filter((i) => i !== index);
                               }
-                            }
 
-                            return {
-                              ...prev,
-                              correctOptionIndexes: nextIndexes,
-                            };
-                          });
-                        }}
-                        className="text-medical-600 focus:ring-medical-500 mt-1 h-4 w-4 rounded border-slate-300"
-                        title="Marquer comme bonne réponse"
-                      />
+                              return {
+                                ...prev,
+                                correctOptionIndexes: nextIndexes,
+                              };
+                            });
+                          }}
+                          className="text-medical-600 focus:ring-medical-500 mt-1 h-4 w-4 rounded border-slate-300"
+                          title="Marquer comme bonne réponse"
+                        />
+                      )}
+                      <span className="w-8 shrink-0 text-center text-xs font-semibold text-slate-600 bg-slate-100 border border-slate-300 rounded-md py-1">
+                        {optionLabel}
+                      </span>
                       <input
                         type="text"
                         required
-                        value={option}
+                        value={qcmData.options[index] || ''}
                         onChange={(e) => handleOptionChange(index, e.target.value)}
                         className={`flex-1 px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all ${
                           qcmData.correctOptionIndexes.includes(index) ? 'border-medical-500 bg-medical-50' : 'border-slate-300'
                         }`}
-                        placeholder={`Option ${index + 1}`}
+                        placeholder={`Option ${optionLabel}`}
                       />
                     </div>
                   ))}
                   <p className="text-xs text-slate-500">
-                    Utilisez les cases à cocher pour marquer les bonnes réponses (une seule en mode "Choix unique").
+                    Choix unique: boutons radio. Choix multiple: cases à cocher.
                   </p>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700">Figures associées au QCM (optionnel)</label>
-                  <div className="space-y-3">
-                    {qcmData.images && qcmData.images.length > 0 && (
-                      <div className="flex flex-wrap gap-2">
-                        {qcmData.images.map((img, index) => (
-                          <div
-                            key={index}
-                            className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-100 border border-slate-200 text-xs text-slate-700 max-w-full"
-                          >
-                            <span className="font-semibold">Figure {index + 1}</span>
-                            <span className="truncate max-w-[160px]" title={img}>{img}</span>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setQcmData(prev => ({
-                                  ...prev,
-                                  images: prev.images.filter((_, i) => i !== index),
-                                }))
-                              }
-                              className="ml-1 text-red-600 hover:text-red-800"
-                              title="Supprimer la figure"
-                            >
-                              <X className="w-3 h-3" />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    <div className="flex flex-col gap-2">
-                      <label className="cursor-pointer inline-flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors border border-slate-300 w-fit">
-                        {isUploading ? 'Téléchargement...' : 'Ajouter une figure'}
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={handleQcmImageUpload}
-                          disabled={isUploading}
-                        />
-                      </label>
-                      {isUploading && (
-                        <p className="text-xs text-slate-500">Téléchargement de la figure du QCM : {uploadProgress}%</p>
-                      )}
-                    </div>
-                  </div>
                 </div>
 
                 <div className="space-y-2">
@@ -1292,6 +1303,16 @@ export function AdminContentManager() {
                     onChange={(e) => setQcmData({...qcmData, explanation: e.target.value})}
                     className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all min-h-[80px]"
                     placeholder="Explication affichée après la réponse..."
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-700">Références (Optionnelle)</label>
+                  <textarea
+                    value={qcmData.reference}
+                    onChange={(e) => setQcmData({ ...qcmData, reference: e.target.value })}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all min-h-[80px]"
+                    placeholder="Article, guide, source scientifique..."
                   />
                 </div>
               </div>
@@ -1340,6 +1361,138 @@ export function AdminContentManager() {
                 })}
                 {qcms.length === 0 && (
                   <p className="text-slate-500 text-sm">Aucun QCM trouvé.</p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'openQuestion' && (
+          <div className="space-y-10">
+            <form onSubmit={handleOpenQuestionSubmit} className="space-y-6 max-w-2xl">
+              <div className="flex justify-between items-center">
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900 mb-1">
+                    {editingOpenQuestionId ? 'Modifier la Question Ouverte' : 'Ajouter une Question Ouverte'}
+                  </h3>
+                  <p className="text-sm text-slate-500 mb-6">
+                    Ajoutez une question ouverte liée à une vidéo avec sa réponse et ses références.
+                  </p>
+                </div>
+                {editingOpenQuestionId && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingOpenQuestionId(null);
+                      setOpenQuestionData({
+                        videoId: '',
+                        question: '',
+                        answer: '',
+                        reference: '',
+                      });
+                    }}
+                    className="text-sm text-slate-500 hover:text-slate-700"
+                  >
+                    Annuler l'édition
+                  </button>
+                )}
+              </div>
+
+              <div className="space-y-6">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-700">Vidéo associée</label>
+                  <select
+                    required
+                    value={openQuestionData.videoId}
+                    onChange={(e) => setOpenQuestionData({ ...openQuestionData, videoId: e.target.value })}
+                    title="Video associee a la question ouverte"
+                    aria-label="Video associee a la question ouverte"
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all bg-white"
+                  >
+                    <option value="" disabled>Sélectionner une vidéo...</option>
+                    {videos.map(v => (
+                      <option key={v.id} value={v.id}>{v.title}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-700">Question</label>
+                  <textarea
+                    required
+                    value={openQuestionData.question}
+                    onChange={(e) => setOpenQuestionData({ ...openQuestionData, question: e.target.value })}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all min-h-[80px]"
+                    placeholder="Saisissez la question ouverte..."
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-700">Réponse</label>
+                  <textarea
+                    required
+                    value={openQuestionData.answer}
+                    onChange={(e) => setOpenQuestionData({ ...openQuestionData, answer: e.target.value })}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all min-h-[100px]"
+                    placeholder="Saisissez la réponse attendue..."
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-700">Références (Optionnelle)</label>
+                  <textarea
+                    value={openQuestionData.reference}
+                    onChange={(e) => setOpenQuestionData({ ...openQuestionData, reference: e.target.value })}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all min-h-[80px]"
+                    placeholder="Article, source scientifique, guideline..."
+                  />
+                </div>
+              </div>
+
+              <div className="pt-4 border-t border-slate-200 flex justify-end">
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="flex items-center gap-2 bg-medical-600 text-white px-6 py-3 rounded-xl font-medium hover:bg-medical-700 transition-colors disabled:opacity-70"
+                >
+                  {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+                  {editingOpenQuestionId ? 'Mettre à jour la question ouverte' : 'Enregistrer la question ouverte'}
+                </button>
+              </div>
+            </form>
+
+            <div className="mt-12 border-t border-slate-200 pt-8">
+              <h3 className="text-lg font-bold text-slate-900 mb-4">Questions ouvertes existantes</h3>
+              <div className="grid gap-4">
+                {openQuestions.map((item) => {
+                  const video = videos.find(v => v.id === item.videoId);
+                  return (
+                    <div key={item.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-200">
+                      <div>
+                        <h4 className="font-medium text-slate-900 line-clamp-1">{item.question}</h4>
+                        <p className="text-sm text-slate-500">Vidéo: {video?.title || 'Inconnue'}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleEditOpenQuestion(item)}
+                          className="p-2 text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
+                          title="Modifier"
+                        >
+                          <Edit2 className="w-5 h-5" />
+                        </button>
+                        <button
+                          onClick={() => handleDelete('openQuestions', item.id)}
+                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Supprimer"
+                        >
+                          <Trash2 className="w-5 h-5" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+                {openQuestions.length === 0 && (
+                  <p className="text-slate-500 text-sm">Aucune question ouverte trouvée.</p>
                 )}
               </div>
             </div>
@@ -1507,9 +1660,10 @@ export function AdminContentManager() {
                     <div className="space-y-4">
                       {(caseData.questions || []).map((q: any, index: number) => {
                         const kind: 'qcm' | 'select' | 'open' = (q.kind as any) || 'qcm';
+                        const qcmMode: 'single' | 'multiple' = q.qcmMode === 'multiple' ? 'multiple' : 'single';
                         const options: string[] = Array.isArray(q.options) && q.options.length
-                          ? q.options
-                          : ['', '', '', ''];
+                          ? normalizeCaseQuestionOptions(q.options)
+                          : getDefaultCaseQuestionOptions();
 
                         return (
                           <div
@@ -1561,39 +1715,85 @@ export function AdminContentManager() {
 
                               {(kind === 'qcm' || kind === 'select') && (
                                 <div className="space-y-2">
-                                  <label className="text-xs font-medium text-slate-700">Options de réponse</label>
+                                  <label className="text-xs font-medium text-slate-700">Options de réponse (A, B, C, D, E)</label>
+                                  {kind === 'qcm' && (
+                                    <div className="space-y-1">
+                                      <label className="text-[11px] font-medium text-slate-700">Mode de correction</label>
+                                      <select
+                                        value={qcmMode}
+                                        onChange={(e) => {
+                                          const nextMode = e.target.value as 'single' | 'multiple';
+                                          updateCaseQuestion(index, (current: any) => {
+                                            const currentIndexes: number[] = Array.isArray(current.correctOptionIndexes)
+                                              ? current.correctOptionIndexes
+                                              : [];
+                                            return {
+                                              ...current,
+                                              qcmMode: nextMode,
+                                              correctOptionIndexes:
+                                                nextMode === 'single'
+                                                  ? (currentIndexes.length > 0 ? [currentIndexes[0]] : [])
+                                                  : currentIndexes,
+                                            };
+                                          });
+                                        }}
+                                        className="w-full px-2 py-1.5 rounded-lg border border-slate-300 bg-white text-xs text-slate-700"
+                                        title="Mode de correction QCM"
+                                        aria-label="Mode de correction QCM"
+                                      >
+                                        <option value="single">Choix unique</option>
+                                        <option value="multiple">Choix multiple</option>
+                                      </select>
+                                    </div>
+                                  )}
                                   <div className="space-y-2">
-                                    {options.map((opt: string, optIndex: number) => (
-                                      <div key={optIndex} className="flex items-center gap-2">
+                                    {QCM_OPTION_LABELS.map((optLabel: string, optIndex: number) => (
+                                      <div key={optLabel} className="flex items-center gap-2">
                                         {kind === 'qcm' ? (
-                                          <input
-                                            type="checkbox"
-                                            className="mt-0.5 h-4 w-4 text-medical-600 border-slate-300 rounded"
-                                            checked={Array.isArray(q.correctOptionIndexes) && q.correctOptionIndexes.includes(optIndex)}
-                                            onChange={(e) => {
-                                              const checked = e.target.checked;
-                                              updateCaseQuestion(index, (current: any) => {
-                                                const currentIndexes: number[] = Array.isArray(current.correctOptionIndexes)
-                                                  ? [...current.correctOptionIndexes]
-                                                  : [];
-                                                if (checked) {
-                                                  if (!currentIndexes.includes(optIndex)) {
-                                                    currentIndexes.push(optIndex);
-                                                  }
-                                                } else {
-                                                  const pos = currentIndexes.indexOf(optIndex);
-                                                  if (pos !== -1) {
-                                                    currentIndexes.splice(pos, 1);
-                                                  }
-                                                }
-                                                return {
+                                          qcmMode === 'single' ? (
+                                            <input
+                                              type="radio"
+                                              name={`case-qcm-correct-${index}`}
+                                              className="mt-0.5 h-4 w-4 text-medical-600 border-slate-300"
+                                              checked={Array.isArray(q.correctOptionIndexes) && q.correctOptionIndexes.includes(optIndex)}
+                                              onChange={() =>
+                                                updateCaseQuestion(index, (current: any) => ({
                                                   ...current,
-                                                  correctOptionIndexes: currentIndexes
-                                                };
-                                              });
-                                            }}
-                                            title="Marquer comme bonne réponse"
-                                          />
+                                                  correctOptionIndexes: [optIndex],
+                                                }))
+                                              }
+                                              title="Bonne réponse"
+                                            />
+                                          ) : (
+                                            <input
+                                              type="checkbox"
+                                              className="mt-0.5 h-4 w-4 text-medical-600 border-slate-300 rounded"
+                                              checked={Array.isArray(q.correctOptionIndexes) && q.correctOptionIndexes.includes(optIndex)}
+                                              onChange={(e) => {
+                                                const checked = e.target.checked;
+                                                updateCaseQuestion(index, (current: any) => {
+                                                  const currentIndexes: number[] = Array.isArray(current.correctOptionIndexes)
+                                                    ? [...current.correctOptionIndexes]
+                                                    : [];
+                                                  if (checked) {
+                                                    if (!currentIndexes.includes(optIndex)) {
+                                                      currentIndexes.push(optIndex);
+                                                    }
+                                                  } else {
+                                                    const pos = currentIndexes.indexOf(optIndex);
+                                                    if (pos !== -1) {
+                                                      currentIndexes.splice(pos, 1);
+                                                    }
+                                                  }
+                                                  return {
+                                                    ...current,
+                                                    correctOptionIndexes: currentIndexes,
+                                                  };
+                                                });
+                                              }}
+                                              title="Marquer comme bonne réponse"
+                                            />
+                                          )
                                         ) : (
                                           <input
                                             type="radio"
@@ -1609,14 +1809,17 @@ export function AdminContentManager() {
                                             title="Réponse correcte"
                                           />
                                         )}
+                                        <span className="w-7 shrink-0 text-center text-[11px] font-semibold text-slate-600 bg-slate-100 border border-slate-300 rounded-md py-1">
+                                          {optLabel}
+                                        </span>
                                         <input
                                           type="text"
-                                          value={opt}
+                                          value={options[optIndex] || ''}
                                           onChange={(e) =>
                                             updateCaseQuestion(index, (current: any) => {
                                               const nextOptions: string[] = Array.isArray(current.options)
                                                 ? [...current.options]
-                                                : ['', '', '', ''];
+                                                : getDefaultCaseQuestionOptions();
                                               nextOptions[optIndex] = e.target.value;
                                               return {
                                                 ...current,
@@ -1625,14 +1828,16 @@ export function AdminContentManager() {
                                             })
                                           }
                                           className="flex-1 px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all text-sm"
-                                          placeholder={`Option ${optIndex + 1}`}
+                                          placeholder={`Option ${optLabel}`}
                                         />
                                       </div>
                                     ))}
                                   </div>
                                   <p className="text-[11px] text-slate-500">
                                     {kind === 'qcm'
-                                      ? 'Cochez une ou plusieurs bonnes réponses.'
+                                      ? (qcmMode === 'single'
+                                        ? 'Choisissez une seule bonne réponse.'
+                                        : 'Cochez une ou plusieurs bonnes réponses.')
                                       : 'Sélectionnez l’option correcte pour la liste déroulante.'}
                                   </p>
                                 </div>

@@ -10,6 +10,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   FileText, 
   CheckCircle2, 
+  MessageSquare,
   Image as ImageIcon, 
   Lock, 
   ShieldAlert, 
@@ -42,12 +43,13 @@ export default function VideoPage() {
   
   const [video, setVideo] = useState<Video | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'cas' | 'qcm' | 'schemas'>('cas');
+  const [activeTab, setActiveTab] = useState<'cas' | 'open' | 'qcm' | 'schemas'>('cas');
   const [hasAccess, setHasAccess] = useState(false);
 
   // Content states
   const [qcms, setQcms] = useState<any[]>([]);
   const [clinicalCases, setClinicalCases] = useState<any[]>([]);
+  const [openQuestions, setOpenQuestions] = useState<any[]>([]);
   const [diagrams, setDiagrams] = useState<any[]>([]);
 
   // QCM states
@@ -57,8 +59,11 @@ export default function VideoPage() {
 
   // Navigation states for multiple items
   const [activeCaseIndex, setActiveCaseIndex] = useState(0);
+  const [activeOpenQuestionIndex, setActiveOpenQuestionIndex] = useState(0);
   const [activeQcmIndex, setActiveQcmIndex] = useState(0);
   const [activeDiagramIndex, setActiveDiagramIndex] = useState(0);
+
+  const [openQuestionAnswersVisible, setOpenQuestionAnswersVisible] = useState<Record<string, boolean>>({});
 
   // Schema answers visibility
   const [diagramAnswersVisible, setDiagramAnswersVisible] = useState<Record<string, boolean>>({});
@@ -82,7 +87,7 @@ export default function VideoPage() {
 
     const tabParam = router.query.tab;
     const tab = Array.isArray(tabParam) ? tabParam[0] : tabParam;
-    if (tab === 'qcm' || tab === 'cas' || tab === 'schemas') {
+    if (tab === 'qcm' || tab === 'cas' || tab === 'open' || tab === 'schemas') {
       setActiveTab(tab);
       return;
     }
@@ -94,6 +99,10 @@ export default function VideoPage() {
 
     if (tab === 'diagram') {
       setActiveTab('schemas');
+    }
+
+    if (tab === 'open-questions' || tab === 'openQuestions' || tab === 'open-question') {
+      setActiveTab('open');
     }
   }, [router.isReady, router.query.tab]);
 
@@ -118,6 +127,9 @@ export default function VideoPage() {
 
             const caseSnap = await getDocs(query(collection(db, 'clinicalCases'), where('videoId', '==', id)));
             setClinicalCases(caseSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+
+            const openQuestionsSnap = await getDocs(query(collection(db, 'openQuestions'), where('videoId', '==', id)));
+            setOpenQuestions(openQuestionsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
 
             const diagramSnap = await getDocs(query(collection(db, 'diagrams'), where('videoId', '==', id)));
             setDiagrams(diagramSnap.docs.map(d => ({ id: d.id, ...d.data() })));
@@ -287,6 +299,7 @@ export default function VideoPage() {
         <div className="flex gap-2 border-b border-slate-800 mb-8 overflow-x-auto no-scrollbar">
           {[
             { id: 'cas', label: 'Cas Cliniques', icon: FileText },
+            { id: 'open', label: 'Questions Ouvertes', icon: MessageSquare },
             { id: 'qcm', label: 'QCM', icon: CheckCircle2 },
             { id: 'schemas', label: 'Schémas', icon: ImageIcon },
           ].map((tab) => (
@@ -1033,6 +1046,100 @@ export default function VideoPage() {
                 ) : (
                   <div className="bg-slate-800 rounded-xl p-6 border border-slate-700 text-center">
                     <p className="text-slate-400 py-10">Aucun QCM disponible pour cette vidéo.</p>
+                  </div>
+                )}
+              </motion.div>
+            )}
+
+            {activeTab === 'open' && (
+              <motion.div
+                key="open"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="space-y-6"
+              >
+                <h2 className="text-2xl font-bold text-white mb-6">Questions Ouvertes</h2>
+                {openQuestions.length > 0 ? (
+                  <>
+                    {(() => {
+                      const index = Math.min(activeOpenQuestionIndex, openQuestions.length - 1);
+                      const item = openQuestions[index];
+                      const isAnswerVisible = !!openQuestionAnswersVisible[item.id];
+
+                      return (
+                        <>
+                          <div key={item.id} className="bg-slate-800 rounded-2xl p-6 md:p-8 border border-slate-700 shadow-xl space-y-5">
+                            <div className="flex items-start gap-4">
+                              <span className="flex-shrink-0 w-10 h-10 bg-medical-500/20 text-medical-400 rounded-xl flex items-center justify-center font-bold border border-medical-500/30">
+                                {index + 1}
+                              </span>
+                              <div className="space-y-2">
+                                <p className="text-[11px] uppercase tracking-wide text-slate-400">Question ouverte</p>
+                                <p className="font-medium text-white text-xl leading-relaxed whitespace-pre-wrap">{item.question}</p>
+                              </div>
+                            </div>
+
+                            <div className="flex justify-end">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setOpenQuestionAnswersVisible((prev) => ({
+                                    ...prev,
+                                    [item.id]: !isAnswerVisible,
+                                  }))
+                                }
+                                className="px-4 py-2 rounded-lg border border-slate-600 text-slate-200 hover:bg-slate-700 text-xs font-medium"
+                              >
+                                {isAnswerVisible ? 'Masquer la réponse' : 'Afficher la réponse'}
+                              </button>
+                            </div>
+
+                            {isAnswerVisible && item.answer && (
+                              <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4">
+                                <h3 className="text-sm font-semibold text-emerald-300 mb-2">Réponse</h3>
+                                <p className="text-sm text-slate-200 whitespace-pre-wrap">{item.answer}</p>
+                              </div>
+                            )}
+
+                            {item.reference && (
+                              <div className="rounded-xl border border-slate-700 bg-slate-900/40 p-4">
+                                <h3 className="text-sm font-semibold text-slate-200 mb-2">Références</h3>
+                                <p className="text-sm text-slate-400 whitespace-pre-wrap">{item.reference}</p>
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="mt-4 flex items-center justify-between text-sm text-slate-400">
+                            <span>Question {index + 1} sur {openQuestions.length}</span>
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setActiveOpenQuestionIndex((prev) => Math.max(prev - 1, 0))}
+                                disabled={activeOpenQuestionIndex === 0}
+                                className="px-3 py-1.5 rounded-lg border border-slate-600 text-slate-200 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-medium"
+                              >
+                                Précédent
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setActiveOpenQuestionIndex((prev) => Math.min(prev + 1, openQuestions.length - 1))
+                                }
+                                disabled={activeOpenQuestionIndex >= openQuestions.length - 1}
+                                className="px-3 py-1.5 rounded-lg border border-medical-500 text-medical-200 hover:bg-medical-600/20 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-medium"
+                              >
+                                Suivant
+                              </button>
+                            </div>
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </>
+                ) : (
+                  <div className="bg-slate-800 rounded-xl p-6 border border-slate-700 text-center">
+                    <p className="text-slate-400 py-10">Aucune question ouverte disponible pour cette vidéo.</p>
                   </div>
                 )}
               </motion.div>

@@ -137,6 +137,7 @@ const createEmptyState = (): LocalDbState => ({
     videos: {},
     qcms: {},
     clinicalCases: {},
+    openQuestions: {},
     diagrams: {},
     payments: {},
   },

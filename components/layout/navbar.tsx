@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useAuth } from '@/components/providers/auth-provider';
 import { useCart } from '@/components/providers/cart-provider';
 import { LogIn, LogOut, User, Menu, X, Stethoscope, ShoppingCart, ChevronDown, LayoutDashboard, ShoppingBag, Settings } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import Image from 'next/image';
 
@@ -13,6 +13,7 @@ export function Navbar() {
   const { itemCount } = useCart();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement | null>(null);
 
   const isAdmin = profile?.role === 'admin';
 
@@ -31,6 +32,7 @@ export function Navbar() {
     { name: 'Laryngologie', href: '/specialties/laryngologie' },
     { name: 'Tarifs', href: '/pricing' },
   ];
+  const visibleNavLinks = isAdmin ? navLinks.filter((link) => link.name !== 'Tarifs') : navLinks;
 
   const displayName = profile?.displayName?.trim() || '';
   const hasDoctorPrefix = /^dr\.?/i.test(displayName);
@@ -39,6 +41,34 @@ export function Navbar() {
       ? displayName
       : `Dr. ${displayName}`
     : '';
+
+  useEffect(() => {
+    if (!isUserMenuOpen) return;
+
+    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
+      if (!userMenuRef.current) return;
+      const targetNode = event.target as Node | null;
+      if (targetNode && !userMenuRef.current.contains(targetNode)) {
+        setIsUserMenuOpen(false);
+      }
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsUserMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('touchstart', handlePointerDown);
+    document.addEventListener('keydown', handleEscape);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('touchstart', handlePointerDown);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [isUserMenuOpen]);
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-slate-200 bg-white/80 backdrop-blur-md">
@@ -50,7 +80,7 @@ export function Navbar() {
 
         {/* Desktop Nav */}
         <nav className="hidden md:flex items-center gap-6">
-          {navLinks.map((link) => (
+          {visibleNavLinks.map((link) => (
             <Link
               key={link.name}
               href={link.href}
@@ -76,7 +106,7 @@ export function Navbar() {
           {!loading && (
             <>
               {user && profile ? (
-                <div className="relative flex items-center gap-2">
+                <div ref={userMenuRef} className="relative flex items-center gap-2">
                   <button
                     type="button"
                     onClick={() => setIsUserMenuOpen((v) => !v)}
@@ -106,6 +136,7 @@ export function Navbar() {
                       {profile.role === 'admin' && (
                         <Link
                           href="/admin"
+                          onClick={() => setIsUserMenuOpen(false)}
                           className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
                         >
                           <LayoutDashboard className="h-4 w-4 text-slate-500" />
@@ -116,6 +147,7 @@ export function Navbar() {
                       {(profile.role === 'vip' || profile.role === 'vip_plus') && (
                         <Link
                           href="/dashboard?tab=purchases"
+                          onClick={() => setIsUserMenuOpen(false)}
                           className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
                         >
                           <ShoppingBag className="h-4 w-4 text-slate-500" />
@@ -125,6 +157,7 @@ export function Navbar() {
 
                       <Link
                         href="/dashboard?tab=profile"
+                        onClick={() => setIsUserMenuOpen(false)}
                         className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
                       >
                         <Settings className="h-4 w-4 text-slate-500" />
@@ -133,7 +166,10 @@ export function Navbar() {
 
                       <button
                         type="button"
-                        onClick={handleSignOut}
+                        onClick={async () => {
+                          setIsUserMenuOpen(false);
+                          await handleSignOut();
+                        }}
                         className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50"
                       >
                         <LogOut className="h-4 w-4" />
@@ -194,7 +230,7 @@ export function Navbar() {
             className="md:hidden bg-white border-b border-slate-200 overflow-hidden"
           >
             <div className="flex flex-col px-4 py-4 gap-4">
-              {navLinks.map((link) => (
+              {visibleNavLinks.map((link) => (
                 <Link
                   key={link.name}
                   href={link.href}

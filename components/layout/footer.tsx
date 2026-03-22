@@ -1,7 +1,13 @@
+'use client';
+
 import Link from 'next/link';
+import { useAuth } from '@/components/providers/auth-provider';
 import { Stethoscope, Mail, Phone, MapPin } from 'lucide-react';
 
 export function Footer() {
+  const { profile } = useAuth();
+  const isAdmin = profile?.role === 'admin';
+
   return (
     <footer className="bg-slate-900 text-slate-300 py-12 border-t border-slate-800 mt-auto">
       <div className="container mx-auto px-4 grid grid-cols-1 md:grid-cols-4 gap-8">
@@ -27,8 +33,14 @@ export function Footer() {
         <div>
           <h3 className="text-white font-semibold mb-4">Liens Utiles</h3>
           <ul className="space-y-2 text-sm">
-            <li><Link href="/pricing" className="hover:text-medical-400 transition-colors">Tarifs & Abonnements</Link></li>
-            <li><Link href="/dashboard" className="hover:text-medical-400 transition-colors">Mon Espace</Link></li>
+            {!isAdmin && (
+              <li><Link href="/pricing" className="hover:text-medical-400 transition-colors">Tarifs & Abonnements</Link></li>
+            )}
+            <li>
+              <Link href={isAdmin ? '/admin' : '/dashboard'} className="hover:text-medical-400 transition-colors">
+                {isAdmin ? 'Dashboard' : 'Mon Espace'}
+              </Link>
+            </li>
             <li><Link href="/contact" className="hover:text-medical-400 transition-colors">Contactez-nous</Link></li>
             <li><Link href="/faq" className="hover:text-medical-400 transition-colors">FAQ</Link></li>
           </ul>
