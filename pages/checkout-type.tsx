@@ -84,7 +84,11 @@ export default function CheckoutPage() {
           <p className="text-slate-600 mb-8 leading-relaxed">
             Votre demande de paiement a été enregistrée avec succès. Notre équipe va vérifier votre reçu et activer votre accès dans les plus brefs délais (généralement sous 24h).
           </p>
-          <button onClick={() => router.push('/dashboard')} className="w-full bg-slate-900 text-white py-4 rounded-xl font-medium hover:bg-slate-800 transition-colors">
+          <button
+            onClick={() => router.push('/dashboard')}
+            className="w-full py-4 rounded-xl font-medium transition-colors"
+            style={{ background: 'linear-gradient(90deg, color-mix(in oklab, var(--app-accent) 76%, #51392a 24%), color-mix(in oklab, var(--app-accent) 90%, #35261c 10%))', color: 'var(--app-accent-contrast)' }}
+          >
             Aller à mon tableau de bord
           </button>
         </motion.div>

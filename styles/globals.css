@@ -20,9 +20,613 @@
   --font-sans: var(--font-inter);
 }
 
+:root,
+html[data-theme='light'] {
+  --app-bg: #f3ede2;
+  --app-surface: #fffaf2;
+  --app-surface-2: #efe3d3;
+  --app-text: #3f3326;
+  --app-muted: #7a6a57;
+  --app-border: #d7c4ab;
+  --app-accent: #b0673e;
+  --app-accent-contrast: #fff6ed;
+  --app-nav-bg: rgba(255, 250, 242, 0.88);
+  --app-deep-surface: #2f261d;
+  --app-deep-surface-2: #3a2f24;
+  --app-deep-text: #fff5e8;
+  --app-info: #5f7f92;
+  --app-success: #5b7b58;
+  --app-warning: #9f7442;
+  --app-danger: #98554f;
+
+  --hero-bg-start: rgba(255, 250, 242, 0.34);
+  --hero-bg-end: rgba(176, 103, 62, 0.18);
+  --hero-overlay: linear-gradient(100deg, rgba(255, 250, 242, 0.74) 0%, rgba(255, 250, 242, 0.5) 48%, rgba(255, 250, 242, 0.34) 100%);
+  --hero-title: #3f3326;
+  --hero-body: #5d4b3a;
+  --hero-chip-bg: color-mix(in oklab, var(--app-accent) 14%, transparent);
+  --hero-chip-border: color-mix(in oklab, var(--app-accent) 30%, transparent);
+  --hero-chip-text: #4a3a2c;
+  --hero-ghost-bg: color-mix(in oklab, var(--app-accent) 9%, rgba(255, 255, 255, 0.36));
+  --hero-ghost-border: color-mix(in oklab, var(--app-accent) 34%, rgba(255, 255, 255, 0.36));
+  --hero-panel-bg: color-mix(in oklab, var(--app-surface) 26%, transparent);
+  --hero-panel-border: color-mix(in oklab, var(--app-accent) 22%, transparent);
+  --hero-stat-bg: color-mix(in oklab, var(--app-surface) 30%, transparent);
+
+  --footer-bg-start: rgba(255, 250, 242, 0.24);
+  --footer-bg-end: rgba(176, 103, 62, 0.2);
+  --footer-panel: rgba(255, 250, 242, 0.42);
+  --footer-border: rgba(176, 103, 62, 0.28);
+  --footer-text: #4a3a2c;
+  --footer-muted: #6a5848;
+  --footer-link: #503f31;
+}
+
+html[data-theme='dark'] {
+  --app-bg: #1f1a14;
+  --app-surface: #2c241b;
+  --app-surface-2: #3a2f24;
+  --app-text: #efe3d1;
+  --app-muted: #c8b79e;
+  --app-border: #5e4d3a;
+  --app-accent: #c37a4a;
+  --app-accent-contrast: #1f1a14;
+  --app-nav-bg: rgba(44, 36, 27, 0.9);
+  --app-deep-surface: #1d1711;
+  --app-deep-surface-2: #271e16;
+  --app-deep-text: #f6e8d3;
+  --app-info: #78a1b6;
+  --app-success: #8db084;
+  --app-warning: #d3a26b;
+  --app-danger: #d18479;
+
+  --hero-bg-start: #17120d;
+  --hero-bg-end: #2d2017;
+  --hero-overlay: linear-gradient(100deg, rgba(11, 8, 6, 0.82) 0%, rgba(11, 8, 6, 0.62) 48%, rgba(11, 8, 6, 0.42) 100%);
+  --hero-title: #f6e8d3;
+  --hero-body: #ddc9b0;
+  --hero-chip-bg: color-mix(in oklab, var(--app-accent) 22%, transparent);
+  --hero-chip-border: color-mix(in oklab, var(--app-accent) 44%, transparent);
+  --hero-chip-text: #f3e0c8;
+  --hero-ghost-bg: color-mix(in oklab, var(--app-accent) 14%, transparent);
+  --hero-ghost-border: color-mix(in oklab, var(--app-accent) 40%, rgba(255, 255, 255, 0.3));
+  --hero-panel-bg: color-mix(in oklab, var(--app-accent) 12%, rgba(255, 255, 255, 0.08));
+  --hero-panel-border: color-mix(in oklab, var(--app-accent) 30%, rgba(255, 255, 255, 0.28));
+  --hero-stat-bg: rgba(0, 0, 0, 0.28);
+
+  --footer-bg-start: #18120d;
+  --footer-bg-end: #2b1f17;
+  --footer-panel: rgba(255, 246, 234, 0.06);
+  --footer-border: rgba(255, 231, 207, 0.17);
+  --footer-text: #f4e6d5;
+  --footer-muted: #c9b39b;
+  --footer-link: #f7e9d7;
+}
+
+/* Global earth palette mapping for existing Tailwind slate/white utilities */
+html[data-theme='light'] .bg-white,
+html[data-theme='dark'] .bg-white {
+  background-color: var(--app-surface) !important;
+}
+
+html[data-theme='light'] .bg-slate-50,
+html[data-theme='dark'] .bg-slate-50 {
+  background-color: color-mix(in srgb, var(--app-surface) 72%, var(--app-bg) 28%) !important;
+}
+
+html[data-theme='light'] .bg-slate-100,
+html[data-theme='dark'] .bg-slate-100 {
+  background-color: var(--app-surface-2) !important;
+}
+
+html[data-theme='light'] .bg-slate-200,
+html[data-theme='dark'] .bg-slate-200 {
+  background-color: color-mix(in srgb, var(--app-surface-2) 60%, var(--app-border) 40%) !important;
+}
+
+html[data-theme='light'] .bg-slate-700,
+html[data-theme='dark'] .bg-slate-700,
+html[data-theme='light'] .bg-slate-800,
+html[data-theme='dark'] .bg-slate-800,
+html[data-theme='light'] .bg-slate-900,
+html[data-theme='dark'] .bg-slate-900,
+html[data-theme='light'] [class*=' bg-slate-900/'],
+html[data-theme='dark'] [class*=' bg-slate-900/'],
+html[data-theme='light'] [class*=' bg-slate-800/'],
+html[data-theme='dark'] [class*=' bg-slate-800/'] {
+  background-color: var(--app-deep-surface) !important;
+}
+
+html[data-theme='light'] [class^='bg-slate-900/'],
+html[data-theme='dark'] [class^='bg-slate-900/'],
+html[data-theme='light'] [class^='bg-slate-800/'],
+html[data-theme='dark'] [class^='bg-slate-800/'] {
+  background-color: var(--app-deep-surface) !important;
+}
+
+html[data-theme='light'] .text-slate-900,
+html[data-theme='dark'] .text-slate-900,
+html[data-theme='light'] .text-slate-800,
+html[data-theme='dark'] .text-slate-800,
+html[data-theme='light'] .text-slate-700,
+html[data-theme='dark'] .text-slate-700 {
+  color: var(--app-text) !important;
+}
+
+html[data-theme='light'] .text-slate-600,
+html[data-theme='dark'] .text-slate-600,
+html[data-theme='light'] .text-slate-500,
+html[data-theme='dark'] .text-slate-500,
+html[data-theme='light'] .text-slate-400,
+html[data-theme='dark'] .text-slate-400 {
+  color: var(--app-muted) !important;
+}
+
+html[data-theme='light'] .text-slate-300,
+html[data-theme='light'] .text-slate-200,
+html[data-theme='light'] .text-slate-100,
+html[data-theme='dark'] .text-slate-300,
+html[data-theme='dark'] .text-slate-200,
+html[data-theme='dark'] .text-slate-100,
+html[data-theme='light'] .text-white,
+html[data-theme='dark'] .text-white {
+  color: var(--app-deep-text) !important;
+}
+
+/* In light mode, keep low-slate labels readable on light/transparent panels */
+html[data-theme='light'] .text-slate-300,
+html[data-theme='light'] .text-slate-200,
+html[data-theme='light'] .text-slate-100 {
+  color: color-mix(in oklab, var(--app-text) 76%, white 24%) !important;
+}
+
+html[data-theme='light'] .border-slate-200,
+html[data-theme='dark'] .border-slate-200,
+html[data-theme='light'] .border-slate-300,
+html[data-theme='dark'] .border-slate-300,
+html[data-theme='light'] .border-slate-100,
+html[data-theme='dark'] .border-slate-100 {
+  border-color: var(--app-border) !important;
+}
+
+html[data-theme='light'] .border-slate-600,
+html[data-theme='dark'] .border-slate-600,
+html[data-theme='light'] .border-slate-700,
+html[data-theme='dark'] .border-slate-700,
+html[data-theme='light'] .border-slate-800,
+html[data-theme='dark'] .border-slate-800 {
+  border-color: color-mix(in srgb, var(--app-deep-surface-2) 72%, var(--app-border) 28%) !important;
+}
+
+html[data-theme='light'] .hover\:bg-slate-50:hover,
+html[data-theme='dark'] .hover\:bg-slate-50:hover,
+html[data-theme='light'] .hover\:bg-slate-100:hover,
+html[data-theme='dark'] .hover\:bg-slate-100:hover,
+html[data-theme='light'] .hover\:bg-slate-200:hover,
+html[data-theme='dark'] .hover\:bg-slate-200:hover {
+  background-color: color-mix(in srgb, var(--app-surface-2) 74%, var(--app-bg) 26%) !important;
+}
+
+html[data-theme='light'] .hover\:bg-slate-700:hover,
+html[data-theme='dark'] .hover\:bg-slate-700:hover,
+html[data-theme='light'] .hover\:bg-slate-800:hover,
+html[data-theme='dark'] .hover\:bg-slate-800:hover {
+  background-color: color-mix(in srgb, var(--app-deep-surface) 78%, #000000 22%) !important;
+}
+
+html[data-theme='light'] .hover\:text-slate-900:hover,
+html[data-theme='dark'] .hover\:text-slate-900:hover,
+html[data-theme='light'] .hover\:text-slate-700:hover,
+html[data-theme='dark'] .hover\:text-slate-700:hover {
+  color: var(--app-text) !important;
+}
+
+html[data-theme='light'] .hover\:text-slate-200:hover,
+html[data-theme='dark'] .hover\:text-slate-200:hover,
+html[data-theme='light'] .hover\:text-white:hover,
+html[data-theme='dark'] .hover\:text-white:hover {
+  color: var(--app-deep-text) !important;
+}
+
+html[data-theme='light'] .shadow-sm,
+html[data-theme='dark'] .shadow-sm,
+html[data-theme='light'] .shadow-md,
+html[data-theme='dark'] .shadow-md,
+html[data-theme='light'] .shadow-lg,
+html[data-theme='dark'] .shadow-lg {
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--app-border) 20%, transparent) !important;
+}
+
+html[data-theme='light'] .focus\:ring-medical-500:focus,
+html[data-theme='dark'] .focus\:ring-medical-500:focus,
+html[data-theme='light'] .focus\:border-medical-500:focus,
+html[data-theme='dark'] .focus\:border-medical-500:focus {
+  --tw-ring-color: color-mix(in srgb, var(--app-accent) 45%, transparent) !important;
+  border-color: var(--app-accent) !important;
+}
+
+/* Earth mapping for medical/accent utility classes used across pages/components */
+html[data-theme='light'] .bg-medical-50,
+html[data-theme='dark'] .bg-medical-50 {
+  background-color: color-mix(in srgb, var(--app-accent) 14%, var(--app-surface) 86%) !important;
+}
+
+html[data-theme='light'] .bg-medical-100,
+html[data-theme='dark'] .bg-medical-100,
+html[data-theme='light'] .bg-accent-100,
+html[data-theme='dark'] .bg-accent-100,
+html[data-theme='light'] .bg-accent-50,
+html[data-theme='dark'] .bg-accent-50 {
+  background-color: color-mix(in srgb, var(--app-accent) 22%, var(--app-surface) 78%) !important;
+}
+
+html[data-theme='light'] .bg-medical-600,
+html[data-theme='dark'] .bg-medical-600,
+html[data-theme='light'] .bg-medical-700,
+html[data-theme='dark'] .bg-medical-700,
+html[data-theme='light'] .bg-accent-600,
+html[data-theme='dark'] .bg-accent-600,
+html[data-theme='light'] .bg-accent-500,
+html[data-theme='dark'] .bg-accent-500 {
+  background-color: var(--app-accent) !important;
+  color: var(--app-accent-contrast) !important;
+}
+
+html[data-theme='light'] .text-medical-900,
+html[data-theme='dark'] .text-medical-900,
+html[data-theme='light'] .text-medical-800,
+html[data-theme='dark'] .text-medical-800,
+html[data-theme='light'] .text-medical-700,
+html[data-theme='dark'] .text-medical-700,
+html[data-theme='light'] .text-medical-600,
+html[data-theme='dark'] .text-medical-600,
+html[data-theme='light'] .text-accent-700,
+html[data-theme='dark'] .text-accent-700,
+html[data-theme='light'] .text-accent-600,
+html[data-theme='dark'] .text-accent-600,
+html[data-theme='light'] .text-accent-500,
+html[data-theme='dark'] .text-accent-500 {
+  color: var(--app-accent) !important;
+}
+
+html[data-theme='light'] .border-medical-200,
+html[data-theme='dark'] .border-medical-200,
+html[data-theme='light'] .border-medical-300,
+html[data-theme='dark'] .border-medical-300,
+html[data-theme='light'] .border-accent-200,
+html[data-theme='dark'] .border-accent-200 {
+  border-color: color-mix(in srgb, var(--app-accent) 38%, var(--app-border) 62%) !important;
+}
+
+/* Harmonize colorful utility chips across light/dark while keeping semantic meaning */
+html[data-theme='light'] .bg-blue-50,
+html[data-theme='dark'] .bg-blue-50,
+html[data-theme='light'] .bg-blue-100,
+html[data-theme='dark'] .bg-blue-100 {
+  background-color: color-mix(in srgb, var(--app-info) 20%, var(--app-surface) 80%) !important;
+}
+
+html[data-theme='light'] .text-blue-700,
+html[data-theme='dark'] .text-blue-700,
+html[data-theme='light'] .text-blue-800,
+html[data-theme='dark'] .text-blue-800,
+html[data-theme='light'] .text-cyan-500,
+html[data-theme='dark'] .text-cyan-500 {
+  color: var(--app-info) !important;
+}
+
+html[data-theme='light'] .border-blue-200,
+html[data-theme='dark'] .border-blue-200,
+html[data-theme='light'] .border-cyan-300\/80,
+html[data-theme='dark'] .border-cyan-300\/80 {
+  border-color: color-mix(in srgb, var(--app-info) 45%, var(--app-border) 55%) !important;
+}
+
+html[data-theme='light'] .bg-emerald-50,
+html[data-theme='dark'] .bg-emerald-50,
+html[data-theme='light'] .bg-emerald-100,
+html[data-theme='dark'] .bg-emerald-100,
+html[data-theme='light'] .bg-emerald-200,
+html[data-theme='dark'] .bg-emerald-200 {
+  background-color: color-mix(in srgb, var(--app-success) 20%, var(--app-surface) 80%) !important;
+}
+
+html[data-theme='light'] .text-emerald-700,
+html[data-theme='dark'] .text-emerald-700,
+html[data-theme='light'] .text-emerald-800,
+html[data-theme='dark'] .text-emerald-800,
+html[data-theme='light'] .text-emerald-600,
+html[data-theme='dark'] .text-emerald-600 {
+  color: var(--app-success) !important;
+}
+
+html[data-theme='light'] .border-emerald-200,
+html[data-theme='dark'] .border-emerald-200,
+html[data-theme='light'] .border-emerald-300,
+html[data-theme='dark'] .border-emerald-300,
+html[data-theme='light'] .border-emerald-300\/70,
+html[data-theme='dark'] .border-emerald-300\/70 {
+  border-color: color-mix(in srgb, var(--app-success) 45%, var(--app-border) 55%) !important;
+}
+
+html[data-theme='light'] .bg-amber-50,
+html[data-theme='dark'] .bg-amber-50,
+html[data-theme='light'] .bg-amber-100,
+html[data-theme='dark'] .bg-amber-100,
+html[data-theme='light'] .bg-amber-200,
+html[data-theme='dark'] .bg-amber-200,
+html[data-theme='light'] .bg-yellow-50,
+html[data-theme='dark'] .bg-yellow-50 {
+  background-color: color-mix(in srgb, var(--app-warning) 20%, var(--app-surface) 80%) !important;
+}
+
+html[data-theme='light'] .text-amber-700,
+html[data-theme='dark'] .text-amber-700,
+html[data-theme='light'] .text-amber-800,
+html[data-theme='dark'] .text-amber-800,
+html[data-theme='light'] .text-yellow-800,
+html[data-theme='dark'] .text-yellow-800,
+html[data-theme='light'] .text-yellow-600,
+html[data-theme='dark'] .text-yellow-600,
+html[data-theme='light'] .text-yellow-500,
+html[data-theme='dark'] .text-yellow-500 {
+  color: var(--app-warning) !important;
+}
+
+html[data-theme='light'] .border-amber-200,
+html[data-theme='dark'] .border-amber-200,
+html[data-theme='light'] .border-yellow-200,
+html[data-theme='dark'] .border-yellow-200,
+html[data-theme='light'] .border-yellow-300,
+html[data-theme='dark'] .border-yellow-300 {
+  border-color: color-mix(in srgb, var(--app-warning) 45%, var(--app-border) 55%) !important;
+}
+
+html[data-theme='light'] .bg-violet-50,
+html[data-theme='dark'] .bg-violet-50,
+html[data-theme='light'] .bg-violet-100,
+html[data-theme='dark'] .bg-violet-100,
+html[data-theme='light'] .bg-purple-100,
+html[data-theme='dark'] .bg-purple-100 {
+  background-color: color-mix(in srgb, var(--app-info) 18%, var(--app-surface) 82%) !important;
+}
+
+html[data-theme='light'] .text-violet-800,
+html[data-theme='dark'] .text-violet-800,
+html[data-theme='light'] .text-purple-700,
+html[data-theme='dark'] .text-purple-700,
+html[data-theme='light'] .text-purple-800,
+html[data-theme='dark'] .text-purple-800,
+html[data-theme='light'] .text-purple-500,
+html[data-theme='dark'] .text-purple-500 {
+  color: color-mix(in srgb, var(--app-info) 70%, var(--app-accent) 30%) !important;
+}
+
+html[data-theme='light'] .border-violet-200,
+html[data-theme='dark'] .border-violet-200 {
+  border-color: color-mix(in srgb, var(--app-info) 38%, var(--app-border) 62%) !important;
+}
+
+html[data-theme='light'] .bg-red-50,
+html[data-theme='dark'] .bg-red-50,
+html[data-theme='light'] .bg-red-100,
+html[data-theme='dark'] .bg-red-100,
+html[data-theme='light'] .bg-red-200,
+html[data-theme='dark'] .bg-red-200,
+html[data-theme='light'] .bg-rose-100,
+html[data-theme='dark'] .bg-rose-100 {
+  background-color: color-mix(in srgb, var(--app-danger) 20%, var(--app-surface) 80%) !important;
+}
+
+html[data-theme='light'] .text-red-600,
+html[data-theme='dark'] .text-red-600,
+html[data-theme='light'] .text-red-700,
+html[data-theme='dark'] .text-red-700,
+html[data-theme='light'] .text-red-800,
+html[data-theme='dark'] .text-red-800,
+html[data-theme='light'] .text-rose-600,
+html[data-theme='dark'] .text-rose-600,
+html[data-theme='light'] .text-rose-700,
+html[data-theme='dark'] .text-rose-700 {
+  color: var(--app-danger) !important;
+}
+
+html[data-theme='light'] .border-red-200,
+html[data-theme='dark'] .border-red-200,
+html[data-theme='light'] .border-red-400,
+html[data-theme='dark'] .border-red-400 {
+  border-color: color-mix(in srgb, var(--app-danger) 45%, var(--app-border) 55%) !important;
+}
+
+html[data-theme='light'] .hover\:bg-medical-700:hover,
+html[data-theme='dark'] .hover\:bg-medical-700:hover,
+html[data-theme='light'] .hover\:bg-medical-600:hover,
+html[data-theme='dark'] .hover\:bg-medical-600:hover,
+html[data-theme='light'] .hover\:bg-accent-700:hover,
+html[data-theme='dark'] .hover\:bg-accent-700:hover,
+html[data-theme='light'] .hover\:bg-accent-600:hover,
+html[data-theme='dark'] .hover\:bg-accent-600:hover {
+  background-color: color-mix(in srgb, var(--app-accent) 82%, #000000 18%) !important;
+  color: var(--app-accent-contrast) !important;
+}
+
+html[data-theme='light'] .hover\:text-medical-700:hover,
+html[data-theme='dark'] .hover\:text-medical-700:hover,
+html[data-theme='light'] .hover\:text-medical-600:hover,
+html[data-theme='dark'] .hover\:text-medical-600:hover,
+html[data-theme='light'] .hover\:text-accent-700:hover,
+html[data-theme='dark'] .hover\:text-accent-700:hover,
+html[data-theme='light'] .hover\:text-accent-600:hover,
+html[data-theme='dark'] .hover\:text-accent-600:hover {
+  color: color-mix(in srgb, var(--app-accent) 84%, #000000 16%) !important;
+}
+
+html[data-theme='light'] .from-medical-500,
+html[data-theme='dark'] .from-medical-500,
+html[data-theme='light'] .from-blue-500,
+html[data-theme='dark'] .from-blue-500,
+html[data-theme='light'] .from-violet-500,
+html[data-theme='dark'] .from-violet-500 {
+  --tw-gradient-from: color-mix(in srgb, var(--app-accent) 75%, #000000 25%) var(--tw-gradient-from-position) !important;
+  --tw-gradient-to: color-mix(in srgb, var(--app-accent) 8%, transparent) var(--tw-gradient-to-position) !important;
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important;
+}
+
+html[data-theme='light'] .to-cyan-500,
+html[data-theme='dark'] .to-cyan-500,
+html[data-theme='light'] .to-emerald-500,
+html[data-theme='dark'] .to-emerald-500,
+html[data-theme='light'] .to-purple-500,
+html[data-theme='dark'] .to-purple-500 {
+  --tw-gradient-to: color-mix(in srgb, var(--app-accent) 92%, #ffffff 8%) var(--tw-gradient-to-position) !important;
+}
+
+/* Gradient stop remapping for slate/white/stone backgrounds used across pages */
+html[data-theme='light'] .from-slate-50,
+html[data-theme='dark'] .from-slate-50,
+html[data-theme='light'] .from-slate-100,
+html[data-theme='dark'] .from-slate-100,
+html[data-theme='light'] .from-white,
+html[data-theme='dark'] .from-white {
+  --tw-gradient-from: color-mix(in srgb, var(--app-surface) 86%, var(--app-bg) 14%) var(--tw-gradient-from-position) !important;
+  --tw-gradient-to: color-mix(in srgb, var(--app-surface-2) 40%, transparent) var(--tw-gradient-to-position) !important;
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important;
+}
+
+html[data-theme='light'] .via-slate-50,
+html[data-theme='dark'] .via-slate-50,
+html[data-theme='light'] .via-slate-100,
+html[data-theme='dark'] .via-slate-100,
+html[data-theme='light'] .via-stone-50,
+html[data-theme='dark'] .via-stone-50 {
+  --tw-gradient-via: color-mix(in srgb, var(--app-surface-2) 72%, var(--app-surface) 28%) var(--tw-gradient-via-position) !important;
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-via), var(--tw-gradient-to) !important;
+}
+
+html[data-theme='light'] .to-slate-50,
+html[data-theme='dark'] .to-slate-50,
+html[data-theme='light'] .to-slate-100,
+html[data-theme='dark'] .to-slate-100,
+html[data-theme='light'] .to-white,
+html[data-theme='dark'] .to-white {
+  --tw-gradient-to: color-mix(in srgb, var(--app-surface-2) 78%, var(--app-surface) 22%) var(--tw-gradient-to-position) !important;
+}
+
+html[data-theme='light'] .from-slate-900,
+html[data-theme='dark'] .from-slate-900,
+html[data-theme='light'] .from-slate-800,
+html[data-theme='dark'] .from-slate-800 {
+  --tw-gradient-from: color-mix(in srgb, var(--app-deep-surface) 86%, #000000 14%) var(--tw-gradient-from-position) !important;
+  --tw-gradient-to: color-mix(in srgb, var(--app-deep-surface-2) 45%, transparent) var(--tw-gradient-to-position) !important;
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important;
+}
+
+html[data-theme='light'] .via-slate-900,
+html[data-theme='dark'] .via-slate-900,
+html[data-theme='light'] .via-slate-800,
+html[data-theme='dark'] .via-slate-800 {
+  --tw-gradient-via: color-mix(in srgb, var(--app-deep-surface-2) 82%, #000000 18%) var(--tw-gradient-via-position) !important;
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-via), var(--tw-gradient-to) !important;
+}
+
+html[data-theme='light'] .to-slate-900,
+html[data-theme='dark'] .to-slate-900,
+html[data-theme='light'] .to-slate-800,
+html[data-theme='dark'] .to-slate-800 {
+  --tw-gradient-to: color-mix(in srgb, var(--app-deep-surface) 78%, var(--app-accent) 22%) var(--tw-gradient-to-position) !important;
+}
+
+/* Global transparent panel behavior for light mode, and stronger overlays for dark mode */
+html[data-theme='light'] [class*=' bg-white/'],
+html[data-theme='light'] [class^='bg-white/'] {
+  background-color: color-mix(in oklab, var(--app-surface) 26%, transparent) !important;
+}
+
+html[data-theme='light'] [class*=' bg-black/'],
+html[data-theme='light'] [class^='bg-black/'] {
+  background-color: color-mix(in oklab, var(--app-text) 12%, transparent) !important;
+}
+
+html[data-theme='light'] [class*=' bg-slate-900/'],
+html[data-theme='light'] [class^='bg-slate-900/'],
+html[data-theme='light'] [class*=' bg-slate-800/'],
+html[data-theme='light'] [class^='bg-slate-800/'] {
+  background-color: color-mix(in oklab, var(--app-deep-surface) 18%, transparent) !important;
+}
+
+html[data-theme='dark'] [class*=' bg-white/'],
+html[data-theme='dark'] [class^='bg-white/'] {
+  background-color: color-mix(in oklab, var(--app-surface) 14%, transparent) !important;
+}
+
+html[data-theme='dark'] [class*=' bg-black/'],
+html[data-theme='dark'] [class^='bg-black/'] {
+  background-color: color-mix(in oklab, #000 64%, transparent) !important;
+}
+
+html[data-theme='dark'] [class*=' bg-slate-900/'],
+html[data-theme='dark'] [class^='bg-slate-900/'],
+html[data-theme='dark'] [class*=' bg-slate-800/'],
+html[data-theme='dark'] [class^='bg-slate-800/'] {
+  background-color: color-mix(in oklab, var(--app-deep-surface) 78%, transparent) !important;
+}
+
+html[data-theme='light'] .from-slate-100\/70,
+html[data-theme='dark'] .from-slate-100\/70 {
+  --tw-gradient-from: color-mix(in srgb, var(--app-surface) 70%, var(--app-surface-2) 30%) var(--tw-gradient-from-position) !important;
+  --tw-gradient-to: color-mix(in srgb, var(--app-surface) 0%, transparent) var(--tw-gradient-to-position) !important;
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important;
+}
+
+html[data-theme='light'] .from-slate-900\/60,
+html[data-theme='dark'] .from-slate-900\/60 {
+  --tw-gradient-from: color-mix(in srgb, var(--app-deep-surface) 62%, transparent) var(--tw-gradient-from-position) !important;
+  --tw-gradient-to: color-mix(in srgb, var(--app-deep-surface) 0%, transparent) var(--tw-gradient-to-position) !important;
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important;
+}
+
 @layer base {
+  html,
   body {
-    @apply bg-slate-50 text-slate-900 antialiased selection:bg-medical-200 selection:text-medical-900;
+    background-color: var(--app-bg);
+    color: var(--app-text);
+  }
+
+  body {
+    @apply antialiased;
+    transition: background-color 220ms ease, color 220ms ease;
+  }
+
+  a,
+  button,
+  input,
+  select,
+  textarea,
+  [role='button'] {
+    transition: background-color 180ms ease, color 180ms ease, border-color 180ms ease, box-shadow 180ms ease, opacity 180ms ease;
+  }
+
+  input,
+  select,
+  textarea {
+    background-color: var(--app-surface);
+    color: var(--app-text);
+    border-color: var(--app-border);
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: color-mix(in srgb, var(--app-muted) 78%, transparent);
+  }
+
+  .rounded-2xl.border,
+  .rounded-xl.border {
+    border-color: var(--app-border);
+  }
+
+  body::selection {
+    background-color: color-mix(in srgb, var(--app-accent) 35%, transparent);
+    color: var(--app-text);
   }
 }
 
@@ -71,7 +675,8 @@
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  @apply bg-slate-300 rounded-full hover:bg-slate-400 transition-colors;
+  background: color-mix(in srgb, var(--app-border) 65%, transparent);
+  border-radius: 9999px;
 }
 
 /* Hide scrollbar for clean horizontal scroll areas */
@@ -92,17 +697,17 @@
 }
 
 .purchase-details-scroll::-webkit-scrollbar-track {
-  background: #e2e8f0;
+  background: color-mix(in srgb, var(--app-surface-2) 85%, transparent);
   border-radius: 9999px;
 }
 
 .purchase-details-scroll::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, #0d9488 0%, #0f766e 100%);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--app-accent) 90%, #ffffff 10%) 0%, var(--app-accent) 100%);
   border-radius: 9999px;
-  border: 2px solid #e2e8f0;
+  border: 2px solid color-mix(in srgb, var(--app-surface-2) 85%, transparent);
 }
 
 .purchase-details-scroll::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(180deg, #0f766e 0%, #115e59 100%);
+  background: linear-gradient(180deg, var(--app-accent) 0%, color-mix(in srgb, var(--app-accent) 75%, #000000 25%) 100%);
 }
 

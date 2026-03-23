@@ -69,6 +69,7 @@ interface LocalAuthAccount extends LocalAuthUser {
 const DB_STORAGE_KEY = 'dems-local-db-v2';
 const AUTH_ACCOUNTS_KEY = 'dems-local-auth-accounts-v2';
 const AUTH_SESSION_KEY = 'dems-local-auth-session-v2';
+const AUTH_SESSION_TEMP_KEY = 'dems-local-auth-session-temp-v2';
 
 const DEMO_AUTH_ACCOUNTS: Array<
   LocalAuthAccount & {
@@ -242,7 +243,9 @@ const readAuthSession = (): LocalAuthUser | null => {
     return inMemorySession;
   }
 
-  const raw = window.localStorage.getItem(AUTH_SESSION_KEY);
+  const raw =
+    window.localStorage.getItem(AUTH_SESSION_KEY) ??
+    window.sessionStorage.getItem(AUTH_SESSION_TEMP_KEY);
   if (!raw) {
     inMemorySession = null;
     return null;
@@ -254,18 +257,41 @@ const readAuthSession = (): LocalAuthUser | null => {
     return parsed;
   } catch {
     window.localStorage.removeItem(AUTH_SESSION_KEY);
+    window.sessionStorage.removeItem(AUTH_SESSION_TEMP_KEY);
     inMemorySession = null;
     return null;
   }
 };
 
-const writeAuthSession = (session: LocalAuthUser | null) => {
+const getSessionPersistence = (): 'local' | 'session' => {
+  if (!isBrowser()) {
+    return 'local';
+  }
+
+  if (window.localStorage.getItem(AUTH_SESSION_KEY)) {
+    return 'local';
+  }
+
+  if (window.sessionStorage.getItem(AUTH_SESSION_TEMP_KEY)) {
+    return 'session';
+  }
+
+  return 'local';
+};
+
+const writeAuthSession = (session: LocalAuthUser | null, persistence?: 'local' | 'session') => {
   inMemorySession = session;
   if (isBrowser()) {
+    window.localStorage.removeItem(AUTH_SESSION_KEY);
+    window.sessionStorage.removeItem(AUTH_SESSION_TEMP_KEY);
+
     if (session) {
-      window.localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(session));
-    } else {
-      window.localStorage.removeItem(AUTH_SESSION_KEY);
+      const target = persistence ?? getSessionPersistence();
+      if (target === 'session') {
+        window.sessionStorage.setItem(AUTH_SESSION_TEMP_KEY, JSON.stringify(session));
+      } else {
+        window.localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(session));
+      }
     }
   }
 };
@@ -619,7 +645,7 @@ export const createAuthAccountByAdmin = (payload: {
   };
 };
 
-export const signInWithEmail = (email: string, password: string): LocalAuthUser => {
+export const signInWithEmail = (email: string, password: string, rememberMe = false): LocalAuthUser => {
   const normalizedEmail = email.trim().toLowerCase();
   const accounts = readAuthAccounts();
   const found = accounts.find(
@@ -637,7 +663,7 @@ export const signInWithEmail = (email: string, password: string): LocalAuthUser 
     photoURL: found.photoURL,
   };
 
-  writeAuthSession(session);
+  writeAuthSession(session, rememberMe ? 'local' : 'session');
   notifyAuthListeners(session);
 
   return session;

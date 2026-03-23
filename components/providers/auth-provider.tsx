@@ -30,6 +30,7 @@ export interface UserProfile {
   subscriptionEndDate?: string;
   subscriptionApprovalStatus: SubscriptionApprovalStatus;
   doctorSpecialty?: string;
+  phoneNumber?: string;
   purchasedVideos: string[];
   purchasedPacks: string[];
   blockedVideoIds?: string[];
@@ -42,13 +43,13 @@ interface AuthContextType {
   profile: UserProfile | null;
   loading: boolean;
   isAuthReady: boolean;
-  signIn: (email: string, password: string) => Promise<void>;
+  signIn: (email: string, password: string, rememberMe?: boolean) => Promise<void>;
   signUp: (payload: {
     lastName: string;
     firstName: string;
     email: string;
     password: string;
-    doctorSpecialty?: string;
+    phoneNumber?: string;
   }) => Promise<void>;
   signOut: () => Promise<void>;
 }
@@ -166,8 +167,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => unsubscribe();
   }, [ensureUserProfile]);
 
-  const signIn = async (email: string, password: string) => {
-    const signedInUser = signInWithEmail(email, password);
+  const signIn = async (email: string, password: string, rememberMe = false) => {
+    const signedInUser = signInWithEmail(email, password, rememberMe);
     setUser(signedInUser);
     const resolvedProfile = await ensureUserProfile(signedInUser);
     setProfile(resolvedProfile);
@@ -178,7 +179,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     firstName: string;
     email: string;
     password: string;
-    doctorSpecialty?: string;
+    phoneNumber?: string;
   }) => {
     const normalizedNames = normalizeNameParts(payload.lastName, payload.firstName);
     const displayName = formatFullName(normalizedNames.lastName, normalizedNames.firstName);
@@ -196,7 +197,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       firstName: normalizedNames.firstName,
       lastName: normalizedNames.lastName,
       displayName,
-      doctorSpecialty: payload.doctorSpecialty?.trim() || resolvedProfile.doctorSpecialty,
+      phoneNumber: payload.phoneNumber?.trim() || resolvedProfile.phoneNumber,
     };
 
     await setDoc(doc(db, 'users', createdUser.uid), nextProfile);

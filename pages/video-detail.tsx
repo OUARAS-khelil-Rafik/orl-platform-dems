@@ -201,10 +201,16 @@ export default function VideoPage() {
 
   if (!video) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center bg-slate-900 text-white p-4 text-center">
+      <div
+        className="flex-1 flex flex-col items-center justify-center p-4 text-center"
+        style={{
+          color: 'var(--hero-title)',
+          background: 'linear-gradient(145deg, var(--hero-bg-start) 0%, color-mix(in oklab, var(--hero-bg-end) 82%, var(--app-accent) 18%) 100%)',
+        }}
+      >
         <ShieldAlert className="h-16 w-16 text-red-500 mb-4" />
         <h1 className="text-3xl font-bold mb-2">Vidéo Introuvable</h1>
-        <p className="text-slate-400 max-w-md">La vidéo que vous recherchez n'existe pas ou a été supprimée.</p>
+        <p className="max-w-md" style={{ color: 'var(--hero-body)' }}>La vidéo que vous recherchez n'existe pas ou a été supprimée.</p>
       </div>
     );
   }
@@ -213,22 +219,30 @@ export default function VideoPage() {
   const purchaseStatusLabel = video.isFreeDemo
     ? 'Démo Gratuite'
     : hasAccess
-      ? 'Acheté'
-      : 'Pas encore acheté';
+      ? profile?.role === 'vip_plus'
+        ? 'VIP Plus Débloquée'
+        : 'Débloquée'
+      : 'Bloquée';
 
   if (!hasAccess) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center bg-slate-900 text-white p-4 text-center">
+      <div
+        className="flex-1 flex flex-col items-center justify-center p-4 text-center"
+        style={{
+          color: 'var(--hero-title)',
+          background: 'linear-gradient(145deg, var(--hero-bg-start) 0%, color-mix(in oklab, var(--hero-bg-end) 82%, var(--app-accent) 18%) 100%)',
+        }}
+      >
         <Lock className="h-16 w-16 text-medical-500 mb-4" />
         <h1 className="text-3xl font-bold mb-2">Accès Restreint</h1>
-        <p className="text-slate-400 max-w-md mb-8">
+        <p className="max-w-md mb-8" style={{ color: 'var(--hero-body)' }}>
           Vous n'avez pas l'autorisation de visionner ce contenu. Veuillez souscrire à un abonnement ou acheter la vidéo.
         </p>
         
-        <div className="bg-slate-800 p-8 rounded-2xl border border-slate-700 max-w-md w-full">
-          <h2 className="text-2xl font-bold text-white mb-2">{video.title}</h2>
-          <p className="text-slate-400 mb-4">{video.description}</p>
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider mb-4 bg-slate-900 text-white">
+        <div className="p-8 rounded-2xl border max-w-md w-full" style={{ borderColor: 'var(--hero-panel-border)', backgroundColor: 'var(--hero-panel-bg)' }}>
+          <h2 className="text-2xl font-bold mb-2" style={{ color: 'var(--hero-title)' }}>{video.title}</h2>
+          <p className="mb-4" style={{ color: 'var(--hero-body)' }}>{video.description}</p>
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider mb-4" style={{ backgroundColor: 'var(--hero-chip-bg)', border: '1px solid var(--hero-chip-border)', color: 'var(--hero-chip-text)' }}>
             {purchaseStatusLabel}
           </div>
           <div className="text-3xl font-bold text-medical-400 mb-8">{video.price} DZD</div>
@@ -255,7 +269,7 @@ export default function VideoPage() {
             className="w-full flex items-center justify-center gap-2 bg-medical-600 text-white px-6 py-4 rounded-xl font-bold text-lg hover:bg-medical-700 transition-colors"
           >
             <ShoppingCart className="w-5 h-5" />
-            {isInCart ? 'Aller au panier' : 'Ajouter au panier'}
+            {isInCart ? 'Aller au panier' : 'Débloquer'}
           </button>
         </div>
       </div>

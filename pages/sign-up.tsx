@@ -13,7 +13,7 @@ export default function SignUpPage() {
   const [lastName, setLastName] = useState('');
   const [firstName, setFirstName] = useState('');
   const [email, setEmail] = useState('');
-  const [doctorSpecialty, setDoctorSpecialty] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
@@ -46,7 +46,7 @@ export default function SignUpPage() {
         firstName,
         email,
         password,
-        doctorSpecialty,
+        phoneNumber,
       });
 
       router.push('/dashboard');
@@ -114,17 +114,17 @@ export default function SignUpPage() {
           </div>
 
           <div>
-            <label htmlFor="signup-specialty" className="block text-sm font-medium text-slate-700 mb-1">
-              Spécialité médicale *
+            <label htmlFor="signup-phone" className="block text-sm font-medium text-slate-700 mb-1">
+              Numéro de téléphone (Optionnel)
             </label>
             <input
-              id="signup-specialty"
-              type="text"
-              required
-              value={doctorSpecialty}
-              onChange={(event) => setDoctorSpecialty(event.target.value)}
+              id="signup-phone"
+              type="tel"
+              autoComplete="tel"
+              value={phoneNumber}
+              onChange={(event) => setPhoneNumber(event.target.value)}
               className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-medical-500 focus:ring-2 focus:ring-medical-200"
-              placeholder="ORL"
+              placeholder="+213 555 12 34 56"
             />
           </div>
 

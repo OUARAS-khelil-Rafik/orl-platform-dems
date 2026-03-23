@@ -44,6 +44,7 @@ type AdminUser = {
   firstName?: string;
   lastName?: string;
   email?: string;
+  phoneNumber?: string;
   role?: 'admin' | 'user' | 'vip' | 'vip_plus';
   createdAt?: string;
   subscriptionEndDate?: string;
@@ -147,6 +148,7 @@ export default function AdminDashboard() {
     lastName: '',
     firstName: '',
     email: '',
+    phoneNumber: '',
     password: '',
     role: 'user' as 'user' | 'vip' | 'vip_plus' | 'admin',
   });
@@ -163,6 +165,10 @@ export default function AdminDashboard() {
         : activeTab === 'discussions'
           ? 'Gestion des Discussions'
         : 'Contenu pédagogique';
+
+  const approvedPaymentsCount = allPayments.filter((payment) => payment.status === 'approved').length;
+  const blockedUsersCount = users.filter((user) => user.isBlocked).length;
+  const pendingApprovalsCount = users.filter((user) => user.subscriptionApprovalStatus === 'pending').length;
 
   useEffect(() => {
     if (!authLoading && profile?.role !== 'admin') {
@@ -860,6 +866,7 @@ export default function AdminDashboard() {
     const normalizedNames = normalizeNameParts(newUserForm.lastName, newUserForm.firstName);
     const displayName = formatFullName(normalizedNames.lastName, normalizedNames.firstName);
     const email = newUserForm.email.trim().toLowerCase();
+    const phoneNumber = newUserForm.phoneNumber.trim();
     const password = newUserForm.password;
 
     if (!displayName || !email || !password) {
@@ -897,6 +904,7 @@ export default function AdminDashboard() {
         firstName: normalizedNames.firstName,
         lastName: normalizedNames.lastName,
         email,
+        phoneNumber: phoneNumber || undefined,
         role: newUserForm.role,
         createdAt,
         subscriptionApprovalStatus: newUserForm.role === 'vip_plus' ? 'approved' : 'none',
@@ -920,6 +928,7 @@ export default function AdminDashboard() {
         displayName,
         firstName: normalizedNames.firstName,
         lastName: normalizedNames.lastName,
+        phoneNumber: phoneNumber || undefined,
         photoURL: '',
         role: baseUser.role,
         subscriptionEndDate: baseUser.subscriptionEndDate,
@@ -937,6 +946,7 @@ export default function AdminDashboard() {
         lastName: '',
         firstName: '',
         email: '',
+        phoneNumber: '',
         password: '',
         role: 'user',
       });
@@ -1082,9 +1092,9 @@ export default function AdminDashboard() {
   if (profile?.role !== 'admin') return null;
 
   return (
-    <div className="flex-1 bg-slate-50 flex flex-col md:flex-row">
+    <div className="flex-1 bg-gradient-to-br from-slate-100 via-stone-50 to-slate-100 flex flex-col md:flex-row">
       {/* Sidebar */}
-      <aside className="w-full md:w-64 bg-slate-900 text-slate-300 flex-shrink-0 border-r border-slate-800">
+      <aside className="w-full md:w-64 bg-slate-900/95 text-slate-300 flex-shrink-0 border-r border-slate-800 md:sticky md:top-0 md:h-[calc(100vh-4rem)] backdrop-blur-md">
         <div className="p-6">
           <h2 className="text-xl font-bold text-white mb-6">Administration</h2>
           <nav className="space-y-2">
@@ -1133,8 +1143,27 @@ export default function AdminDashboard() {
             </div>
           </div>
 
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 mb-8">
+            <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+              <p className="text-xs uppercase tracking-[0.14em] text-slate-500">Paiements en attente</p>
+              <p className="text-2xl font-bold text-slate-900 mt-1">{payments.length}</p>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+              <p className="text-xs uppercase tracking-[0.14em] text-slate-500">Paiements approuvés</p>
+              <p className="text-2xl font-bold text-emerald-700 mt-1">{approvedPaymentsCount}</p>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+              <p className="text-xs uppercase tracking-[0.14em] text-slate-500">Comptes en attente</p>
+              <p className="text-2xl font-bold text-amber-700 mt-1">{pendingApprovalsCount}</p>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+              <p className="text-xs uppercase tracking-[0.14em] text-slate-500">Comptes bloqués</p>
+              <p className="text-2xl font-bold text-rose-700 mt-1">{blockedUsersCount}</p>
+            </div>
+          </div>
+
           {activeTab === 'payments' && (
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="bg-white rounded-2xl shadow-md border border-slate-200 overflow-hidden">
               {payments.length === 0 ? (
                 <div className="p-10 text-center text-slate-500">Aucun paiement en attente.</div>
               ) : (
@@ -1201,18 +1230,19 @@ export default function AdminDashboard() {
           )}
 
           {activeTab === 'users' && (
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="bg-white rounded-2xl shadow-md border border-slate-200 overflow-hidden">
               <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
+                <table className="w-full min-w-[1040px] text-left border-collapse text-xs md:text-sm">
                   <thead>
                     <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-medium text-sm">
-                      <th className="p-4">Nom</th>
-                      <th className="p-4">Email</th>
-                      <th className="p-4">Date creation</th>
-                      <th className="p-4">Rôle</th>
-                      <th className="p-4">Statut</th>
-                      <th className="p-4">Expiration</th>
-                      <th className="p-4 text-right">Actions</th>
+                      <th className="p-3">Nom</th>
+                      <th className="p-3">Email</th>
+                      <th className="p-3">Téléphone</th>
+                      <th className="p-3">Date creation</th>
+                      <th className="p-3">Rôle</th>
+                      <th className="p-3">Statut</th>
+                      <th className="p-3">Expiration</th>
+                      <th className="p-3 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200">
@@ -1224,12 +1254,13 @@ export default function AdminDashboard() {
 
                       return (
                         <tr key={user.id} className="hover:bg-slate-50 transition-colors align-top">
-                          <td className="p-4 font-medium text-slate-900">{fullName}</td>
-                          <td className="p-4 text-sm text-slate-600">{user.email}</td>
-                          <td className="p-4 text-sm text-slate-600">
+                          <td className="p-3 font-medium text-slate-900">{fullName}</td>
+                          <td className="p-3 text-slate-600">{user.email}</td>
+                          <td className="p-3 text-slate-600">{user.phoneNumber || '-'}</td>
+                          <td className="p-3 text-slate-600">
                             {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : '-'}
                           </td>
-                          <td className="p-4">
+                          <td className="p-3">
                             <select
                               value={user.role}
                               title="Role utilisateur"
@@ -1279,7 +1310,7 @@ export default function AdminDashboard() {
                               <option value="admin">Admin</option>
                             </select>
                           </td>
-                          <td className="p-4 text-sm text-slate-700">
+                          <td className="p-3 text-slate-700">
                             <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-semibold ${getStatusBadgeClass(status)}`}>
                               {getStatusLabel(status)}
                             </span>
@@ -1287,7 +1318,7 @@ export default function AdminDashboard() {
                               <div className="mt-1 text-xs font-medium text-rose-600">Compte bloque</div>
                             )}
                           </td>
-                          <td className="p-4 text-sm text-slate-600 whitespace-nowrap">
+                          <td className="p-3 text-slate-600 whitespace-nowrap">
                             {user.role === 'admin' ? (
                               <span className="text-emerald-700 font-medium">Illimite</span>
                             ) : (
@@ -1302,7 +1333,7 @@ export default function AdminDashboard() {
                               />
                             )}
                           </td>
-                          <td className="p-4 text-right">
+                          <td className="p-3 text-right">
                             <div className="flex items-center justify-end flex-wrap gap-2">
                               {user.role !== 'admin' && (
                                 <button
@@ -1532,6 +1563,13 @@ export default function AdminDashboard() {
                         required
                       />
                       <input
+                        type="tel"
+                        placeholder="Numéro de téléphone (Optionnel)"
+                        value={newUserForm.phoneNumber}
+                        onChange={(e) => setNewUserForm((prev) => ({ ...prev, phoneNumber: e.target.value }))}
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:ring-2 focus:ring-medical-500 outline-none"
+                      />
+                      <input
                         type="password"
                         placeholder="Mot de passe"
                         value={newUserForm.password}
@@ -1577,7 +1615,7 @@ export default function AdminDashboard() {
           )}
 
           {activeTab === 'discussions' && (
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="bg-white rounded-2xl shadow-md border border-slate-200 overflow-hidden">
               {discussions.length === 0 ? (
                 <div className="p-10 text-center text-slate-500">Aucune discussion envoyée pour le moment.</div>
               ) : (

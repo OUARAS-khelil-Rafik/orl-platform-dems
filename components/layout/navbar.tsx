@@ -19,6 +19,8 @@ import {
   Mail,
   MailOpen,
   Trash2,
+  Sun,
+  Moon,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -46,6 +48,7 @@ type NotificationStorageState = {
 };
 
 const NOTIFICATION_STORAGE_PREFIX = 'dems-navbar-notifications-v1';
+const THEME_STORAGE_KEY = 'dems-theme-mode-v1';
 
 export function Navbar() {
   const { user, profile, loading, signOut } = useAuth();
@@ -55,6 +58,7 @@ export function Navbar() {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [showAllNotifications, setShowAllNotifications] = useState(false);
   const [isLoadingNotifications, setIsLoadingNotifications] = useState(false);
+  const [themeMode, setThemeMode] = useState<'light' | 'dark'>('light');
   const [notifications, setNotifications] = useState<NavbarNotification[]>([]);
   const [notificationReadIds, setNotificationReadIds] = useState<string[]>([]);
   const [notificationDeletedIds, setNotificationDeletedIds] = useState<string[]>([]);
@@ -88,6 +92,36 @@ export function Navbar() {
       ? displayName
       : `Dr. ${displayName}`
     : '';
+
+  const toggleThemeMode = () => {
+    const nextMode = themeMode === 'dark' ? 'light' : 'dark';
+    setThemeMode(nextMode);
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(THEME_STORAGE_KEY, nextMode);
+    }
+    document.documentElement.setAttribute('data-theme', nextMode);
+  };
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const rootTheme = document.documentElement.getAttribute('data-theme');
+    const storedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
+    const profileTheme = profile?.defaultMode;
+
+    const nextTheme =
+      (storedTheme === 'light' || storedTheme === 'dark'
+        ? storedTheme
+        : rootTheme === 'light' || rootTheme === 'dark'
+          ? rootTheme
+          : profileTheme === 'light' || profileTheme === 'dark'
+            ? profileTheme
+            : 'light') as 'light' | 'dark';
+
+    setThemeMode(nextTheme);
+    document.documentElement.setAttribute('data-theme', nextTheme);
+    window.localStorage.setItem(THEME_STORAGE_KEY, nextTheme);
+  }, [profile?.defaultMode]);
 
   const getNotificationStorageKey = (uid: string) => `${NOTIFICATION_STORAGE_PREFIX}-${uid}`;
 
@@ -341,9 +375,9 @@ export function Navbar() {
   }, [isUserMenuOpen, isNotificationsOpen]);
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-slate-200 bg-white/80 backdrop-blur-md">
+    <header className="sticky top-0 z-50 w-full border-b border-[var(--app-border)] bg-[var(--app-nav-bg)] text-[var(--app-text)] backdrop-blur-md">
       <div className="container mx-auto px-4 h-16 flex items-center justify-between">
-        <Link href="/" className="flex items-center gap-2 text-medical-700 hover:text-medical-800 transition-colors">
+        <Link href="/" className="flex items-center gap-2 text-[var(--app-accent)] hover:opacity-85 transition-opacity">
           <Stethoscope className="h-6 w-6" />
           <span className="font-bold text-xl tracking-tight">DEMS ENT</span>
         </Link>
@@ -354,7 +388,7 @@ export function Navbar() {
             <Link
               key={link.name}
               href={link.href}
-              className="text-sm font-medium text-slate-600 hover:text-medical-600 transition-colors"
+              className="text-sm font-medium text-[var(--app-muted)] hover:text-[var(--app-text)] transition-colors"
             >
               {link.name}
             </Link>
@@ -362,6 +396,16 @@ export function Navbar() {
         </nav>
 
         <div className="hidden md:flex items-center gap-4">
+          <button
+            type="button"
+            onClick={toggleThemeMode}
+            className="p-2 rounded-full border border-[var(--app-border)] bg-[var(--app-surface)] text-[var(--app-muted)] hover:text-[var(--app-text)] hover:bg-[var(--app-surface-2)] transition-colors"
+            title={themeMode === 'dark' ? 'Passer en mode clair' : 'Passer en mode sombre'}
+            aria-label={themeMode === 'dark' ? 'Passer en mode clair' : 'Passer en mode sombre'}
+          >
+            {themeMode === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+          </button>
+
           {user && (
             <div ref={notificationDesktopRef} className="relative">
               <button
@@ -371,7 +415,7 @@ export function Navbar() {
                   setIsUserMenuOpen(false);
                   setShowAllNotifications(false);
                 }}
-                className="relative p-2 text-slate-500 hover:text-medical-600 hover:bg-slate-100 rounded-full transition-colors"
+                className="relative p-2 text-[var(--app-muted)] hover:text-[var(--app-text)] hover:bg-[var(--app-surface-2)] rounded-full transition-colors"
                 title="Notifications"
                 aria-label="Notifications"
               >
@@ -384,19 +428,19 @@ export function Navbar() {
               </button>
 
               {isNotificationsOpen && (
-                <div className="absolute right-0 top-11 w-[360px] max-w-[calc(100vw-2rem)] rounded-xl border border-slate-200 bg-white shadow-lg py-2 z-50">
-                  <div className="px-3 pb-2 border-b border-slate-100 flex items-center justify-between">
-                    <p className="text-sm font-semibold text-slate-800">Notifications</p>
-                    <span className="text-xs text-slate-500">{unreadNotificationCount} non lue(s)</span>
+                <div className="absolute right-0 top-11 w-[360px] max-w-[calc(100vw-2rem)] rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] shadow-lg py-2 z-50">
+                  <div className="px-3 pb-2 border-b border-[var(--app-border)] flex items-center justify-between">
+                    <p className="text-sm font-semibold text-[var(--app-text)]">Notifications</p>
+                    <span className="text-xs text-[var(--app-muted)]">{unreadNotificationCount} non lue(s)</span>
                   </div>
 
                   <div className="max-h-80 overflow-y-auto">
                     {isLoadingNotifications ? (
-                      <p className="px-3 py-4 text-sm text-slate-500">Chargement...</p>
+                      <p className="px-3 py-4 text-sm text-[var(--app-muted)]">Chargement...</p>
                     ) : visibleNotifications.length === 0 ? (
-                      <p className="px-3 py-4 text-sm text-slate-500">Aucune notification.</p>
+                      <p className="px-3 py-4 text-sm text-[var(--app-muted)]">Aucune notification.</p>
                     ) : (
-                      <ul className="divide-y divide-slate-100">
+                      <ul className="divide-y divide-[var(--app-border)]">
                         {visibleNotifications.map((notification) => {
                           const isRead = notificationReadIds.includes(notification.id);
                           return (
@@ -404,7 +448,7 @@ export function Navbar() {
                               <div className="flex items-start justify-between gap-3">
                                 <div className="min-w-0">
                                   <p className="text-sm font-medium text-slate-800 truncate">{notification.title}</p>
-                                  <p className="text-xs text-slate-600 line-clamp-2">{notification.description}</p>
+                                  <p className="text-xs text-[var(--app-muted)] line-clamp-2">{notification.description}</p>
                                 </div>
                                 <div className="flex items-center gap-1 shrink-0">
                                   <button
@@ -439,11 +483,11 @@ export function Navbar() {
                   </div>
 
                   {notifications.length > 5 && (
-                    <div className="px-3 pt-2 border-t border-slate-100">
+                    <div className="px-3 pt-2 border-t border-[var(--app-border)]">
                       <button
                         type="button"
                         onClick={() => setShowAllNotifications((v) => !v)}
-                        className="text-xs font-medium text-medical-700 hover:text-medical-800"
+                        className="text-xs font-medium text-[var(--app-accent)] hover:opacity-85"
                       >
                         {showAllNotifications ? 'Voir moins' : 'Voir toutes les notifications'}
                       </button>
@@ -455,7 +499,7 @@ export function Navbar() {
           )}
 
           {user && !isAdmin && (
-            <Link href="/checkout" className="relative p-2 text-slate-500 hover:text-medical-600 hover:bg-slate-100 rounded-full transition-colors">
+            <Link href="/checkout" className="relative p-2 text-[var(--app-muted)] hover:text-[var(--app-text)] hover:bg-[var(--app-surface-2)] rounded-full transition-colors">
               <ShoppingCart className="h-5 w-5" />
               {itemCount > 0 && (
                 <span className="absolute top-0 right-0 w-4 h-4 bg-red-500 text-white text-[10px] font-bold flex items-center justify-center rounded-full">
@@ -472,9 +516,9 @@ export function Navbar() {
                   <button
                     type="button"
                     onClick={() => setIsUserMenuOpen((v) => !v)}
-                    className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-2 py-1.5 hover:border-medical-300 hover:bg-slate-50 transition-colors"
+                    className="flex items-center gap-2 rounded-full border border-[var(--app-border)] bg-[var(--app-surface)] px-2 py-1.5 hover:bg-[var(--app-surface-2)] transition-colors"
                   >
-                    <div className="w-8 h-8 rounded-full bg-slate-100 overflow-hidden flex items-center justify-center">
+                    <div className="w-8 h-8 rounded-full bg-[var(--app-surface-2)] overflow-hidden flex items-center justify-center">
                       {profile.photoURL ? (
                         <Image
                           src={profile.photoURL}
@@ -484,24 +528,24 @@ export function Navbar() {
                           className="w-full h-full object-cover"
                         />
                       ) : (
-                        <User className="h-5 w-5 text-slate-500" />
+                        <User className="h-5 w-5 text-[var(--app-muted)]" />
                       )}
                     </div>
-                    <span className="text-sm font-medium text-slate-700 max-w-[160px] truncate">
+                    <span className="text-sm font-medium text-[var(--app-text)] max-w-[160px] truncate">
                       {doctorName || profile.email}
                     </span>
-                    <ChevronDown className="h-4 w-4 text-slate-400" />
+                    <ChevronDown className="h-4 w-4 text-[var(--app-muted)]" />
                   </button>
 
                   {isUserMenuOpen && (
-                    <div className="absolute right-0 top-11 w-56 rounded-xl border border-slate-200 bg-white shadow-lg py-2 z-50">
+                    <div className="absolute right-0 top-11 w-56 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] shadow-lg py-2 z-50">
                       {profile.role === 'admin' && (
                         <Link
                           href="/admin"
                           onClick={() => setIsUserMenuOpen(false)}
-                          className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                          className="flex items-center gap-2 px-3 py-2 text-sm text-[var(--app-text)] hover:bg-[var(--app-surface-2)]"
                         >
-                          <LayoutDashboard className="h-4 w-4 text-slate-500" />
+                          <LayoutDashboard className="h-4 w-4 text-[var(--app-muted)]" />
                           <span>Dashboard</span>
                         </Link>
                       )}
@@ -510,9 +554,9 @@ export function Navbar() {
                         <Link
                           href="/dashboard?tab=purchases"
                           onClick={() => setIsUserMenuOpen(false)}
-                          className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                          className="flex items-center gap-2 px-3 py-2 text-sm text-[var(--app-text)] hover:bg-[var(--app-surface-2)]"
                         >
-                          <ShoppingBag className="h-4 w-4 text-slate-500" />
+                          <ShoppingBag className="h-4 w-4 text-[var(--app-muted)]" />
                           <span>Mes Achats</span>
                         </Link>
                       )}
@@ -520,9 +564,9 @@ export function Navbar() {
                       <Link
                         href="/dashboard?tab=profile"
                         onClick={() => setIsUserMenuOpen(false)}
-                        className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                        className="flex items-center gap-2 px-3 py-2 text-sm text-[var(--app-text)] hover:bg-[var(--app-surface-2)]"
                       >
-                        <Settings className="h-4 w-4 text-slate-500" />
+                        <Settings className="h-4 w-4 text-[var(--app-muted)]" />
                         <span>Paramètres</span>
                       </Link>
 
@@ -563,6 +607,16 @@ export function Navbar() {
 
         {/* Mobile Menu Toggle */}
         <div className="md:hidden flex items-center gap-2">
+          <button
+            type="button"
+            onClick={toggleThemeMode}
+            className="p-2 rounded-full border border-[var(--app-border)] bg-[var(--app-surface)] text-[var(--app-muted)] hover:text-[var(--app-text)] hover:bg-[var(--app-surface-2)] transition-colors"
+            title={themeMode === 'dark' ? 'Passer en mode clair' : 'Passer en mode sombre'}
+            aria-label={themeMode === 'dark' ? 'Passer en mode clair' : 'Passer en mode sombre'}
+          >
+            {themeMode === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+          </button>
+
           {user && (
             <button
               type="button"
@@ -572,7 +626,7 @@ export function Navbar() {
                 setIsMobileMenuOpen(false);
                 setShowAllNotifications(false);
               }}
-              className="relative p-2 text-slate-500 hover:text-medical-600 hover:bg-slate-100 rounded-full transition-colors"
+              className="relative p-2 text-[var(--app-muted)] hover:text-[var(--app-text)] hover:bg-[var(--app-surface-2)] rounded-full transition-colors"
               title="Notifications"
               aria-label="Notifications"
             >
@@ -585,7 +639,7 @@ export function Navbar() {
             </button>
           )}
           {user && !isAdmin && (
-            <Link href="/checkout" className="relative p-2 text-slate-500 hover:text-medical-600 hover:bg-slate-100 rounded-full transition-colors">
+            <Link href="/checkout" className="relative p-2 text-[var(--app-muted)] hover:text-[var(--app-text)] hover:bg-[var(--app-surface-2)] rounded-full transition-colors">
               <ShoppingCart className="h-5 w-5" />
               {itemCount > 0 && (
                 <span className="absolute top-0 right-0 w-4 h-4 bg-red-500 text-white text-[10px] font-bold flex items-center justify-center rounded-full">
@@ -595,7 +649,7 @@ export function Navbar() {
             </Link>
           )}
           <button
-            className="p-2 text-slate-600"
+            className="p-2 text-[var(--app-muted)]"
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
           >
             {isMobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
@@ -610,7 +664,7 @@ export function Navbar() {
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            className="md:hidden bg-white border-b border-slate-200 overflow-hidden"
+            className="md:hidden bg-[var(--app-surface)] border-b border-[var(--app-border)] overflow-hidden"
           >
             <div className="flex flex-col px-4 py-4 gap-4">
               {visibleNavLinks.map((link) => (
@@ -618,17 +672,17 @@ export function Navbar() {
                   key={link.name}
                   href={link.href}
                   onClick={() => setIsMobileMenuOpen(false)}
-                  className="text-base font-medium text-slate-700 hover:text-medical-600"
+                  className="text-base font-medium text-[var(--app-text)] hover:text-[var(--app-accent)]"
                 >
                   {link.name}
                 </Link>
               ))}
-              <div className="h-px bg-slate-100 my-2" />
+              <div className="h-px bg-[var(--app-border)] my-2" />
               {!loading && (
                 user ? (
                   <div className="flex flex-col gap-4">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-slate-100 overflow-hidden flex items-center justify-center">
+                      <div className="w-10 h-10 rounded-full bg-[var(--app-surface-2)] overflow-hidden flex items-center justify-center">
                         {profile?.photoURL ? (
                           <Image
                             src={profile.photoURL}
@@ -638,11 +692,11 @@ export function Navbar() {
                             className="w-full h-full object-cover"
                           />
                         ) : (
-                          <User className="h-5 w-5 text-slate-500" />
+                          <User className="h-5 w-5 text-[var(--app-muted)]" />
                         )}
                       </div>
                       <div className="flex flex-col">
-                        <span className="text-sm font-semibold text-slate-900">{doctorName || profile?.email}</span>
+                        <span className="text-sm font-semibold text-[var(--app-text)]">{doctorName || profile?.email}</span>
                       </div>
                     </div>
 
@@ -650,9 +704,9 @@ export function Navbar() {
                       <Link
                         href="/admin"
                         onClick={() => setIsMobileMenuOpen(false)}
-                        className="flex items-center gap-2 text-base font-medium text-slate-700"
+                        className="flex items-center gap-2 text-base font-medium text-[var(--app-text)]"
                       >
-                        <LayoutDashboard className="h-5 w-5 text-slate-500" />
+                        <LayoutDashboard className="h-5 w-5 text-[var(--app-muted)]" />
                         <span>Dashboard</span>
                       </Link>
                     )}
@@ -661,9 +715,9 @@ export function Navbar() {
                       <Link
                         href="/dashboard?tab=purchases"
                         onClick={() => setIsMobileMenuOpen(false)}
-                        className="flex items-center gap-2 text-base font-medium text-slate-700"
+                        className="flex items-center gap-2 text-base font-medium text-[var(--app-text)]"
                       >
-                        <ShoppingBag className="h-5 w-5 text-slate-500" />
+                        <ShoppingBag className="h-5 w-5 text-[var(--app-muted)]" />
                         <span>Mes Achats</span>
                       </Link>
                     )}
@@ -671,9 +725,9 @@ export function Navbar() {
                     <Link
                       href="/dashboard?tab=profile"
                       onClick={() => setIsMobileMenuOpen(false)}
-                      className="flex items-center gap-2 text-base font-medium text-slate-700"
+                      className="flex items-center gap-2 text-base font-medium text-[var(--app-text)]"
                     >
-                      <Settings className="h-5 w-5 text-slate-500" />
+                      <Settings className="h-5 w-5 text-[var(--app-muted)]" />
                       <span>Paramètres</span>
                     </Link>
 
@@ -711,27 +765,27 @@ export function Navbar() {
       </AnimatePresence>
 
       {user && isNotificationsOpen && (
-        <div ref={notificationMobileRef} className="md:hidden absolute top-16 right-4 left-4 rounded-xl border border-slate-200 bg-white shadow-lg py-2 z-50">
-          <div className="px-3 pb-2 border-b border-slate-100 flex items-center justify-between">
-            <p className="text-sm font-semibold text-slate-800">Notifications</p>
-            <span className="text-xs text-slate-500">{unreadNotificationCount} non lue(s)</span>
+        <div ref={notificationMobileRef} className="md:hidden absolute top-16 right-4 left-4 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] shadow-lg py-2 z-50">
+          <div className="px-3 pb-2 border-b border-[var(--app-border)] flex items-center justify-between">
+            <p className="text-sm font-semibold text-[var(--app-text)]">Notifications</p>
+            <span className="text-xs text-[var(--app-muted)]">{unreadNotificationCount} non lue(s)</span>
           </div>
 
           <div className="max-h-80 overflow-y-auto">
             {isLoadingNotifications ? (
-              <p className="px-3 py-4 text-sm text-slate-500">Chargement...</p>
+              <p className="px-3 py-4 text-sm text-[var(--app-muted)]">Chargement...</p>
             ) : visibleNotifications.length === 0 ? (
-              <p className="px-3 py-4 text-sm text-slate-500">Aucune notification.</p>
+              <p className="px-3 py-4 text-sm text-[var(--app-muted)]">Aucune notification.</p>
             ) : (
-              <ul className="divide-y divide-slate-100">
+              <ul className="divide-y divide-[var(--app-border)]">
                 {visibleNotifications.map((notification) => {
                   const isRead = notificationReadIds.includes(notification.id);
                   return (
                     <li key={notification.id} className={`px-3 py-2 ${isRead ? 'bg-white' : 'bg-blue-50/50'}`}>
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <p className="text-sm font-medium text-slate-800 truncate">{notification.title}</p>
-                          <p className="text-xs text-slate-600 line-clamp-2">{notification.description}</p>
+                          <p className="text-sm font-medium text-[var(--app-text)] truncate">{notification.title}</p>
+                          <p className="text-xs text-[var(--app-muted)] line-clamp-2">{notification.description}</p>
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
                           <button
@@ -766,11 +820,11 @@ export function Navbar() {
           </div>
 
           {notifications.length > 5 && (
-            <div className="px-3 pt-2 border-t border-slate-100">
+            <div className="px-3 pt-2 border-t border-[var(--app-border)]">
               <button
                 type="button"
                 onClick={() => setShowAllNotifications((v) => !v)}
-                className="text-xs font-medium text-medical-700 hover:text-medical-800"
+                className="text-xs font-medium text-[var(--app-accent)] hover:opacity-85"
               >
                 {showAllNotifications ? 'Voir moins' : 'Voir toutes les notifications'}
               </button>

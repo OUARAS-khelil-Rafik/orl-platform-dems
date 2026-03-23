@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { db, collection, query, where, getDocs } from '@/lib/local-data';
 import { motion } from 'motion/react';
-import { PlayCircle, Lock, Clock3, Search, SlidersHorizontal, ListChecks, Stethoscope, MessageSquare, Network } from 'lucide-react';
+import { PlayCircle, Lock, Clock3, Search, SlidersHorizontal, ListChecks, Stethoscope, MessageSquare, Network, RotateCcw } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/components/providers/auth-provider';
 import { canAccessVideo } from '@/lib/access-control';
@@ -107,10 +107,16 @@ const formatVideoDuration = (video: Video): string => {
 };
 
 const SPECIALTIES = {
-  otologie: { title: 'Otologie', desc: 'Anatomie et pathologie de l\'oreille', color: 'from-blue-500 to-cyan-500' },
-  rhinologie: { title: 'Rhinologie & Sinusologie', desc: 'Fosses nasales et sinus', color: 'from-medical-500 to-emerald-500' },
-  laryngologie: { title: 'Laryngologie & Cervicologie', desc: 'Larynx, pharynx et cou', color: 'from-violet-500 to-purple-500' },
+  otologie: { title: 'Otologie', desc: 'Anatomie et pathologie de l\'oreille', color: 'from-amber-700 to-orange-500' },
+  rhinologie: { title: 'Rhinologie & Sinusologie', desc: 'Fosses nasales et sinus', color: 'from-amber-800 to-amber-500' },
+  laryngologie: { title: 'Laryngologie & Cervicologie', desc: 'Larynx, pharynx et cou', color: 'from-orange-700 to-amber-600' },
 };
+
+const SECTION_OPTIONS: Array<{ value: SectionFilter; label: string }> = [
+  { value: 'all', label: 'Toutes' },
+  { value: 'anatomie', label: 'Anatomie' },
+  { value: 'pathologie', label: 'Pathologie' },
+];
 
 export default function SpecialtyPage() {
   const router = useRouter();
@@ -234,9 +240,6 @@ export default function SpecialtyPage() {
 
   const hasAccess = (video: Video) => canAccessVideo(video, profile);
 
-  const packId = slug;
-  const isPackInCart = !!(packId && items.some(item => item.id === packId));
-
   const trimmedNameFilter = videoNameFilter.trim();
 
   // Build a RegExp from the user input. If the regex is invalid,
@@ -275,11 +278,25 @@ export default function SpecialtyPage() {
     return true;
   });
 
+  const filteredDemoCount = filteredVideos.filter((video) => video.isFreeDemo).length;
+  const filteredUnlockedCount = filteredVideos.filter((video) => hasAccess(video)).length;
+  const filteredViewedCount = filteredVideos.filter((video) => viewedVideoIds.includes(video.id)).length;
+
   return (
-    <div className="flex-1 bg-slate-50 pb-24">
+    <div className="flex-1 pb-24" style={{ background: 'linear-gradient(180deg, color-mix(in oklab, var(--app-surface) 94%, white 6%) 0%, color-mix(in oklab, var(--app-surface-alt) 76%, var(--app-accent) 24%) 100%)' }}>
       {/* Header */}
-      <div className={`bg-gradient-to-r ${specialtyInfo.color} text-white py-20`}>
-        <div className="container mx-auto px-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+      <div
+        className={`relative overflow-hidden bg-gradient-to-r ${specialtyInfo.color} py-20`}
+        style={{
+          color: 'var(--hero-title)',
+          backgroundImage: `linear-gradient(145deg, var(--hero-bg-start) 0%, color-mix(in oklab, var(--hero-bg-end) 82%, var(--app-accent) 18%) 100%)`,
+        }}
+      >
+        <div className="absolute inset-0" style={{ background: 'var(--hero-overlay)' }} />
+        <div className="absolute -top-24 -right-16 w-80 h-80 rounded-full blur-3xl" style={{ background: 'color-mix(in oklab, var(--app-accent) 34%, transparent)' }} />
+        <div className="absolute -bottom-24 left-0 w-72 h-72 rounded-full blur-3xl" style={{ background: 'color-mix(in oklab, var(--app-accent) 22%, transparent)' }} />
+
+        <div className="container mx-auto px-4 relative z-10">
           <div>
             <motion.h1 
               initial={{ opacity: 0, y: 20 }}
@@ -288,50 +305,37 @@ export default function SpecialtyPage() {
             >
               {specialtyInfo.title}
             </motion.h1>
-            <motion.p 
+            <motion.p
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 }}
-              className="text-xl opacity-90"
+              className="text-lg md:text-xl"
+              style={{ color: 'var(--hero-body)' }}
             >
               {specialtyInfo.desc}
             </motion.p>
+
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.18 }}
+              className="mt-6 flex flex-wrap gap-2 text-xs font-semibold"
+            >
+              <span className="inline-flex items-center rounded-full border px-3 py-1" style={{ backgroundColor: 'var(--hero-chip-bg)', borderColor: 'var(--hero-chip-border)', color: 'var(--hero-chip-text)' }}>
+                {filteredVideos.length} videos ciblees
+              </span>
+              <span className="inline-flex items-center rounded-full border px-3 py-1" style={{ backgroundColor: 'var(--hero-chip-bg)', borderColor: 'var(--hero-chip-border)', color: 'var(--hero-chip-text)' }}>
+                {filteredDemoCount} demos gratuites
+              </span>
+              <span className="inline-flex items-center rounded-full border px-3 py-1" style={{ backgroundColor: 'var(--hero-chip-bg)', borderColor: 'var(--hero-chip-border)', color: 'var(--hero-chip-text)' }}>
+                {filteredUnlockedCount} accessibles
+              </span>
+              <span className="inline-flex items-center rounded-full border px-3 py-1" style={{ backgroundColor: 'var(--hero-chip-bg)', borderColor: 'var(--hero-chip-border)', color: 'var(--hero-chip-text)' }}>
+                {filteredViewedCount} deja vues
+              </span>
+            </motion.div>
           </div>
           
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: 0.2 }}
-          >
-            {profile?.role !== 'admin' && (
-              <button
-                onClick={() => {
-                  if (!packId) return;
-                  if (profile?.role === 'admin') {
-                    return;
-                  }
-                  if (!user) {
-                    router.push(`/sign-in?redirect=${encodeURIComponent(`/specialties/${slug}`)}`);
-                    return;
-                  }
-                  if (isPackInCart) {
-                    router.push('/checkout');
-                  } else {
-                    addItem({
-                      id: packId,
-                      title: `Pack ${specialtyInfo.title}`,
-                      price: 5000, // Fixed price for now, ideally fetched from DB
-                      type: 'pack',
-                      imageUrl: ''
-                    });
-                  }
-                }}
-                className="bg-white text-slate-900 px-8 py-4 rounded-2xl font-bold text-lg hover:bg-slate-100 transition-colors shadow-xl"
-              >
-                {isPackInCart ? 'Aller au panier' : 'Acheter le pack complet (5000 DZD)'}
-              </button>
-            )}
-          </motion.div>
         </div>
       </div>
 
@@ -342,12 +346,12 @@ export default function SpecialtyPage() {
           </div>
         ) : (
           <div className="space-y-16">
-            <div className="rounded-3xl border border-slate-200 bg-gradient-to-br from-white to-slate-100/80 p-5 md:p-6 shadow-sm">
+            <div className="rounded-3xl border p-5 md:p-6 shadow-md" style={{ borderColor: 'color-mix(in oklab, var(--app-accent) 24%, var(--app-border) 76%)', background: 'linear-gradient(140deg, color-mix(in oklab, var(--app-surface) 94%, white 6%) 0%, color-mix(in oklab, var(--app-surface-alt) 72%, var(--app-accent) 28%) 100%)' }}>
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-end">
                 <div className="lg:col-span-6">
                   <label htmlFor="video-name-filter" className="text-sm font-semibold text-slate-700 mb-2 inline-flex items-center gap-2">
                     <Search className="h-4 w-4" />
-                    Filtre par nom vidéo
+                    Filtre par nom vidéo (regex acceptée)
                   </label>
                   <input
                     id="video-name-filter"
@@ -355,7 +359,7 @@ export default function SpecialtyPage() {
                     value={videoNameFilter}
                     onChange={(e) => setVideoNameFilter(e.target.value)}
                     placeholder="Ex: otite, sinusite, larynx..."
-                    className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-medical-500 focus:border-medical-500"
+                    className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
                   />
                 </div>
 
@@ -368,12 +372,28 @@ export default function SpecialtyPage() {
                     id="section-filter"
                     value={sectionFilter}
                     onChange={(e) => setSectionFilter(e.target.value as SectionFilter)}
-                    className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-medical-500 focus:border-medical-500"
+                    className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
                   >
-                    <option value="all">Toutes</option>
-                    <option value="anatomie">Anatomie</option>
-                    <option value="pathologie">Pathologie</option>
+                    {SECTION_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
                   </select>
+                </div>
+
+                <div className="lg:col-span-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setVideoNameFilter('');
+                      setSectionFilter('all');
+                    }}
+                    className="w-full inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-amber-50"
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                    Réinitialiser
+                  </button>
                 </div>
 
               </div>
@@ -388,12 +408,17 @@ export default function SpecialtyPage() {
                 <span className="inline-flex items-center rounded-full bg-blue-50 border border-blue-200 px-3 py-1 text-blue-700">
                   {filteredVideos.filter((video) => viewedVideoIds.includes(video.id)).length} deja vues
                 </span>
+                <span className="inline-flex items-center rounded-full bg-medical-50 border border-medical-200 px-3 py-1 text-medical-700">
+                  {filteredUnlockedCount} accessibles maintenant
+                </span>
               </div>
             </div>
 
             <section>
               {filteredVideos.length === 0 ? (
-                <p className="text-slate-500">Aucune vidéo disponible pour le moment.</p>
+                <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-500">
+                  Aucune vidéo disponible pour le moment.
+                </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {filteredVideos.map((video, i) => (
@@ -403,6 +428,28 @@ export default function SpecialtyPage() {
                       hasAccess={hasAccess(video)}
                       isViewed={viewedVideoIds.includes(video.id)}
                       counts={contentCounts[video.id] ?? { qcm: 0, cases: 0, open: 0, diagrams: 0 }}
+                      role={profile?.role}
+                      isInCart={items.some((item) => item.id === video.id)}
+                      onUnlock={() => {
+                        if (!user) {
+                          router.push(`/sign-in?redirect=${encodeURIComponent(`/specialties/${slug}`)}`);
+                          return;
+                        }
+
+                        const alreadyInCart = items.some((item) => item.id === video.id);
+                        if (alreadyInCart) {
+                          router.push('/checkout');
+                          return;
+                        }
+
+                        addItem({
+                          id: video.id,
+                          title: video.title,
+                          price: video.price,
+                          type: 'video',
+                          imageUrl: '',
+                        });
+                      }}
                       index={i}
                     />
                   ))}
@@ -415,6 +462,7 @@ export default function SpecialtyPage() {
                 Aucune video ne correspond aux filtres.
               </div>
             )}
+
           </div>
         )}
       </div>
@@ -427,19 +475,27 @@ function VideoCard({
   hasAccess,
   isViewed,
   counts,
+  role,
+  isInCart,
+  onUnlock,
   index,
 }: {
   video: Video;
   hasAccess: boolean;
   isViewed: boolean;
   counts: { qcm: number; cases: number; open: number; diagrams: number };
+  role?: 'admin' | 'user' | 'vip' | 'vip_plus';
+  isInCart: boolean;
+  onUnlock: () => void;
   index: number;
 }) {
   const statusLabel = video.isFreeDemo
     ? 'Démo Gratuite'
     : hasAccess
-      ? 'Acheté'
-      : 'Pas encore acheté';
+      ? role === 'vip_plus'
+        ? 'VIP Plus Débloquée'
+        : 'Débloquée'
+      : 'Bloquée';
 
   const statusClass = video.isFreeDemo
     ? 'bg-emerald-500'
@@ -452,7 +508,7 @@ function VideoCard({
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.05 }}
-      className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition-shadow group flex flex-col"
+      className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition-all hover:-translate-y-0.5 group flex flex-col"
     >
       <div className="aspect-video relative bg-slate-900 overflow-hidden">
         <Image
@@ -548,12 +604,14 @@ function VideoCard({
         {hasAccess ? null : (
           <div className="flex items-center justify-between">
             <span className="text-lg font-bold text-slate-900">{video.price} DZD</span>
-            <Link 
-              href={`/videos/${video.id}`}
-              className="px-4 py-2 bg-slate-900 text-white rounded-xl text-sm font-medium hover:bg-slate-800 transition-colors"
+            <button
+              type="button"
+              onClick={onUnlock}
+              className="px-4 py-2 rounded-xl text-sm font-medium transition-colors"
+              style={{ background: 'linear-gradient(90deg, color-mix(in oklab, var(--app-accent) 76%, #51392a 24%), color-mix(in oklab, var(--app-accent) 90%, #35261c 10%))', color: 'var(--app-accent-contrast)' }}
             >
-              Débloquer
-            </Link>
+              {isInCart ? 'Aller au panier' : 'Débloquer'}
+            </button>
           </div>
         )}
       </div>
