@@ -587,6 +587,38 @@ export const createAuthAccount = (payload: {
   return session;
 };
 
+export const createAuthAccountByAdmin = (payload: {
+  email: string;
+  password: string;
+  displayName: string;
+  photoURL?: string;
+}): LocalAuthUser | null => {
+  const normalizedEmail = payload.email.trim().toLowerCase();
+  const accounts = readAuthAccounts();
+  const existing = accounts.find((account) => account.email.toLowerCase() === normalizedEmail);
+
+  if (existing) {
+    return null;
+  }
+
+  const account: LocalAuthAccount = {
+    uid: createId(),
+    email: normalizedEmail,
+    password: payload.password,
+    displayName: payload.displayName.trim() || 'Utilisateur',
+    photoURL: payload.photoURL || '',
+  };
+
+  writeAuthAccounts([...accounts, account]);
+
+  return {
+    uid: account.uid,
+    email: account.email,
+    displayName: account.displayName,
+    photoURL: account.photoURL,
+  };
+};
+
 export const signInWithEmail = (email: string, password: string): LocalAuthUser => {
   const normalizedEmail = email.trim().toLowerCase();
   const accounts = readAuthAccounts();
@@ -691,4 +723,23 @@ export const updateAuthPassword = (
   );
 
   writeAuthAccounts(nextAccounts);
+};
+
+export const deleteAuthAccountByUid = (uid: string) => {
+  const accounts = readAuthAccounts();
+  const nextAccounts = accounts.filter((account) => account.uid !== uid);
+
+  if (nextAccounts.length === accounts.length) {
+    return false;
+  }
+
+  writeAuthAccounts(nextAccounts);
+
+  const currentSession = readAuthSession();
+  if (currentSession && currentSession.uid === uid) {
+    writeAuthSession(null);
+    notifyAuthListeners(null);
+  }
+
+  return true;
 };

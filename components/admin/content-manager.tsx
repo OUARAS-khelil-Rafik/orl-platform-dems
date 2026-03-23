@@ -3,6 +3,106 @@
 import { useState, useEffect } from 'react';
 import { Video, FileText, HelpCircle, Image as ImageIcon, MessageSquare, Plus, Save, X, Loader2, Trash2, Edit2 } from 'lucide-react';
 import { db, collection, addDoc, getDocs, deleteDoc, doc, updateDoc } from '@/lib/local-data';
+import type {
+  CaseQuestionModel,
+  ClinicalCaseModel,
+  DiagramMarkerModel,
+  DiagramModel,
+  OpenQuestionModel,
+  QcmModel,
+  QcmMode,
+  VideoModel,
+} from '@/lib/models';
+
+type EditableCaseQuestion = {
+  id: string;
+  kind: 'qcm' | 'select' | 'open';
+  prompt: string;
+  images?: string[];
+  options?: string[];
+  correctOptionIndex?: number;
+  correctOptionIndexes?: number[];
+  qcmMode?: QcmMode;
+  explanation?: string;
+  answer?: string;
+};
+
+interface VideoFormData {
+  title: string;
+  description: string;
+  url: string;
+  subspecialty: string;
+  section: string;
+  isFreeDemo: boolean;
+  price: number;
+}
+
+interface QcmFormData {
+  videoId: string;
+  question: string;
+  options: string[];
+  mode: QcmMode;
+  correctOptionIndexes: number[];
+  explanation: string;
+  reference: string;
+}
+
+interface OpenQuestionFormData {
+  videoId: string;
+  question: string;
+  answer: string;
+  reference: string;
+}
+
+interface ClinicalCaseFormData {
+  videoId: string;
+  title: string;
+  description: string;
+  patientHistory: string;
+  clinicalExamination: string;
+  additionalTests: string;
+  diagnosis: string;
+  treatment: string;
+  discussion: string;
+  images: string[];
+  reference: string;
+  questions: EditableCaseQuestion[];
+}
+
+interface DiagramFormData {
+  videoId: string;
+  title: string;
+  imageUrl: string;
+  markers: DiagramMarkerModel[];
+}
+
+const getErrorMessage = (error: unknown, fallback: string) => {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  return fallback;
+};
+
+const createCaseQuestionId = () => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return `q-${crypto.randomUUID()}`;
+  }
+  return `q-${Date.now()}`;
+};
+
+const getSaveErrorMessage = (entityLabel: string, error: unknown) => {
+  const details = getErrorMessage(error, 'Cause inconnue');
+  return `Echec d'enregistrement ${entityLabel}. Verifiez les champs obligatoires puis reessayez. (${details})`;
+};
+
+const logAdminAction = (action: 'create' | 'update' | 'delete', entity: string, payload: Record<string, unknown>) => {
+  console.info('[admin-action]', {
+    action,
+    entity,
+    at: new Date().toISOString(),
+    ...payload,
+  });
+};
 
 export function AdminContentManager() {
   const [activeTab, setActiveTab] = useState<'video' | 'qcm' | 'case' | 'openQuestion' | 'diagram'>('video');
@@ -10,17 +110,18 @@ export function AdminContentManager() {
   const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   
-  const [videos, setVideos] = useState<any[]>([]);
-  const [qcms, setQcms] = useState<any[]>([]);
-  const [cases, setCases] = useState<any[]>([]);
-  const [openQuestions, setOpenQuestions] = useState<any[]>([]);
-  const [diagrams, setDiagrams] = useState<any[]>([]);
+  const [videos, setVideos] = useState<VideoModel[]>([]);
+  const [qcms, setQcms] = useState<QcmModel[]>([]);
+  const [cases, setCases] = useState<ClinicalCaseModel[]>([]);
+  const [openQuestions, setOpenQuestions] = useState<OpenQuestionModel[]>([]);
+  const [diagrams, setDiagrams] = useState<DiagramModel[]>([]);
 
   const [editingVideoId, setEditingVideoId] = useState<string | null>(null);
   const [editingQcmId, setEditingQcmId] = useState<string | null>(null);
   const [editingCaseId, setEditingCaseId] = useState<string | null>(null);
   const [editingOpenQuestionId, setEditingOpenQuestionId] = useState<string | null>(null);
   const [editingDiagramId, setEditingDiagramId] = useState<string | null>(null);
+  const [previewVideoId, setPreviewVideoId] = useState<string | null>(null);
 
   const fetchData = async () => {
     try {
@@ -32,11 +133,11 @@ export function AdminContentManager() {
         getDocs(collection(db, 'diagrams'))
       ]);
       
-      setVideos(videosSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-      setQcms(qcmsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-      setCases(casesSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-      setOpenQuestions(openQuestionsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-      setDiagrams(diagramsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setVideos(videosSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as VideoModel));
+      setQcms(qcmsSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as QcmModel));
+      setCases(casesSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as ClinicalCaseModel));
+      setOpenQuestions(openQuestionsSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as OpenQuestionModel));
+      setDiagrams(diagramsSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as DiagramModel));
     } catch (error) {
       console.error("Error fetching data:", error);
     }
@@ -51,15 +152,16 @@ export function AdminContentManager() {
     try {
       await deleteDoc(doc(db, collectionName, id));
       setSuccessMessage('Élément supprimé avec succès.');
+      logAdminAction('delete', collectionName, { id });
       fetchData(); // Refresh lists
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error deleting document:', error);
-      setErrorMessage(error.message || 'Erreur lors de la suppression.');
+      setErrorMessage(`Echec de suppression (${collectionName}). ${getErrorMessage(error, 'Cause inconnue')}`);
     }
   };
 
   // Video Form State
-  const [videoData, setVideoData] = useState({
+  const [videoData, setVideoData] = useState<VideoFormData>({
     title: '',
     description: '',
     url: '',
@@ -73,22 +175,26 @@ export function AdminContentManager() {
 
   const QCM_OPTION_LABELS = ['A', 'B', 'C', 'D', 'E'];
   const getDefaultQcmOptions = () => QCM_OPTION_LABELS.map(() => '');
+  const getOptionLabel = (index: number) => {
+    if (index < 26) {
+      return String.fromCharCode(65 + index);
+    }
+    return `Option ${index + 1}`;
+  };
   const normalizeQcmOptions = (options: unknown): string[] => {
     const fallback = getDefaultQcmOptions();
     if (!Array.isArray(options)) return fallback;
-    return fallback.map((_, index) => {
-      const value = options[index];
-      return typeof value === 'string' ? value : '';
-    });
+
+    const normalized = options.map((value) => (typeof value === 'string' ? value : ''));
+    return normalized.length > 0 ? normalized : fallback;
   };
   const getDefaultCaseQuestionOptions = () => QCM_OPTION_LABELS.map(() => '');
   const normalizeCaseQuestionOptions = (options: unknown): string[] => {
     const fallback = getDefaultCaseQuestionOptions();
     if (!Array.isArray(options)) return fallback;
-    return fallback.map((_, index) => {
-      const value = options[index];
-      return typeof value === 'string' ? value : '';
-    });
+
+    const normalized = options.map((value) => (typeof value === 'string' ? value : ''));
+    return normalized.length > 0 ? normalized : fallback;
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -143,7 +249,7 @@ export function AdminContentManager() {
   };
 
   // QCM Form State
-  const [qcmData, setQcmData] = useState({
+  const [qcmData, setQcmData] = useState<QcmFormData>({
     videoId: '',
     question: '',
     options: getDefaultQcmOptions(),
@@ -155,6 +261,24 @@ export function AdminContentManager() {
 
   const handleVideoSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!videoData.url.trim()) {
+      setErrorMessage('Veuillez uploader une vidéo avant de sauvegarder.');
+      return;
+    }
+
+    if (!videoData.isFreeDemo) {
+      if (Number.isNaN(videoData.price)) {
+        setErrorMessage('Le prix est obligatoire pour une vidéo premium.');
+        return;
+      }
+
+      if (videoData.price < 0) {
+        setErrorMessage('Le prix ne peut pas être négatif.');
+        return;
+      }
+    }
+
     setIsSubmitting(true);
     setErrorMessage('');
     setSuccessMessage('');
@@ -171,12 +295,14 @@ export function AdminContentManager() {
           updatedAt: new Date().toISOString()
         });
         setSuccessMessage('Vidéo mise à jour avec succès !');
+        logAdminAction('update', 'videos', { id: editingVideoId, title: payload.title });
         setEditingVideoId(null);
       } else {
         const docRef = await addDoc(collection(db, 'videos'), {
           ...payload,
           createdAt: new Date().toISOString()
         });
+        logAdminAction('create', 'videos', { id: docRef.id, title: payload.title });
         setSuccessMessage('Vidéo ajoutée avec succès !');
       }
       
@@ -191,15 +317,15 @@ export function AdminContentManager() {
         isFreeDemo: false,
         price: 0
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error adding/updating video:', error);
-      setErrorMessage(error.message || 'Une erreur est survenue.');
+      setErrorMessage(getSaveErrorMessage('de la vidéo', error));
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleEditVideo = (video: any) => {
+  const handleEditVideo = (video: VideoModel) => {
     setEditingVideoId(video.id);
     setVideoData({
       title: video.title || '',
@@ -254,12 +380,14 @@ export function AdminContentManager() {
           updatedAt: new Date().toISOString()
         });
         setSuccessMessage('QCM mis à jour avec succès !');
+        logAdminAction('update', 'qcms', { id: editingQcmId, videoId: payload.videoId });
         setEditingQcmId(null);
       } else {
-        await addDoc(collection(db, 'qcms'), {
+        const docRef = await addDoc(collection(db, 'qcms'), {
           ...payload,
           createdAt: new Date().toISOString()
         });
+        logAdminAction('create', 'qcms', { id: docRef.id, videoId: payload.videoId });
         setSuccessMessage('QCM ajouté avec succès !');
       }
       
@@ -274,15 +402,15 @@ export function AdminContentManager() {
         explanation: '',
         reference: '',
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error adding/updating QCM:', error);
-      setErrorMessage(error.message || 'Une erreur est survenue.');
+      setErrorMessage(getSaveErrorMessage('du QCM', error));
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleEditQcm = (qcm: any) => {
+  const handleEditQcm = (qcm: QcmModel) => {
     setEditingQcmId(qcm.id);
 
     const mode: 'single' | 'multiple' = qcm.mode === 'multiple' ? 'multiple' : 'single';
@@ -312,7 +440,33 @@ export function AdminContentManager() {
     setQcmData({ ...qcmData, options: newOptions });
   };
 
-  const [openQuestionData, setOpenQuestionData] = useState({
+  const handleAddQcmOption = () => {
+    setQcmData((prev) => ({
+      ...prev,
+      options: [...prev.options, ''],
+    }));
+  };
+
+  const handleRemoveQcmOption = (indexToRemove: number) => {
+    setQcmData((prev) => {
+      if (prev.options.length <= 2) {
+        return prev;
+      }
+
+      const nextOptions = prev.options.filter((_, index) => index !== indexToRemove);
+      const nextCorrectOptionIndexes = prev.correctOptionIndexes
+        .filter((index) => index !== indexToRemove)
+        .map((index) => (index > indexToRemove ? index - 1 : index));
+
+      return {
+        ...prev,
+        options: nextOptions,
+        correctOptionIndexes: nextCorrectOptionIndexes,
+      };
+    });
+  };
+
+  const [openQuestionData, setOpenQuestionData] = useState<OpenQuestionFormData>({
     videoId: '',
     question: '',
     answer: '',
@@ -341,12 +495,17 @@ export function AdminContentManager() {
           updatedAt: new Date().toISOString(),
         });
         setSuccessMessage('Question ouverte mise à jour avec succès !');
+        logAdminAction('update', 'openQuestions', {
+          id: editingOpenQuestionId,
+          videoId: payload.videoId,
+        });
         setEditingOpenQuestionId(null);
       } else {
-        await addDoc(collection(db, 'openQuestions'), {
+        const docRef = await addDoc(collection(db, 'openQuestions'), {
           ...payload,
           createdAt: new Date().toISOString(),
         });
+        logAdminAction('create', 'openQuestions', { id: docRef.id, videoId: payload.videoId });
         setSuccessMessage('Question ouverte ajoutée avec succès !');
       }
 
@@ -358,15 +517,15 @@ export function AdminContentManager() {
         answer: '',
         reference: '',
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error adding/updating open question:', error);
-      setErrorMessage(error.message || 'Une erreur est survenue.');
+      setErrorMessage(getSaveErrorMessage('de la question ouverte', error));
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleEditOpenQuestion = (item: any) => {
+  const handleEditOpenQuestion = (item: OpenQuestionModel) => {
     setEditingOpenQuestionId(item.id);
     setOpenQuestionData({
       videoId: item.videoId || '',
@@ -378,7 +537,7 @@ export function AdminContentManager() {
   };
 
   // Clinical Case Form State
-  const [caseData, setCaseData] = useState({
+  const [caseData, setCaseData] = useState<ClinicalCaseFormData>({
     videoId: '',
     title: '',
     description: '',
@@ -390,7 +549,7 @@ export function AdminContentManager() {
     discussion: '',
     images: [] as string[],
     reference: '',
-    questions: [] as any[]
+    questions: []
   });
 
   const handleCaseSubmit = async (e: React.FormEvent) => {
@@ -411,12 +570,14 @@ export function AdminContentManager() {
           updatedAt: new Date().toISOString()
         });
         setSuccessMessage('Cas clinique mis à jour avec succès !');
+        logAdminAction('update', 'clinicalCases', { id: editingCaseId, videoId: caseData.videoId });
         setEditingCaseId(null);
       } else {
-        await addDoc(collection(db, 'clinicalCases'), {
+        const docRef = await addDoc(collection(db, 'clinicalCases'), {
           ...caseData,
           createdAt: new Date().toISOString()
         });
+        logAdminAction('create', 'clinicalCases', { id: docRef.id, videoId: caseData.videoId });
         setSuccessMessage('Cas clinique ajouté avec succès !');
       }
       
@@ -436,15 +597,15 @@ export function AdminContentManager() {
         reference: '',
         questions: []
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error adding/updating clinical case:', error);
-      setErrorMessage(error.message || 'Une erreur est survenue.');
+      setErrorMessage(getSaveErrorMessage('du cas clinique', error));
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleEditCase = (c: any) => {
+  const handleEditCase = (c: ClinicalCaseModel) => {
     setEditingCaseId(c.id);
     setCaseData({
       videoId: c.videoId || '',
@@ -524,13 +685,13 @@ export function AdminContentManager() {
     setCaseData(prev => {
       const questions = [...(prev.questions || [])];
 
-      const base: any = {
-        id: `q-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      const base: EditableCaseQuestion = {
+        id: createCaseQuestionId(),
         kind,
         prompt: ''
       };
 
-      let question: any;
+      let question: EditableCaseQuestion;
       if (kind === 'open') {
         question = {
           ...base,
@@ -564,10 +725,15 @@ export function AdminContentManager() {
     });
   };
 
-  const updateCaseQuestion = (index: number, updater: (q: any) => any) => {
+  const updateCaseQuestion = (
+    index: number,
+    updater: (q: EditableCaseQuestion) => EditableCaseQuestion,
+  ) => {
     setCaseData(prev => {
       const questions = [...(prev.questions || [])];
-      questions[index] = updater(questions[index] || {});
+      questions[index] = updater(
+        questions[index] || ({ id: createCaseQuestionId(), kind: 'open', prompt: '' } as EditableCaseQuestion),
+      );
       return {
         ...prev,
         questions
@@ -587,9 +753,9 @@ export function AdminContentManager() {
   };
 
   const changeCaseQuestionKind = (index: number, kind: 'qcm' | 'select' | 'open') => {
-    updateCaseQuestion(index, (existing: any) => {
-      const base: any = {
-        id: existing?.id || `q-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    updateCaseQuestion(index, (existing) => {
+      const base: EditableCaseQuestion = {
+        id: existing?.id || createCaseQuestionId(),
         kind,
         prompt: existing?.prompt || '',
         images: Array.isArray(existing?.images) ? existing.images : [],
@@ -732,12 +898,14 @@ export function AdminContentManager() {
           updatedAt: new Date().toISOString()
         });
         setSuccessMessage('Schéma mis à jour avec succès !');
+        logAdminAction('update', 'diagrams', { id: editingDiagramId, videoId: diagramData.videoId });
         setEditingDiagramId(null);
       } else {
-        await addDoc(collection(db, 'diagrams'), {
+        const docRef = await addDoc(collection(db, 'diagrams'), {
           ...diagramData,
           createdAt: new Date().toISOString()
         });
+        logAdminAction('create', 'diagrams', { id: docRef.id, videoId: diagramData.videoId });
         setSuccessMessage('Schéma ajouté avec succès !');
       }
       
@@ -749,15 +917,15 @@ export function AdminContentManager() {
         imageUrl: '',
         markers: []
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error adding/updating diagram:', error);
-      setErrorMessage(error.message || 'Une erreur est survenue.');
+      setErrorMessage(getSaveErrorMessage('du schéma', error));
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleEditDiagram = (d: any) => {
+  const handleEditDiagram = (d: DiagramModel) => {
     setEditingDiagramId(d.id);
     setDiagramData({
       videoId: d.videoId || '',
@@ -829,13 +997,72 @@ export function AdminContentManager() {
     const qcmCount = qcms.filter((entry) => entry.videoId === videoId).length;
     const openQuestionCount = openQuestions.filter((entry) => entry.videoId === videoId).length;
     const diagramCount = diagrams.filter((entry) => entry.videoId === videoId).length;
+    const missingItems: string[] = [];
+
+    if (caseCount === 0) missingItems.push('Cas cliniques');
+    if (qcmCount === 0) missingItems.push('QCM');
+    if (openQuestionCount === 0) missingItems.push('Questions ouvertes');
+    if (diagramCount === 0) missingItems.push('Schémas');
+
     return {
       caseCount,
       qcmCount,
       openQuestionCount,
       diagramCount,
-      isComplete: caseCount > 0 && qcmCount > 0 && diagramCount > 0,
+      missingItems,
+      isComplete: missingItems.length === 0,
     };
+  };
+
+  const getSubspecialtyCompletionReport = () => {
+    const subspecialties = Array.from(new Set(videos.map((v) => v.subspecialty || 'non-defini')));
+    return subspecialties.map((subspecialty) => {
+      const scopedVideos = videos.filter((v) => (v.subspecialty || 'non-defini') === subspecialty);
+      const completeCount = scopedVideos.filter((video) => getVideoExtensionStats(video.id).isComplete).length;
+      const total = scopedVideos.length;
+      const completionRate = total > 0 ? Math.round((completeCount / total) * 100) : 0;
+
+      return {
+        subspecialty,
+        total,
+        completeCount,
+        completionRate,
+      };
+    });
+  };
+
+  const renderSelectedVideoPreview = (videoId: string) => {
+    if (!videoId) return null;
+
+    const selectedVideo = videos.find((video) => video.id === videoId);
+
+    if (!selectedVideo) {
+      return (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+          Vidéo sélectionnée introuvable.
+        </div>
+      );
+    }
+
+    return (
+      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-2">
+        <p className="text-xs text-slate-600">
+          <span className="font-semibold">Vidéo sélectionnée :</span> {selectedVideo.title}
+        </p>
+        {selectedVideo.url ? (
+          <video
+            controls
+            preload="metadata"
+            src={selectedVideo.url}
+            className="w-full rounded-lg border border-slate-200 bg-black/90 max-h-52"
+          >
+            Votre navigateur ne supporte pas la lecture vidéo.
+          </video>
+        ) : (
+          <p className="text-xs text-amber-700">Cette vidéo n'a pas encore d'URL de lecture.</p>
+        )}
+      </div>
+    );
   };
 
   return (
@@ -923,28 +1150,8 @@ export function AdminContentManager() {
             <div className="flex justify-between items-center">
               <div>
                 <h3 className="text-lg font-bold text-slate-900 mb-1">{editingVideoId ? 'Modifier la vidéo' : 'Ajouter une nouvelle vidéo'}</h3>
-                <p className="text-sm text-slate-500 mb-6">Remplissez les informations ci-dessous pour {editingVideoId ? 'modifier' : 'ajouter'} une vidéo à la plateforme. Vous pouvez utiliser une URL Cloudinary ou YouTube.</p>
+                <p className="text-sm text-slate-500 mb-6">Remplissez les informations ci-dessous pour {editingVideoId ? 'modifier' : 'ajouter'} une vidéo à la plateforme.</p>
               </div>
-              {editingVideoId && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditingVideoId(null);
-                    setVideoData({
-                      title: '',
-                      description: '',
-                      url: '',
-                      subspecialty: 'otologie',
-                      section: 'anatomie',
-                      isFreeDemo: false,
-                      price: 0
-                    });
-                  }}
-                  className="text-sm text-slate-500 hover:text-slate-700"
-                >
-                  Annuler l'édition
-                </button>
-              )}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -972,18 +1179,10 @@ export function AdminContentManager() {
               </div>
 
               <div className="space-y-2 md:col-span-2">
-                <label className="text-sm font-medium text-slate-700">URL de la vidéo (Cloudinary / MP4)</label>
+                <label className="text-sm font-medium text-slate-700">Vidéo (upload)</label>
                 <div className="flex flex-col gap-4">
-                  <input
-                    type="url"
-                    required
-                    value={videoData.url}
-                    onChange={(e) => setVideoData({...videoData, url: e.target.value})}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all"
-                    placeholder="https://res.cloudinary.com/..."
-                  />
                   <div className="flex items-center gap-4">
-                    <span className="text-sm text-slate-500 font-medium">OU uploader une vidéo :</span>
+                    <span className="text-sm text-slate-500 font-medium">Uploader une vidéo :</span>
                     <label className="cursor-pointer bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors border border-slate-300">
                       {isUploading ? 'Téléchargement...' : 'Choisir un fichier'}
                       <input 
@@ -995,13 +1194,26 @@ export function AdminContentManager() {
                       />
                     </label>
                   </div>
+                  {videoData.url && !isUploading && (
+                    <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 space-y-2">
+                      <p className="text-xs text-emerald-700 font-medium">Vidéo uploadée avec succès.</p>
+                      <video
+                        controls
+                        preload="metadata"
+                        src={videoData.url}
+                        className="w-full rounded-lg border border-emerald-200 bg-black/90 max-h-56"
+                      >
+                        Votre navigateur ne supporte pas la lecture vidéo.
+                      </video>
+                    </div>
+                  )}
                   {isUploading && (
                     <div className="w-full bg-slate-200 rounded-full h-2.5 mt-2">
                       <progress
                         className="w-full h-2.5 rounded-full overflow-hidden"
                         value={uploadProgress}
                         max={100}
-                        aria-label="Progression du telechargement"
+                        aria-label="Progression du téléchargement"
                       />
                       <p className="text-xs text-slate-500 mt-1 text-right">{uploadProgress}%</p>
                     </div>
@@ -1014,8 +1226,8 @@ export function AdminContentManager() {
                 <select
                   value={videoData.subspecialty}
                   onChange={(e) => setVideoData({...videoData, subspecialty: e.target.value})}
-                  title="Sous-specialite"
-                  aria-label="Sous-specialite"
+                  title="Sous-spécialité"
+                  aria-label="Sous-spécialité"
                   className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all bg-white"
                 >
                   <option value="otologie">Otologie</option>
@@ -1064,9 +1276,11 @@ export function AdminContentManager() {
 
               {!videoData.isFreeDemo && (
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700">Prix (DZD) - Optionnel</label>
+                  <label className="text-sm font-medium text-slate-700">Prix (DZD)</label>
                   <input
                     type="number"
+                    required
+                    min={0}
                     value={videoData.price}
                     onChange={(e) => setVideoData({...videoData, price: Number(e.target.value)})}
                     className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all"
@@ -1076,7 +1290,28 @@ export function AdminContentManager() {
               )}
             </div>
 
-            <div className="pt-4 border-t border-slate-200 flex justify-end">
+            <div className="pt-4 border-t border-slate-200 flex justify-end gap-3">
+              {editingVideoId && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingVideoId(null);
+                    setVideoData({
+                      title: '',
+                      description: '',
+                      url: '',
+                      subspecialty: 'otologie',
+                      section: 'anatomie',
+                      isFreeDemo: false,
+                      price: 0
+                    });
+                  }}
+                  className="flex items-center gap-2 border border-slate-300 text-slate-700 px-6 py-3 rounded-xl font-medium hover:bg-slate-100 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                  Annuler l'édition
+                </button>
+              )}
               <button
                 type="submit"
                 disabled={isSubmitting}
@@ -1090,9 +1325,25 @@ export function AdminContentManager() {
           
           <div className="mt-12 border-t border-slate-200 pt-8">
             <h3 className="text-lg font-bold text-slate-900 mb-4">Vidéos existantes</h3>
+
+            <div className="mb-6 rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <h4 className="text-sm font-semibold text-slate-800 mb-3">Rapport de complétion par sous-spécialité</h4>
+              <div className="grid gap-2">
+                {getSubspecialtyCompletionReport().map((row) => (
+                  <div key={row.subspecialty} className="flex items-center justify-between rounded-lg bg-white border border-slate-200 px-3 py-2 text-sm">
+                    <span className="capitalize text-slate-700">{row.subspecialty}</span>
+                    <span className="text-slate-600">{row.completeCount}/{row.total} complètes ({row.completionRate}%)</span>
+                  </div>
+                ))}
+                {videos.length === 0 && (
+                  <p className="text-xs text-slate-500">Aucune vidéo disponible pour générer le rapport.</p>
+                )}
+              </div>
+            </div>
+
             <div className="grid gap-4">
               {videos.map(video => (
-                <div key={video.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-200">
+                <div key={video.id} className="p-4 bg-slate-50 rounded-xl border border-slate-200">
                   <div>
                     <h4 className="font-medium text-slate-900">{video.title}</h4>
                     <p className="text-sm text-slate-500 capitalize">{video.subspecialty} - {video.section}</p>
@@ -1103,7 +1354,7 @@ export function AdminContentManager() {
                           <span className="px-2 py-1 rounded-full bg-slate-200 text-slate-700">Cas: {stats.caseCount}</span>
                           <span className="px-2 py-1 rounded-full bg-slate-200 text-slate-700">QCM: {stats.qcmCount}</span>
                           <span className="px-2 py-1 rounded-full bg-slate-200 text-slate-700">Questions ouvertes: {stats.openQuestionCount}</span>
-                          <span className="px-2 py-1 rounded-full bg-slate-200 text-slate-700">Schemas: {stats.diagramCount}</span>
+                          <span className="px-2 py-1 rounded-full bg-slate-200 text-slate-700">Schémas: {stats.diagramCount}</span>
                           <span
                             className={`px-2 py-1 rounded-full font-medium ${
                               stats.isComplete
@@ -1111,28 +1362,69 @@ export function AdminContentManager() {
                                 : 'bg-amber-100 text-amber-700'
                             }`}
                           >
-                            {stats.isComplete ? 'Extensions completes' : 'Extensions manquantes'}
+                            {stats.isComplete ? 'Extensions complètes' : 'Extensions manquantes'}
                           </span>
+                          {!stats.isComplete && (
+                            <span className="px-2 py-1 rounded-full bg-red-100 text-red-700">
+                              Manquants: {stats.missingItems.join(', ')}
+                            </span>
+                          )}
                         </div>
                       );
                     })()}
                   </div>
-                  <div className="flex items-center gap-2">
-                    <button 
-                      onClick={() => handleEditVideo(video)}
-                      className="p-2 text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
-                      title="Modifier"
-                    >
-                      <Edit2 className="w-5 h-5" />
-                    </button>
-                    <button 
-                      onClick={() => handleDelete('videos', video.id)}
-                      className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                      title="Supprimer"
-                    >
-                      <Trash2 className="w-5 h-5" />
-                    </button>
+
+                  <div className="mt-3 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setPreviewVideoId((current) => (current === video.id ? null : video.id))}
+                        className="px-3 py-1.5 text-xs rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100 transition-colors"
+                      >
+                        {previewVideoId === video.id ? 'Masquer prévisualisation' : 'Prévisualiser'}
+                      </button>
+                      <a
+                        href={`/videos/${video.id}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="px-3 py-1.5 text-xs rounded-lg border border-medical-300 text-medical-700 hover:bg-medical-50 transition-colors"
+                      >
+                        Ouvrir la lecture
+                      </a>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleEditVideo(video)}
+                        className="p-2 text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
+                        title="Modifier"
+                      >
+                        <Edit2 className="w-5 h-5" />
+                      </button>
+                      <button
+                        onClick={() => handleDelete('videos', video.id)}
+                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        title="Supprimer"
+                      >
+                        <Trash2 className="w-5 h-5" />
+                      </button>
+                    </div>
                   </div>
+
+                  {previewVideoId === video.id && (
+                    <div className="mt-3 rounded-lg border border-slate-200 bg-white p-3 text-sm">
+                      <p className="text-slate-700 mb-1"><span className="font-semibold">Prévisualisation:</span> {video.title}</p>
+                      <p className="text-slate-500 line-clamp-2">{video.description}</p>
+                      <div className="mt-2 text-xs text-slate-600">
+                        {(() => {
+                          const stats = getVideoExtensionStats(video.id);
+                          return stats.isComplete
+                            ? 'Contenu complet: prêt pour usage pédagogique.'
+                            : `Cohérence incomplète: ${stats.missingItems.join(', ')}`;
+                        })()}
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
               {videos.length === 0 && (
@@ -1151,26 +1443,6 @@ export function AdminContentManager() {
                   <h3 className="text-lg font-bold text-slate-900 mb-1">{editingQcmId ? 'Modifier le QCM' : 'Ajouter un QCM'}</h3>
                   <p className="text-sm text-slate-500 mb-6">Créez une question à choix multiples liée à une vidéo spécifique.</p>
                 </div>
-                {editingQcmId && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingQcmId(null);
-                      setQcmData({
-                        videoId: '',
-                        question: '',
-                        options: getDefaultQcmOptions(),
-                        mode: 'single',
-                        correctOptionIndexes: [],
-                        explanation: '',
-                        reference: '',
-                      });
-                    }}
-                    className="text-sm text-slate-500 hover:text-slate-700"
-                  >
-                    Annuler l'édition
-                  </button>
-                )}
               </div>
 
               <div className="space-y-6">
@@ -1189,6 +1461,7 @@ export function AdminContentManager() {
                       <option key={v.id} value={v.id}>{v.title}</option>
                     ))}
                   </select>
+                  {renderSelectedVideoPreview(qcmData.videoId)}
                 </div>
 
                 <div className="space-y-2">
@@ -1230,8 +1503,20 @@ export function AdminContentManager() {
                 </div>
 
                 <div className="space-y-4">
-                  <label className="text-sm font-medium text-slate-700">Options de réponse (A, B, C, D, E)</label>
-                  {QCM_OPTION_LABELS.map((optionLabel, index) => (
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium text-slate-700">Options de réponse</label>
+                    <button
+                      type="button"
+                      onClick={handleAddQcmOption}
+                      className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      Ajouter une option
+                    </button>
+                  </div>
+                  {qcmData.options.map((_, index) => {
+                    const optionLabel = getOptionLabel(index);
+                    return (
                     <div key={optionLabel} className="flex items-center gap-4">
                       {qcmData.mode === 'single' ? (
                         <input
@@ -1289,15 +1574,26 @@ export function AdminContentManager() {
                         }`}
                         placeholder={`Option ${optionLabel}`}
                       />
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveQcmOption(index)}
+                        disabled={qcmData.options.length <= 2}
+                        className="rounded-lg border border-slate-300 p-2 text-slate-600 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+                        title="Supprimer cette option"
+                        aria-label="Supprimer cette option"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
                     </div>
-                  ))}
+                    );
+                  })}
                   <p className="text-xs text-slate-500">
-                    Choix unique: boutons radio. Choix multiple: cases à cocher.
+                    Choix unique: boutons radio. Choix multiple: cases à cocher. Minimum 2 options.
                   </p>
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700">Explication (Optionnelle)</label>
+                  <label className="text-sm font-medium text-slate-700">Explication (optionnelle)</label>
                   <textarea
                     value={qcmData.explanation}
                     onChange={(e) => setQcmData({...qcmData, explanation: e.target.value})}
@@ -1307,7 +1603,7 @@ export function AdminContentManager() {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700">Références (Optionnelle)</label>
+                  <label className="text-sm font-medium text-slate-700">Références (optionnelle)</label>
                   <textarea
                     value={qcmData.reference}
                     onChange={(e) => setQcmData({ ...qcmData, reference: e.target.value })}
@@ -1317,7 +1613,28 @@ export function AdminContentManager() {
                 </div>
               </div>
 
-              <div className="pt-4 border-t border-slate-200 flex justify-end">
+              <div className="pt-4 border-t border-slate-200 flex justify-end gap-3">
+                {editingQcmId && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingQcmId(null);
+                      setQcmData({
+                        videoId: '',
+                        question: '',
+                        options: getDefaultQcmOptions(),
+                        mode: 'single',
+                        correctOptionIndexes: [],
+                        explanation: '',
+                        reference: '',
+                      });
+                    }}
+                    className="flex items-center gap-2 border border-slate-300 text-slate-700 px-6 py-3 rounded-xl font-medium hover:bg-slate-100 transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                    Annuler l'édition
+                  </button>
+                )}
                 <button
                   type="submit"
                   disabled={isSubmitting}
@@ -1379,23 +1696,6 @@ export function AdminContentManager() {
                     Ajoutez une question ouverte liée à une vidéo avec sa réponse et ses références.
                   </p>
                 </div>
-                {editingOpenQuestionId && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingOpenQuestionId(null);
-                      setOpenQuestionData({
-                        videoId: '',
-                        question: '',
-                        answer: '',
-                        reference: '',
-                      });
-                    }}
-                    className="text-sm text-slate-500 hover:text-slate-700"
-                  >
-                    Annuler l'édition
-                  </button>
-                )}
               </div>
 
               <div className="space-y-6">
@@ -1414,6 +1714,7 @@ export function AdminContentManager() {
                       <option key={v.id} value={v.id}>{v.title}</option>
                     ))}
                   </select>
+                  {renderSelectedVideoPreview(openQuestionData.videoId)}
                 </div>
 
                 <div className="space-y-2">
@@ -1439,7 +1740,7 @@ export function AdminContentManager() {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700">Références (Optionnelle)</label>
+                  <label className="text-sm font-medium text-slate-700">Références (optionnelle)</label>
                   <textarea
                     value={openQuestionData.reference}
                     onChange={(e) => setOpenQuestionData({ ...openQuestionData, reference: e.target.value })}
@@ -1449,7 +1750,25 @@ export function AdminContentManager() {
                 </div>
               </div>
 
-              <div className="pt-4 border-t border-slate-200 flex justify-end">
+              <div className="pt-4 border-t border-slate-200 flex justify-end gap-3">
+                {editingOpenQuestionId && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingOpenQuestionId(null);
+                      setOpenQuestionData({
+                        videoId: '',
+                        question: '',
+                        answer: '',
+                        reference: '',
+                      });
+                    }}
+                    className="flex items-center gap-2 border border-slate-300 text-slate-700 px-6 py-3 rounded-xl font-medium hover:bg-slate-100 transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                    Annuler l'édition
+                  </button>
+                )}
                 <button
                   type="submit"
                   disabled={isSubmitting}
@@ -1507,31 +1826,6 @@ export function AdminContentManager() {
                   <h3 className="text-lg font-bold text-slate-900 mb-1">{editingCaseId ? 'Modifier le Cas Clinique' : 'Ajouter un Cas Clinique'}</h3>
                   <p className="text-sm text-slate-500 mb-6">Créez un cas clinique détaillé lié à une vidéo spécifique.</p>
                 </div>
-                {editingCaseId && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingCaseId(null);
-                      setCaseData({
-                        videoId: '',
-                        title: '',
-                        description: '',
-                        patientHistory: '',
-                        clinicalExamination: '',
-                        additionalTests: '',
-                        diagnosis: '',
-                        treatment: '',
-                        discussion: '',
-                        images: [],
-                        reference: '',
-                        questions: []
-                      });
-                    }}
-                    className="text-sm text-slate-500 hover:text-slate-700"
-                  >
-                    Annuler l'édition
-                  </button>
-                )}
               </div>
 
               <div className="space-y-6">
@@ -1550,6 +1844,7 @@ export function AdminContentManager() {
                       <option key={v.id} value={v.id}>{v.title}</option>
                     ))}
                   </select>
+                  {renderSelectedVideoPreview(caseData.videoId)}
                 </div>
 
                 <div className="space-y-2">
@@ -1658,8 +1953,9 @@ export function AdminContentManager() {
 
                   {(caseData.questions || []).length > 0 && (
                     <div className="space-y-4">
-                      {(caseData.questions || []).map((q: any, index: number) => {
-                        const kind: 'qcm' | 'select' | 'open' = (q.kind as any) || 'qcm';
+                      {(caseData.questions || []).map((q: EditableCaseQuestion, index: number) => {
+                        const kind: 'qcm' | 'select' | 'open' =
+                          q.kind === 'select' || q.kind === 'open' ? q.kind : 'qcm';
                         const qcmMode: 'single' | 'multiple' = q.qcmMode === 'multiple' ? 'multiple' : 'single';
                         const options: string[] = Array.isArray(q.options) && q.options.length
                           ? normalizeCaseQuestionOptions(q.options)
@@ -1703,7 +1999,7 @@ export function AdminContentManager() {
                                 <textarea
                                   value={q.prompt || ''}
                                   onChange={(e) =>
-                                    updateCaseQuestion(index, (current: any) => ({
+                                    updateCaseQuestion(index, (current) => ({
                                       ...current,
                                       prompt: e.target.value
                                     }))
@@ -1715,7 +2011,28 @@ export function AdminContentManager() {
 
                               {(kind === 'qcm' || kind === 'select') && (
                                 <div className="space-y-2">
-                                  <label className="text-xs font-medium text-slate-700">Options de réponse (A, B, C, D, E)</label>
+                                  <div className="flex items-center justify-between gap-3">
+                                    <label className="text-xs font-medium text-slate-700">Options de réponse</label>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        updateCaseQuestion(index, (current) => {
+                                          const currentOptions = Array.isArray(current.options)
+                                            ? [...current.options]
+                                            : getDefaultCaseQuestionOptions();
+                                          currentOptions.push('');
+                                          return {
+                                            ...current,
+                                            options: currentOptions,
+                                          };
+                                        })
+                                      }
+                                      className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-2.5 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-100"
+                                    >
+                                      <Plus className="h-3 w-3" />
+                                      Ajouter une option
+                                    </button>
+                                  </div>
                                   {kind === 'qcm' && (
                                     <div className="space-y-1">
                                       <label className="text-[11px] font-medium text-slate-700">Mode de correction</label>
@@ -1723,7 +2040,7 @@ export function AdminContentManager() {
                                         value={qcmMode}
                                         onChange={(e) => {
                                           const nextMode = e.target.value as 'single' | 'multiple';
-                                          updateCaseQuestion(index, (current: any) => {
+                                          updateCaseQuestion(index, (current) => {
                                             const currentIndexes: number[] = Array.isArray(current.correctOptionIndexes)
                                               ? current.correctOptionIndexes
                                               : [];
@@ -1747,8 +2064,10 @@ export function AdminContentManager() {
                                     </div>
                                   )}
                                   <div className="space-y-2">
-                                    {QCM_OPTION_LABELS.map((optLabel: string, optIndex: number) => (
-                                      <div key={optLabel} className="flex items-center gap-2">
+                                    {options.map((_, optIndex: number) => {
+                                      const optLabel = getOptionLabel(optIndex);
+                                      return (
+                                      <div key={`${q.id || index}-${optIndex}`} className="flex items-center gap-2">
                                         {kind === 'qcm' ? (
                                           qcmMode === 'single' ? (
                                             <input
@@ -1757,7 +2076,7 @@ export function AdminContentManager() {
                                               className="mt-0.5 h-4 w-4 text-medical-600 border-slate-300"
                                               checked={Array.isArray(q.correctOptionIndexes) && q.correctOptionIndexes.includes(optIndex)}
                                               onChange={() =>
-                                                updateCaseQuestion(index, (current: any) => ({
+                                                updateCaseQuestion(index, (current) => ({
                                                   ...current,
                                                   correctOptionIndexes: [optIndex],
                                                 }))
@@ -1771,7 +2090,7 @@ export function AdminContentManager() {
                                               checked={Array.isArray(q.correctOptionIndexes) && q.correctOptionIndexes.includes(optIndex)}
                                               onChange={(e) => {
                                                 const checked = e.target.checked;
-                                                updateCaseQuestion(index, (current: any) => {
+                                                updateCaseQuestion(index, (current) => {
                                                   const currentIndexes: number[] = Array.isArray(current.correctOptionIndexes)
                                                     ? [...current.correctOptionIndexes]
                                                     : [];
@@ -1801,7 +2120,7 @@ export function AdminContentManager() {
                                             className="mt-0.5 h-4 w-4 text-medical-600 border-slate-300"
                                             checked={typeof q.correctOptionIndex === 'number' && q.correctOptionIndex === optIndex}
                                             onChange={() =>
-                                              updateCaseQuestion(index, (current: any) => ({
+                                              updateCaseQuestion(index, (current) => ({
                                                 ...current,
                                                 correctOptionIndex: optIndex
                                               }))
@@ -1816,7 +2135,7 @@ export function AdminContentManager() {
                                           type="text"
                                           value={options[optIndex] || ''}
                                           onChange={(e) =>
-                                            updateCaseQuestion(index, (current: any) => {
+                                            updateCaseQuestion(index, (current) => {
                                               const nextOptions: string[] = Array.isArray(current.options)
                                                 ? [...current.options]
                                                 : getDefaultCaseQuestionOptions();
@@ -1830,15 +2149,64 @@ export function AdminContentManager() {
                                           className="flex-1 px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all text-sm"
                                           placeholder={`Option ${optLabel}`}
                                         />
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            updateCaseQuestion(index, (current) => {
+                                              const currentOptions = Array.isArray(current.options)
+                                                ? [...current.options]
+                                                : getDefaultCaseQuestionOptions();
+
+                                              if (currentOptions.length <= 2) {
+                                                return current;
+                                              }
+
+                                              const nextOptions = currentOptions.filter((_, idx) => idx !== optIndex);
+
+                                              const nextQcmIndexes = Array.isArray(current.correctOptionIndexes)
+                                                ? current.correctOptionIndexes
+                                                    .filter((idx) => idx !== optIndex)
+                                                    .map((idx) => (idx > optIndex ? idx - 1 : idx))
+                                                : [];
+
+                                              const rawCorrectSelect =
+                                                typeof current.correctOptionIndex === 'number'
+                                                  ? current.correctOptionIndex
+                                                  : undefined;
+
+                                              const nextCorrectSelect =
+                                                rawCorrectSelect === undefined
+                                                  ? undefined
+                                                  : rawCorrectSelect === optIndex
+                                                    ? undefined
+                                                    : rawCorrectSelect > optIndex
+                                                      ? rawCorrectSelect - 1
+                                                      : rawCorrectSelect;
+
+                                              return {
+                                                ...current,
+                                                options: nextOptions,
+                                                correctOptionIndexes: nextQcmIndexes,
+                                                correctOptionIndex: nextCorrectSelect,
+                                              };
+                                            })
+                                          }
+                                          disabled={options.length <= 2}
+                                          className="rounded-lg border border-slate-300 p-2 text-slate-600 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+                                          title="Supprimer cette option"
+                                          aria-label="Supprimer cette option"
+                                        >
+                                          <Trash2 className="h-4 w-4" />
+                                        </button>
                                       </div>
-                                    ))}
+                                    );})}
                                   </div>
                                   <p className="text-[11px] text-slate-500">
                                     {kind === 'qcm'
                                       ? (qcmMode === 'single'
                                         ? 'Choisissez une seule bonne réponse.'
                                         : 'Cochez une ou plusieurs bonnes réponses.')
-                                      : 'Sélectionnez l’option correcte pour la liste déroulante.'}
+                                      : 'Sélectionnez l’option correcte pour la liste déroulante.'} Minimum 2 options.
                                   </p>
                                 </div>
                               )}
@@ -1849,7 +2217,7 @@ export function AdminContentManager() {
                                   <textarea
                                     value={q.answer || ''}
                                     onChange={(e) =>
-                                      updateCaseQuestion(index, (current: any) => ({
+                                      updateCaseQuestion(index, (current) => ({
                                         ...current,
                                         answer: e.target.value
                                       }))
@@ -1866,7 +2234,7 @@ export function AdminContentManager() {
                                   <textarea
                                     value={q.explanation || ''}
                                     onChange={(e) =>
-                                      updateCaseQuestion(index, (current: any) => ({
+                                      updateCaseQuestion(index, (current) => ({
                                         ...current,
                                         explanation: e.target.value
                                       }))
@@ -1899,7 +2267,7 @@ export function AdminContentManager() {
                                           <button
                                             type="button"
                                             onClick={() =>
-                                              updateCaseQuestion(index, (current: any) => {
+                                              updateCaseQuestion(index, (current) => {
                                                 const currentImages: string[] = Array.isArray(current.images)
                                                   ? current.images
                                                   : [];
@@ -1947,7 +2315,33 @@ export function AdminContentManager() {
                 </div>
               </div>
 
-              <div className="pt-4 border-t border-slate-200 flex justify-end">
+              <div className="pt-4 border-t border-slate-200 flex justify-end gap-3">
+                {editingCaseId && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingCaseId(null);
+                      setCaseData({
+                        videoId: '',
+                        title: '',
+                        description: '',
+                        patientHistory: '',
+                        clinicalExamination: '',
+                        additionalTests: '',
+                        diagnosis: '',
+                        treatment: '',
+                        discussion: '',
+                        images: [],
+                        reference: '',
+                        questions: []
+                      });
+                    }}
+                    className="flex items-center gap-2 border border-slate-300 text-slate-700 px-6 py-3 rounded-xl font-medium hover:bg-slate-100 transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                    Annuler l'édition
+                  </button>
+                )}
                 <button
                   type="submit"
                   disabled={isSubmitting}
@@ -2013,23 +2407,6 @@ export function AdminContentManager() {
                   <h3 className="text-lg font-bold text-slate-900 mb-1">{editingDiagramId ? 'Modifier le Schéma' : 'Ajouter un Schéma'}</h3>
                   <p className="text-sm text-slate-500 mb-6">Ajoutez un schéma anatomique ou radiologique lié à une vidéo.</p>
                 </div>
-                {editingDiagramId && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingDiagramId(null);
-                      setDiagramData({
-                        videoId: '',
-                        title: '',
-                        imageUrl: '',
-                        markers: []
-                      });
-                    }}
-                    className="text-sm text-slate-500 hover:text-slate-700"
-                  >
-                    Annuler l&apos;édition
-                  </button>
-                )}
               </div>
 
               <div className="space-y-6">
@@ -2039,8 +2416,8 @@ export function AdminContentManager() {
                     required
                     value={diagramData.videoId}
                     onChange={(e) => setDiagramData({...diagramData, videoId: e.target.value})}
-                    title="Video associee au schema"
-                    aria-label="Video associee au schema"
+                    title="Vidéo associée au schéma"
+                    aria-label="Vidéo associée au schéma"
                     className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all bg-white"
                   >
                     <option value="" disabled>Sélectionner une vidéo...</option>
@@ -2048,6 +2425,7 @@ export function AdminContentManager() {
                       <option key={v.id} value={v.id}>{v.title}</option>
                     ))}
                   </select>
+                  {renderSelectedVideoPreview(diagramData.videoId)}
                 </div>
 
                 <div className="space-y-2">
@@ -2168,7 +2546,25 @@ export function AdminContentManager() {
                 </div>
               </div>
 
-              <div className="pt-4 border-t border-slate-200 flex justify-end">
+              <div className="pt-4 border-t border-slate-200 flex justify-end gap-3">
+                {editingDiagramId && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingDiagramId(null);
+                      setDiagramData({
+                        videoId: '',
+                        title: '',
+                        imageUrl: '',
+                        markers: []
+                      });
+                    }}
+                    className="flex items-center gap-2 border border-slate-300 text-slate-700 px-6 py-3 rounded-xl font-medium hover:bg-slate-100 transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                    Annuler l'édition
+                  </button>
+                )}
                 <button
                   type="submit"
                   disabled={isSubmitting}

@@ -6,6 +6,16 @@ import { db, doc, getDoc, collection, query, where, getDocs, addDoc } from '@/li
 import { useAuth } from '@/components/providers/auth-provider';
 import { useCart } from '@/components/providers/cart-provider';
 import { canAccessVideo } from '@/lib/access-control';
+import type {
+  CaseQuestionModel,
+  CaseQuestionUiState,
+  ClinicalCaseModel,
+  DiagramModel,
+  OpenQuestionModel,
+  QcmMode,
+  QcmModel,
+  VideoModel,
+} from '@/lib/models';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   FileText, 
@@ -22,17 +32,7 @@ import {
 } from 'lucide-react';
 import Image from 'next/image';
 
-interface Video {
-  id: string;
-  title: string;
-  description: string;
-  url: string;
-  subspecialty: string;
-  section: string;
-  isFreeDemo: boolean;
-  price: number;
-  packId: string;
-}
+type VideoTab = 'cas' | 'open' | 'qcm' | 'schemas';
 
 export default function VideoPage() {
   const router = useRouter();
@@ -41,21 +41,22 @@ export default function VideoPage() {
   const { user, profile, loading: authLoading } = useAuth();
   const { addItem, items } = useCart();
   
-  const [video, setVideo] = useState<Video | null>(null);
+  const [video, setVideo] = useState<VideoModel | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'cas' | 'open' | 'qcm' | 'schemas'>('cas');
+  const [activeTab, setActiveTab] = useState<VideoTab>('cas');
   const [hasAccess, setHasAccess] = useState(false);
 
   // Content states
-  const [qcms, setQcms] = useState<any[]>([]);
-  const [clinicalCases, setClinicalCases] = useState<any[]>([]);
-  const [openQuestions, setOpenQuestions] = useState<any[]>([]);
-  const [diagrams, setDiagrams] = useState<any[]>([]);
+  const [qcms, setQcms] = useState<QcmModel[]>([]);
+  const [clinicalCases, setClinicalCases] = useState<ClinicalCaseModel[]>([]);
+  const [openQuestions, setOpenQuestions] = useState<OpenQuestionModel[]>([]);
+  const [diagrams, setDiagrams] = useState<DiagramModel[]>([]);
 
   // QCM states
   const [qcmSelections, setQcmSelections] = useState<Record<string, number[]>>({});
   const [qcmResults, setQcmResults] = useState<Record<string, { selected: number[]; isCorrect: boolean | null }>>({});
   const [showQcmExplanations, setShowQcmExplanations] = useState<Record<string, boolean>>({});
+  const [qcmValidationErrors, setQcmValidationErrors] = useState<Record<string, string>>({});
 
   // Navigation states for multiple items
   const [activeCaseIndex, setActiveCaseIndex] = useState(0);
@@ -72,7 +73,7 @@ export default function VideoPage() {
   const [caseFeedbackDrafts, setCaseFeedbackDrafts] = useState<Record<string, string>>({});
 
   // Clinical case questions state (par cas et par question)
-  const [caseQuestionAnswers, setCaseQuestionAnswers] = useState<Record<string, Record<string, any>>>({});
+  const [caseQuestionAnswers, setCaseQuestionAnswers] = useState<Record<string, Record<string, CaseQuestionUiState>>>({});
 
   // Index de la question active par cas clinique
   const [activeCaseQuestionIndexes, setActiveCaseQuestionIndexes] = useState<Record<string, number>>({});
@@ -113,7 +114,7 @@ export default function VideoPage() {
         const docRef = doc(db, 'videos', id);
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
-          const videoData = { id: docSnap.id, ...docSnap.data() } as Video;
+          const videoData = { id: docSnap.id, ...docSnap.data() } as VideoModel;
           setVideo(videoData);
           
           // Check access
@@ -123,16 +124,16 @@ export default function VideoPage() {
           // Fetch related content
           if (access) {
             const qcmSnap = await getDocs(query(collection(db, 'qcms'), where('videoId', '==', id)));
-            setQcms(qcmSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+            setQcms(qcmSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as QcmModel));
 
             const caseSnap = await getDocs(query(collection(db, 'clinicalCases'), where('videoId', '==', id)));
-            setClinicalCases(caseSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+            setClinicalCases(caseSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as ClinicalCaseModel));
 
             const openQuestionsSnap = await getDocs(query(collection(db, 'openQuestions'), where('videoId', '==', id)));
-            setOpenQuestions(openQuestionsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+            setOpenQuestions(openQuestionsSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as OpenQuestionModel));
 
             const diagramSnap = await getDocs(query(collection(db, 'diagrams'), where('videoId', '==', id)));
-            setDiagrams(diagramSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+            setDiagrams(diagramSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as DiagramModel));
           }
         }
       } catch (error) {
@@ -253,7 +254,11 @@ export default function VideoPage() {
     }
   };
 
-  const updateCaseQuestionState = (caseId: string, questionId: string, updater: (current: any) => any) => {
+  const updateCaseQuestionState = (
+    caseId: string,
+    questionId: string,
+    updater: (current: CaseQuestionUiState) => CaseQuestionUiState,
+  ) => {
     setCaseQuestionAnswers((prev) => {
       const caseState = prev[caseId] ?? {};
       const current = caseState[questionId] ?? {};
@@ -297,15 +302,15 @@ export default function VideoPage() {
 
         {/* Tabs */}
         <div className="flex gap-2 border-b border-slate-800 mb-8 overflow-x-auto no-scrollbar">
-          {[
+          {([
             { id: 'cas', label: 'Cas Cliniques', icon: FileText },
             { id: 'open', label: 'Questions Ouvertes', icon: MessageSquare },
             { id: 'qcm', label: 'QCM', icon: CheckCircle2 },
             { id: 'schemas', label: 'Schémas', icon: ImageIcon },
-          ].map((tab) => (
+          ] as Array<{ id: VideoTab; label: string; icon: typeof FileText }>).map((tab) => (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
+              onClick={() => setActiveTab(tab.id)}
               className={`flex items-center gap-2 px-6 py-4 font-medium transition-colors whitespace-nowrap ${
                 activeTab === tab.id 
                   ? 'text-medical-400 border-b-2 border-medical-400 bg-medical-400/10' 
@@ -423,7 +428,14 @@ export default function VideoPage() {
                                         activeCaseQuestionIndexes[c.id] ?? 0,
                                         totalQuestions - 1,
                                       );
-                                      const q = c.questions[activeQuestionIndex];
+                                      const q = c.questions[activeQuestionIndex] as CaseQuestionModel & {
+                                        options?: string[];
+                                        correctOptionIndexes?: number[];
+                                        correctOptionIndex?: number;
+                                        explanation?: string;
+                                        answer?: string;
+                                        images?: string[];
+                                      };
                                       const kind: 'qcm' | 'select' | 'open' =
                                         q.kind === 'select' || q.kind === 'open' ? q.kind : 'qcm';
                                       const questionId = q.id || `q-${activeQuestionIndex}`;
@@ -893,23 +905,60 @@ export default function VideoPage() {
                       const q = qcms[index];
                       const result = qcmResults[q.id];
                       const showExplanation = showQcmExplanations[q.id];
+                      const validationError = qcmValidationErrors[q.id] || '';
                       const selectedIndices = result?.selected ?? qcmSelections[q.id] ?? [];
+                      const qcmMode: QcmMode = q.mode === 'multiple' ? 'multiple' : 'single';
+                      const safeOptions: string[] = Array.isArray(q.options) ? q.options.filter((opt) => typeof opt === 'string') : [];
+                      const correctIndexes: number[] =
+                        Array.isArray(q.correctOptionIndexes) && q.correctOptionIndexes.length > 0
+                          ? q.correctOptionIndexes
+                          : typeof q.correctOptionIndex === 'number'
+                            ? [q.correctOptionIndex]
+                            : [];
+                      const hasValidCorrectIndexes =
+                        correctIndexes.length > 0 &&
+                        correctIndexes.every((idx) => idx >= 0 && idx < safeOptions.length);
+                      const qcmConfigError =
+                        safeOptions.length === 0
+                          ? "Ce QCM est indisponible: aucune option n'est configuree."
+                          : !hasValidCorrectIndexes
+                            ? "Ce QCM est mal configure: aucune bonne reponse valide n'est definie."
+                            : '';
 
                       const toggleSelection = (optIndex: number) => {
-                        if (result) return; // locked after validation
-                        setQcmSelections(prev => {
+                        if (result || qcmConfigError) return; // locked after validation or invalid config
+                        setQcmSelections((prev) => {
                           const current = prev[q.id] ?? [];
-                          const exists = current.includes(optIndex);
-                          const next = exists ? current.filter((i) => i !== optIndex) : [...current, optIndex];
+                          let next = current;
+
+                          if (qcmMode === 'single') {
+                            next = [optIndex];
+                          } else {
+                            const exists = current.includes(optIndex);
+                            next = exists ? current.filter((i) => i !== optIndex) : [...current, optIndex];
+                          }
+
                           return { ...prev, [q.id]: next };
                         });
                       };
 
                       const validateAnswer = () => {
+                        if (qcmConfigError) {
+                          setQcmValidationErrors((prev) => ({ ...prev, [q.id]: qcmConfigError }));
+                          return;
+                        }
+
                         const current = qcmSelections[q.id] ?? [];
-                        const isCorrect = current.length === 1 && current[0] === q.correctOptionIndex;
+                        const isCorrect =
+                          current.length === correctIndexes.length &&
+                          current.every((idx) => correctIndexes.includes(idx));
                         setQcmResults(prev => ({ ...prev, [q.id]: { selected: current, isCorrect } }));
                         setShowQcmExplanations(prev => ({ ...prev, [q.id]: true }));
+                        setQcmValidationErrors((prev) => {
+                          const next = { ...prev };
+                          delete next[q.id];
+                          return next;
+                        });
                       };
 
                       return (
@@ -919,16 +968,35 @@ export default function VideoPage() {
                               <span className="flex-shrink-0 w-10 h-10 bg-medical-500/20 text-medical-400 rounded-xl flex items-center justify-center font-bold border border-medical-500/30">
                                 {index + 1}
                               </span>
-                              <p className="font-medium text-white text-xl leading-relaxed">{q.question}</p>
+                              <div>
+                                <p className="font-medium text-white text-xl leading-relaxed">{q.question}</p>
+                                <p className="text-xs text-slate-400 mt-1">
+                                  {qcmMode === 'single' ? 'Choix unique' : 'Choix multiple'}
+                                </p>
+                              </div>
                             </div>
 
-                            <div className="grid gap-3 mb-6">
-                              {q.options.map((opt: string, optIndex: number) => {
+                            {qcmConfigError && (
+                              <div className="mb-4 rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-200">
+                                {qcmConfigError}
+                              </div>
+                            )}
+
+                            {validationError && (
+                              <div className="mb-4 rounded-xl border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-200">
+                                {validationError}
+                              </div>
+                            )}
+
+                            {safeOptions.length > 0 ? (
+                              <div className="grid gap-3 mb-6">
+                              {safeOptions.map((opt: string, optIndex: number) => {
                                 const isSelected = selectedIndices.includes(optIndex);
+                                const isCorrectOption = correctIndexes.includes(optIndex);
                                 let rowClass = "w-full text-left p-5 rounded-xl border transition-all flex items-center justify-between group ";
 
                                 if (result) {
-                                  if (optIndex === q.correctOptionIndex) {
+                                  if (isCorrectOption) {
                                     rowClass += "bg-emerald-500/20 border-emerald-500/50 text-emerald-400";
                                   } else if (result.selected.includes(optIndex) && !result.isCorrect) {
                                     rowClass += "bg-red-500/20 border-red-500/50 text-red-400";
@@ -951,7 +1019,7 @@ export default function VideoPage() {
                                     <span className="flex items-center gap-4 text-left">
                                       <span
                                         className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold border transition-colors ${
-                                          result && optIndex === q.correctOptionIndex
+                                          result && isCorrectOption
                                             ? 'bg-emerald-500 text-white border-emerald-400'
                                             : result && result.selected.includes(optIndex) && !result.isCorrect
                                               ? 'bg-red-500 text-white border-red-400'
@@ -967,13 +1035,18 @@ export default function VideoPage() {
                                   </button>
                                 );
                               })}
-                            </div>
+                              </div>
+                            ) : (
+                              <div className="mb-6 rounded-xl border border-slate-700 bg-slate-900/40 p-4 text-sm text-slate-300">
+                                Les options de ce QCM sont indisponibles.
+                              </div>
+                            )}
 
                             <div className="flex items-center justify-between gap-4 flex-wrap">
                               <button
                                 type="button"
                                 onClick={validateAnswer}
-                                disabled={!!result || !(qcmSelections[q.id]?.length)}
+                                disabled={!!result || !!qcmConfigError || !(qcmSelections[q.id]?.length)}
                                 className="px-4 py-2 rounded-lg bg-medical-600 text-white text-sm font-medium hover:bg-medical-700 disabled:opacity-50 disabled:cursor-not-allowed"
                               >
                                 Valider
@@ -990,6 +1063,11 @@ export default function VideoPage() {
                                     });
                                     setShowQcmExplanations(prev => ({ ...prev, [q.id]: false }));
                                     setQcmSelections(prev => ({ ...prev, [q.id]: [] }));
+                                    setQcmValidationErrors((prev) => {
+                                      const next = { ...prev };
+                                      delete next[q.id];
+                                      return next;
+                                    });
                                   }}
                                   className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors text-sm font-medium"
                                 >
@@ -1200,7 +1278,7 @@ export default function VideoPage() {
                                     <div className="space-y-3 mt-4">
                                       <h4 className="font-medium text-medical-300 border-b border-slate-700 pb-2">Légendes</h4>
                                       <ul className="space-y-3">
-                                        {d.markers.map((marker: any, markerIndex: number) => (
+                                        {d.markers.map((marker, markerIndex: number) => (
                                           <li key={markerIndex} className="flex gap-3 text-slate-300">
                                             <span className="flex-shrink-0 w-6 h-6 bg-slate-700 text-white rounded-full flex items-center justify-center text-xs font-bold">
                                               {marker.number}

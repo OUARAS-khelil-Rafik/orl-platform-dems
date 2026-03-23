@@ -105,29 +105,34 @@ export default function SpecialtyPage() {
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: 0.2 }}
           >
-            <button
-              onClick={() => {
-                if (!packId) return;
-                if (!user) {
-                  router.push(`/sign-in?redirect=${encodeURIComponent(`/specialties/${slug}`)}`);
-                  return;
-                }
-                if (isPackInCart) {
-                  router.push('/checkout');
-                } else {
-                  addItem({
-                    id: packId,
-                    title: `Pack ${specialtyInfo.title}`,
-                    price: 5000, // Fixed price for now, ideally fetched from DB
-                    type: 'pack',
-                    imageUrl: ''
-                  });
-                }
-              }}
-              className="bg-white text-slate-900 px-8 py-4 rounded-2xl font-bold text-lg hover:bg-slate-100 transition-colors shadow-xl"
-            >
-              {isPackInCart ? 'Aller au panier' : 'Acheter le pack complet (5000 DZD)'}
-            </button>
+            {profile?.role !== 'admin' && (
+              <button
+                onClick={() => {
+                  if (!packId) return;
+                  if (profile?.role === 'admin') {
+                    return;
+                  }
+                  if (!user) {
+                    router.push(`/sign-in?redirect=${encodeURIComponent(`/specialties/${slug}`)}`);
+                    return;
+                  }
+                  if (isPackInCart) {
+                    router.push('/checkout');
+                  } else {
+                    addItem({
+                      id: packId,
+                      title: `Pack ${specialtyInfo.title}`,
+                      price: 5000, // Fixed price for now, ideally fetched from DB
+                      type: 'pack',
+                      imageUrl: ''
+                    });
+                  }
+                }}
+                className="bg-white text-slate-900 px-8 py-4 rounded-2xl font-bold text-lg hover:bg-slate-100 transition-colors shadow-xl"
+              >
+                {isPackInCart ? 'Aller au panier' : 'Acheter le pack complet (5000 DZD)'}
+              </button>
+            )}
           </motion.div>
         </div>
       </div>
@@ -209,9 +214,13 @@ function VideoCard({ video, hasAccess, index }: { video: Video; hasAccess: boole
         />
         <div className="absolute inset-0 flex items-center justify-center">
           {hasAccess ? (
-            <div className="w-14 h-14 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center group-hover:scale-110 transition-transform">
+            <Link
+              href={`/videos/${video.id}`}
+              aria-label={`Ouvrir le contenu de ${video.title}`}
+              className="w-14 h-14 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center group-hover:scale-110 transition-transform focus:outline-none focus:ring-2 focus:ring-white/70"
+            >
               <PlayCircle className="h-8 w-8 text-white" />
-            </div>
+            </Link>
           ) : (
             <div className="w-14 h-14 rounded-full bg-slate-900/60 backdrop-blur-sm flex items-center justify-center">
               <Lock className="h-6 w-6 text-slate-300" />

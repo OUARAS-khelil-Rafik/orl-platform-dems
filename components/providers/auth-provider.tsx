@@ -28,6 +28,8 @@ export interface UserProfile {
   doctorSpecialty?: string;
   purchasedVideos: string[];
   purchasedPacks: string[];
+  blockedVideoIds?: string[];
+  isBlocked?: boolean;
   createdAt: string;
 }
 
@@ -73,6 +75,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       subscriptionApprovalStatus: profile.subscriptionApprovalStatus || 'none',
       purchasedVideos: Array.isArray(profile.purchasedVideos) ? profile.purchasedVideos : [],
       purchasedPacks: Array.isArray(profile.purchasedPacks) ? profile.purchasedPacks : [],
+      blockedVideoIds: Array.isArray(profile.blockedVideoIds) ? profile.blockedVideoIds : [],
+      isBlocked: Boolean(profile.isBlocked),
       createdAt: profile.createdAt || new Date().toISOString(),
     };
   };
@@ -108,6 +112,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       subscriptionApprovalStatus: 'none',
       purchasedVideos: [],
       purchasedPacks: [],
+      blockedVideoIds: [],
+      isBlocked: false,
       createdAt: new Date().toISOString(),
     };
 

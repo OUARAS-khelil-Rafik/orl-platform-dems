@@ -41,7 +41,7 @@ export default function SignInPage() {
     <div className="flex-1 bg-slate-50 py-14 px-4">
       <div className="max-w-md mx-auto rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
         <h1 className="text-2xl font-bold text-slate-900 mb-2">Connexion</h1>
-        <p className="text-slate-600 mb-6">Accedez a votre espace DEMS ENT.</p>
+        <p className="text-slate-600 mb-6">Accédez à votre espace DEMS ENT.</p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>

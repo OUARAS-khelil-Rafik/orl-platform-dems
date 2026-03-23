@@ -9,7 +9,7 @@ const specialties = [
   {
     slug: 'rhinologie',
     title: 'Rhinologie',
-    description: 'Fosses nasales, sinus et pathologies associees.',
+    description: 'Fosses nasales, sinus et pathologies associées.',
   },
   {
     slug: 'laryngologie',
@@ -22,9 +22,9 @@ export default function SpecialtiesIndexPage() {
   return (
     <div className="flex-1 bg-slate-50 py-16">
       <div className="container mx-auto px-4 max-w-5xl">
-        <h1 className="text-3xl font-bold text-slate-900 mb-4">Specialites ORL</h1>
+        <h1 className="text-3xl font-bold text-slate-900 mb-4">Spécialités ORL</h1>
         <p className="text-slate-600 mb-8">
-          Accedez a chaque specialite pour consulter les videos, cas cliniques, QCM et schemas associes.
+          Accédez à chaque spécialité pour consulter les vidéos, cas cliniques, QCM et schémas associés.
         </p>
 
         <div className="grid gap-4 md:grid-cols-3">

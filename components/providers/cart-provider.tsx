@@ -52,6 +52,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!isAuthReady) return;
     if (!user) {
+      // Intentional reset on sign-out to avoid leaking a previous user's cart.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setItems([]);
       if (typeof window !== 'undefined') {
         window.localStorage.removeItem('dems_ent_cart');

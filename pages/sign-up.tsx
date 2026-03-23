@@ -97,7 +97,7 @@ export default function SignUpPage() {
 
           <div>
             <label htmlFor="signup-specialty" className="block text-sm font-medium text-slate-700 mb-1">
-              Specialite medicale *
+              Spécialité médicale *
             </label>
             <input
               id="signup-specialty"
@@ -122,7 +122,7 @@ export default function SignUpPage() {
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-medical-500 focus:ring-2 focus:ring-medical-200"
-              placeholder="Au moins 6 caracteres"
+              placeholder="Au moins 6 caractères"
             />
           </div>
 

@@ -10,9 +10,9 @@ export default function VideosIndexPage() {
   return (
     <div className="flex-1 bg-slate-50 py-16">
       <div className="container mx-auto px-4 max-w-4xl">
-        <h1 className="text-3xl font-bold text-slate-900 mb-4">Catalogue videos</h1>
+        <h1 className="text-3xl font-bold text-slate-900 mb-4">Catalogue vidéos</h1>
         <p className="text-slate-600 mb-8">
-          Choisissez une specialite pour voir les videos disponibles et leurs contenus pedagogiques.
+          Choisissez une spécialité pour voir les vidéos disponibles et leurs contenus pédagogiques.
         </p>
 
         <div className="grid gap-4 sm:grid-cols-3">

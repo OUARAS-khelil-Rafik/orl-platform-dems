@@ -8,17 +8,29 @@ import { useRouter } from 'next/router';
 
 interface SearchResult {
   id: string;
-  type: 'video' | 'qcm' | 'case' | 'diagram';
+  type: 'video' | 'qcm' | 'case' | 'open-question' | 'diagram';
   title: string;
   description?: string;
   url?: string;
   videoId?: string;
 }
 
+const normalizeSearchText = (value: string) =>
+  value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+
+const matchesQuery = (value: unknown, normalizedQuery: string) => {
+  if (typeof value !== 'string') return false;
+  return normalizeSearchText(value).includes(normalizedQuery);
+};
+
 export function SearchModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
+  const [navigationError, setNavigationError] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
@@ -28,6 +40,7 @@ export function SearchModal({ isOpen, onClose }: { isOpen: boolean; onClose: () 
     } else {
       setQuery('');
       setResults([]);
+      setNavigationError('');
     }
   }, [isOpen]);
 
@@ -39,44 +52,63 @@ export function SearchModal({ isOpen, onClose }: { isOpen: boolean; onClose: () 
       }
 
       setLoading(true);
+      setNavigationError('');
       try {
-        const searchLower = query.toLowerCase();
+        const normalizedQuery = normalizeSearchText(query);
         const searchResults: SearchResult[] = [];
 
         // Fetch all data (in a real app, use Algolia or Typesense for full-text search)
         // Since Firestore doesn't support full-text search natively, we fetch and filter client-side for this demo
         
-        const [videosSnap, qcmsSnap, casesSnap, diagramsSnap] = await Promise.all([
+        const [videosSnap, qcmsSnap, casesSnap, openQuestionsSnap, diagramsSnap] = await Promise.all([
           getDocs(collection(db, 'videos')),
           getDocs(collection(db, 'qcms')),
           getDocs(collection(db, 'clinicalCases')),
+          getDocs(collection(db, 'openQuestions')),
           getDocs(collection(db, 'diagrams'))
         ]);
 
         videosSnap.forEach(doc => {
           const data = doc.data();
-          if (data.title?.toLowerCase().includes(searchLower) || data.description?.toLowerCase().includes(searchLower)) {
+          if (matchesQuery(data.title, normalizedQuery) || matchesQuery(data.description, normalizedQuery)) {
             searchResults.push({ id: doc.id, type: 'video', title: data.title, description: data.description });
           }
         });
 
         qcmsSnap.forEach(doc => {
           const data = doc.data();
-          if (data.question?.toLowerCase().includes(searchLower)) {
+          if (matchesQuery(data.question, normalizedQuery)) {
             searchResults.push({ id: doc.id, type: 'qcm', title: data.question, videoId: data.videoId });
           }
         });
 
         casesSnap.forEach(doc => {
           const data = doc.data();
-          if (data.title?.toLowerCase().includes(searchLower) || data.content?.toLowerCase().includes(searchLower)) {
-            searchResults.push({ id: doc.id, type: 'case', title: data.title, description: data.content, videoId: data.videoId });
+          if (matchesQuery(data.title, normalizedQuery) || matchesQuery(data.description, normalizedQuery)) {
+            searchResults.push({ id: doc.id, type: 'case', title: data.title || 'Cas clinique', description: data.description, videoId: data.videoId });
+          }
+        });
+
+        openQuestionsSnap.forEach(doc => {
+          const data = doc.data();
+          if (
+            matchesQuery(data.question, normalizedQuery) ||
+            matchesQuery(data.answer, normalizedQuery) ||
+            matchesQuery(data.reference, normalizedQuery)
+          ) {
+            searchResults.push({
+              id: doc.id,
+              type: 'open-question',
+              title: data.question,
+              description: data.reference,
+              videoId: data.videoId,
+            });
           }
         });
 
         diagramsSnap.forEach(doc => {
           const data = doc.data();
-          if (data.title?.toLowerCase().includes(searchLower) || data.description?.toLowerCase().includes(searchLower)) {
+          if (matchesQuery(data.title, normalizedQuery) || matchesQuery(data.description, normalizedQuery)) {
             searchResults.push({ id: doc.id, type: 'diagram', title: data.title, description: data.description, videoId: data.videoId });
           }
         });
@@ -94,12 +126,20 @@ export function SearchModal({ isOpen, onClose }: { isOpen: boolean; onClose: () 
   }, [query]);
 
   const handleResultClick = (result: SearchResult) => {
-    onClose();
     if (result.type === 'video') {
+      onClose();
       router.push(`/videos/${result.id}`);
-    } else if (result.videoId) {
-      router.push(`/videos/${result.videoId}?tab=${result.type}`);
+      return;
     }
+
+    if (result.videoId) {
+      onClose();
+      const tab = result.type === 'case' ? 'cas' : result.type === 'open-question' ? 'open' : result.type;
+      router.push(`/videos/${result.videoId}?tab=${tab}`);
+      return;
+    }
+
+    setNavigationError("Impossible d'ouvrir ce resultat: video associee introuvable.");
   };
 
   const getIcon = (type: string) => {
@@ -107,6 +147,7 @@ export function SearchModal({ isOpen, onClose }: { isOpen: boolean; onClose: () 
       case 'video': return <PlayCircle className="w-5 h-5 text-medical-500" />;
       case 'qcm': return <HelpCircle className="w-5 h-5 text-accent-500" />;
       case 'case': return <FileText className="w-5 h-5 text-emerald-500" />;
+      case 'open-question': return <FileText className="w-5 h-5 text-cyan-500" />;
       case 'diagram': return <ImageIcon className="w-5 h-5 text-purple-500" />;
       default: return <Search className="w-5 h-5 text-slate-500" />;
     }
@@ -117,6 +158,7 @@ export function SearchModal({ isOpen, onClose }: { isOpen: boolean; onClose: () 
       case 'video': return 'Vidéo';
       case 'qcm': return 'QCM';
       case 'case': return 'Cas Clinique';
+      case 'open-question': return 'Question Ouverte';
       case 'diagram': return 'Schéma';
       default: return 'Autre';
     }
@@ -146,7 +188,7 @@ export function SearchModal({ isOpen, onClose }: { isOpen: boolean; onClose: () 
                 type="text"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Rechercher des vidéos, QCMs, cas cliniques..."
+                placeholder="Rechercher des vidéos, QCMs, cas cliniques, questions ouvertes..."
                 className="flex-1 bg-transparent border-none outline-none text-slate-900 placeholder:text-slate-400 text-lg"
               />
               {loading && <Loader2 className="w-5 h-5 text-medical-500 animate-spin" />}
@@ -161,6 +203,12 @@ export function SearchModal({ isOpen, onClose }: { isOpen: boolean; onClose: () 
             </div>
 
             <div className="max-h-[60vh] overflow-y-auto">
+              {navigationError && (
+                <div className="mx-4 mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                  {navigationError}
+                </div>
+              )}
+
               {query.length > 0 && query.length < 2 && (
                 <div className="p-8 text-center text-slate-500">
                   Tapez au moins 2 caractères pour rechercher...

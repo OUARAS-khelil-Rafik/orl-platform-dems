@@ -9,6 +9,8 @@ export interface UserProfileLike {
   subscriptionApprovalStatus?: SubscriptionApprovalStatus;
   purchasedVideos?: string[];
   purchasedPacks?: string[];
+  blockedVideoIds?: string[];
+  isBlocked?: boolean;
 }
 
 export interface VideoAccessTarget {
@@ -47,7 +49,19 @@ export const canAccessVideo = (
     return false;
   }
 
+  if (profile.isBlocked) {
+    return false;
+  }
+
+  if (profile.blockedVideoIds?.includes(video.id)) {
+    return false;
+  }
+
   if (profile.role === 'admin') {
+    return true;
+  }
+
+  if (profile.role === 'vip_plus') {
     return true;
   }
 
