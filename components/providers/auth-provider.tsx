@@ -16,12 +16,16 @@ import {
   type LocalAuthUser,
 } from '@/lib/local-data';
 import { type SubscriptionApprovalStatus, type UserRole } from '@/lib/access-control';
+import { formatFullName, normalizeNameParts, splitFullName } from '@/lib/name-utils';
 
 export interface UserProfile {
   uid: string;
   email: string;
   displayName: string;
+  firstName?: string;
+  lastName?: string;
   photoURL: string;
+  defaultMode?: 'light' | 'dark';
   role: UserRole;
   subscriptionEndDate?: string;
   subscriptionApprovalStatus: SubscriptionApprovalStatus;
@@ -40,7 +44,8 @@ interface AuthContextType {
   isAuthReady: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (payload: {
-    displayName: string;
+    lastName: string;
+    firstName: string;
     email: string;
     password: string;
     doctorSpecialty?: string;
@@ -65,12 +70,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isAuthReady, setIsAuthReady] = useState(false);
 
   const normalizeProfile = (profile: UserProfile, authUser?: LocalAuthUser): UserProfile => {
+    const sourceDisplayName = profile.displayName || authUser?.displayName || 'Utilisateur';
+    const splitSourceName = splitFullName(sourceDisplayName);
+    const normalizedNames = normalizeNameParts(
+      profile.lastName || splitSourceName.lastName,
+      profile.firstName || splitSourceName.firstName,
+    );
+    const normalizedDisplayName =
+      formatFullName(normalizedNames.lastName, normalizedNames.firstName) || sourceDisplayName;
+
     return {
       ...profile,
       uid: profile.uid,
       email: profile.email,
-      displayName: profile.displayName || authUser?.displayName || 'Utilisateur',
+      displayName: normalizedDisplayName,
+      firstName: normalizedNames.firstName,
+      lastName: normalizedNames.lastName,
       photoURL: profile.photoURL || authUser?.photoURL || '',
+      defaultMode: profile.defaultMode === 'dark' ? 'dark' : 'light',
       role: profile.role || 'user',
       subscriptionApprovalStatus: profile.subscriptionApprovalStatus || 'none',
       purchasedVideos: Array.isArray(profile.purchasedVideos) ? profile.purchasedVideos : [],
@@ -107,7 +124,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       uid: authUser.uid,
       email: authUser.email,
       displayName: authUser.displayName || 'Utilisateur',
+      firstName: splitFullName(authUser.displayName || 'Utilisateur').firstName,
+      lastName: splitFullName(authUser.displayName || 'Utilisateur').lastName,
       photoURL: authUser.photoURL || '',
+      defaultMode: 'light',
       role: 'user',
       subscriptionApprovalStatus: 'none',
       purchasedVideos: [],
@@ -154,17 +174,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signUp = async (payload: {
-    displayName: string;
+    lastName: string;
+    firstName: string;
     email: string;
     password: string;
     doctorSpecialty?: string;
   }) => {
-    const createdUser = createAuthAccount(payload);
+    const normalizedNames = normalizeNameParts(payload.lastName, payload.firstName);
+    const displayName = formatFullName(normalizedNames.lastName, normalizedNames.firstName);
+
+    const createdUser = createAuthAccount({
+      email: payload.email,
+      password: payload.password,
+      displayName,
+    });
     setUser(createdUser);
     const resolvedProfile = await ensureUserProfile(createdUser);
 
     const nextProfile = {
       ...resolvedProfile,
+      firstName: normalizedNames.firstName,
+      lastName: normalizedNames.lastName,
+      displayName,
       doctorSpecialty: payload.doctorSpecialty?.trim() || resolvedProfile.doctorSpecialty,
     };
 

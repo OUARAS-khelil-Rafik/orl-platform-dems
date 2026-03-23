@@ -10,7 +10,8 @@ export default function SignUpPage() {
   const router = useRouter();
   const { user, loading, signUp } = useAuth();
 
-  const [displayName, setDisplayName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [firstName, setFirstName] = useState('');
   const [email, setEmail] = useState('');
   const [doctorSpecialty, setDoctorSpecialty] = useState('');
   const [password, setPassword] = useState('');
@@ -41,7 +42,8 @@ export default function SignUpPage() {
     try {
       setIsSubmitting(true);
       await signUp({
-        displayName,
+        lastName,
+        firstName,
         email,
         password,
         doctorSpecialty,
@@ -64,18 +66,34 @@ export default function SignUpPage() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label htmlFor="signup-display-name" className="block text-sm font-medium text-slate-700 mb-1">
-              Nom complet *
+            <label htmlFor="signup-last-name" className="block text-sm font-medium text-slate-700 mb-1">
+              Nom *
             </label>
             <input
-              id="signup-display-name"
+              id="signup-last-name"
               type="text"
               required
-              autoComplete="name"
-              value={displayName}
-              onChange={(event) => setDisplayName(event.target.value)}
+              autoComplete="family-name"
+              value={lastName}
+              onChange={(event) => setLastName(event.target.value)}
               className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-medical-500 focus:ring-2 focus:ring-medical-200"
-              placeholder="Dr Nom Prenom"
+              placeholder="OUARAS"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="signup-first-name" className="block text-sm font-medium text-slate-700 mb-1">
+              Prénom *
+            </label>
+            <input
+              id="signup-first-name"
+              type="text"
+              required
+              autoComplete="given-name"
+              value={firstName}
+              onChange={(event) => setFirstName(event.target.value)}
+              className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-medical-500 focus:ring-2 focus:ring-medical-200"
+              placeholder="Rafik"
             />
           </div>
 

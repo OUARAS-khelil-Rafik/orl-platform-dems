@@ -2,28 +2,53 @@
 
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/components/providers/auth-provider';
-import { db, doc, updateDoc, collection, query, where, getDocs, updateAuthPhotoURL, updateAuthPassword } from '@/lib/local-data';
+import {
+  db,
+  doc,
+  updateDoc,
+  collection,
+  query,
+  where,
+  getDocs,
+  getDoc,
+  setDoc,
+  deleteDoc,
+  deleteAuthAccountByUid,
+  updateAuthPhotoURL,
+  updateAuthPassword,
+} from '@/lib/local-data';
 import { motion } from 'motion/react';
-import { User, PlayCircle, Star, Camera, LockKeyhole } from 'lucide-react';
+import { User, PlayCircle, Star, Camera, LockKeyhole, HardDrive, Moon, Sun, Trash2 } from 'lucide-react';
 import { useRouter } from 'next/router';
 import Image from 'next/image';
 import Link from 'next/link';
 import { isSubscriptionActive } from '@/lib/access-control';
+import { formatFullName, normalizeNameParts, splitFullName } from '@/lib/name-utils';
 
 export default function UserDashboard() {
-  const { user, profile, loading: authLoading } = useAuth();
+  const { user, profile, loading: authLoading, signOut } = useAuth();
   const router = useRouter();
   
-  const [activeTab, setActiveTab] = useState<'profile' | 'purchases'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'storage' | 'purchases'>('profile');
   const [payments, setPayments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
-  const [displayName, setDisplayName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [defaultMode, setDefaultMode] = useState<'light' | 'dark'>('light');
+  const [isSavingDefaultMode, setIsSavingDefaultMode] = useState(false);
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  const [storageSettings, setStorageSettings] = useState({
+    cloudName: '',
+    apiKey: '',
+    apiSecret: '',
+  });
+  const [isSavingStorageSettings, setIsSavingStorageSettings] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -33,17 +58,46 @@ export default function UserDashboard() {
 
   useEffect(() => {
     if (profile) {
-      setDisplayName(profile.displayName);
+      const splitName = splitFullName(profile.displayName || '');
+      setLastName(profile.lastName || splitName.lastName);
+      setFirstName(profile.firstName || splitName.firstName);
+      setDefaultMode(profile.defaultMode || 'light');
     }
   }, [profile]);
 
   useEffect(() => {
     const tabParam = router.query.tab;
     if (!tabParam || Array.isArray(tabParam)) return;
-    if (tabParam === 'profile' || tabParam === 'purchases') {
+    if (tabParam === 'profile' || tabParam === 'purchases' || tabParam === 'storage') {
       setActiveTab(tabParam);
     }
   }, [router.query.tab]);
+
+  useEffect(() => {
+    const loadStorageSettings = async () => {
+      if (!profile || profile.role !== 'admin') return;
+
+      try {
+        const settingsDoc = await getDoc(doc(db, 'appSettings', 'cloudinary'));
+        if (settingsDoc.exists()) {
+          const data = settingsDoc.data() as Record<string, any>;
+          setStorageSettings({
+            cloudName: String(data.cloudName || ''),
+            apiKey: String(data.apiKey || ''),
+            apiSecret: String(data.apiSecret || ''),
+          });
+        }
+      } catch (error) {
+        console.error('Error loading storage settings:', error);
+      }
+    };
+
+    loadStorageSettings();
+  }, [profile]);
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', defaultMode);
+  }, [defaultMode]);
 
   useEffect(() => {
     const fetchHistory = async () => {
@@ -63,8 +117,20 @@ export default function UserDashboard() {
 
   const handleUpdateProfile = async () => {
     if (!user) return;
+
+    const normalizedNames = normalizeNameParts(lastName, firstName);
+    const displayName = formatFullName(normalizedNames.lastName, normalizedNames.firstName);
+    if (!displayName) {
+      alert('Le nom et le prénom sont obligatoires.');
+      return;
+    }
+
     try {
-      await updateDoc(doc(db, 'users', user.uid), { displayName });
+      await updateDoc(doc(db, 'users', user.uid), {
+        displayName,
+        lastName: normalizedNames.lastName,
+        firstName: normalizedNames.firstName,
+      });
       setIsEditing(false);
       alert('Profil mis à jour avec succès.');
     } catch (error) {
@@ -141,6 +207,82 @@ export default function UserDashboard() {
     }
   };
 
+  const handleSaveDefaultMode = async () => {
+    if (!user) return;
+
+    try {
+      setIsSavingDefaultMode(true);
+      await updateDoc(doc(db, 'users', user.uid), { defaultMode });
+      alert('Mode par défaut enregistré.');
+    } catch (error) {
+      console.error('Error saving default mode:', error);
+      alert('Erreur lors de l\'enregistrement du mode.');
+    } finally {
+      setIsSavingDefaultMode(false);
+    }
+  };
+
+  const handleSaveStorageSettings = async () => {
+    if (!profile || profile.role !== 'admin') return;
+
+    try {
+      setIsSavingStorageSettings(true);
+      await setDoc(doc(db, 'appSettings', 'cloudinary'), {
+        cloudName: storageSettings.cloudName.trim(),
+        apiKey: storageSettings.apiKey.trim(),
+        apiSecret: storageSettings.apiSecret.trim(),
+        updatedAt: new Date().toISOString(),
+        updatedBy: profile.uid,
+      });
+      alert('Paramètres Cloudinary enregistrés.');
+    } catch (error) {
+      console.error('Error saving storage settings:', error);
+      alert('Erreur lors de l\'enregistrement des paramètres de stockage.');
+    } finally {
+      setIsSavingStorageSettings(false);
+    }
+  };
+
+  const handleDeleteAccountPermanently = async () => {
+    if (!user || !profile || profile.role === 'admin') return;
+
+    const firstConfirm = confirm('Cette action est définitive. Voulez-vous vraiment supprimer votre compte ?');
+    if (!firstConfirm) return;
+
+    const secondConfirm = confirm('Toutes vos données seront supprimées définitivement. Confirmer ?');
+    if (!secondConfirm) return;
+
+    try {
+      setIsDeletingAccount(true);
+
+      const [paymentsSnap, pedagogicalFeedbackSnap, clinicalCaseFeedbackSnap] = await Promise.all([
+        getDocs(query(collection(db, 'payments'), where('userId', '==', user.uid))),
+        getDocs(query(collection(db, 'pedagogicalFeedback'), where('userId', '==', user.uid))),
+        getDocs(query(collection(db, 'clinicalCaseFeedback'), where('userId', '==', user.uid))),
+      ]);
+
+      await Promise.all([
+        ...paymentsSnap.docs.map((paymentDoc) => deleteDoc(doc(db, 'payments', paymentDoc.id))),
+        ...pedagogicalFeedbackSnap.docs.map((feedbackDoc) =>
+          deleteDoc(doc(db, 'pedagogicalFeedback', feedbackDoc.id)),
+        ),
+        ...clinicalCaseFeedbackSnap.docs.map((feedbackDoc) =>
+          deleteDoc(doc(db, 'clinicalCaseFeedback', feedbackDoc.id)),
+        ),
+      ]);
+
+      await deleteDoc(doc(db, 'users', user.uid));
+      deleteAuthAccountByUid(user.uid);
+      await signOut();
+      router.push('/');
+    } catch (error) {
+      console.error('Error deleting account:', error);
+      alert('Erreur lors de la suppression du compte.');
+    } finally {
+      setIsDeletingAccount(false);
+    }
+  };
+
   if (loading || authLoading) {
     return <div className="flex-1 flex items-center justify-center"><div className="w-12 h-12 border-4 border-medical-500 border-t-transparent rounded-full animate-spin" /></div>;
   }
@@ -182,7 +324,7 @@ export default function UserDashboard() {
               />
             </label>
           </div>
-          <h2 className="text-lg font-bold text-slate-900">{profile.displayName}</h2>
+          <h2 className="text-lg font-bold text-slate-900">{formatFullName(lastName, firstName) || profile.displayName}</h2>
           <p className="text-sm text-slate-500 mb-3">{profile.email}</p>
           <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider
             ${isVipPlus ? 'bg-accent-100 text-accent-700' :
@@ -204,6 +346,17 @@ export default function UserDashboard() {
             <User className={`h-5 w-5 ${activeTab === 'profile' ? 'text-medical-600' : 'text-slate-400'}`} />
             Mon Profil
           </button>
+          {profile.role === 'admin' && (
+            <button
+              onClick={() => setActiveTab('storage')}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors text-sm font-medium ${
+                activeTab === 'storage' ? 'bg-medical-50 text-medical-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+              }`}
+            >
+              <HardDrive className={`h-5 w-5 ${activeTab === 'storage' ? 'text-medical-600' : 'text-slate-400'}`} />
+              Gestion de Stockage
+            </button>
+          )}
           {(profile.role === 'vip' || isVipPlus) && (
             <button
               onClick={() => setActiveTab('purchases')}
@@ -226,23 +379,43 @@ export default function UserDashboard() {
               <h3 className="text-2xl font-bold text-slate-900 mb-6">Informations Personnelles</h3>
               <div className="space-y-6 max-w-md">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Nom d'affichage</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Nom et prénom</label>
                   {isEditing ? (
-                    <div className="flex gap-2">
+                    <div className="grid sm:grid-cols-2 gap-2">
                       <input 
                         type="text" 
-                        value={displayName} 
-                        onChange={(e) => setDisplayName(e.target.value)}
-                        title="Nom d affichage"
-                        aria-label="Nom d affichage"
+                        value={lastName}
+                        onChange={(e) => setLastName(e.target.value)}
+                        title="Nom"
+                        aria-label="Nom"
+                        placeholder="NOM"
+                        className="flex-1 px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-medical-500 focus:border-medical-500 outline-none transition-all"
+                      />
+                      <input
+                        type="text"
+                        value={firstName}
+                        onChange={(e) => setFirstName(e.target.value)}
+                        title="Prénom"
+                        aria-label="Prénom"
+                        placeholder="Prénom"
                         className="flex-1 px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-medical-500 focus:border-medical-500 outline-none transition-all"
                       />
                       <button onClick={handleUpdateProfile} className="bg-medical-600 text-white px-4 py-2 rounded-xl font-medium hover:bg-medical-700">Enregistrer</button>
-                      <button onClick={() => { setIsEditing(false); setDisplayName(profile.displayName); }} className="bg-slate-100 text-slate-700 px-4 py-2 rounded-xl font-medium hover:bg-slate-200">Annuler</button>
+                      <button
+                        onClick={() => {
+                          setIsEditing(false);
+                          const splitName = splitFullName(profile.displayName || '');
+                          setLastName(profile.lastName || splitName.lastName);
+                          setFirstName(profile.firstName || splitName.firstName);
+                        }}
+                        className="bg-slate-100 text-slate-700 px-4 py-2 rounded-xl font-medium hover:bg-slate-200"
+                      >
+                        Annuler
+                      </button>
                     </div>
                   ) : (
                     <div className="flex justify-between items-center px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl">
-                      <span className="text-slate-900 font-medium">{profile.displayName}</span>
+                      <span className="text-slate-900 font-medium">{formatFullName(lastName, firstName) || profile.displayName}</span>
                       <button onClick={() => setIsEditing(true)} className="text-sm text-medical-600 font-medium hover:underline">Modifier</button>
                     </div>
                   )}
@@ -292,6 +465,112 @@ export default function UserDashboard() {
                     </button>
                   </div>
                 </div>
+
+                <div className="pt-4 border-t border-slate-100">
+                  <h4 className="text-sm font-semibold text-slate-900 mb-3">Mode par défaut</h4>
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                    <div className="relative flex-1">
+                      <select
+                        value={defaultMode}
+                        onChange={(e) => setDefaultMode(e.target.value as 'light' | 'dark')}
+                        className="w-full appearance-none px-4 py-2 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-medical-500 focus:border-medical-500 outline-none"
+                        title="Mode par défaut"
+                        aria-label="Mode par défaut"
+                      >
+                        <option value="light">Light mode</option>
+                        <option value="dark">Dark mode</option>
+                      </select>
+                      {defaultMode === 'dark' ? (
+                        <Moon className="pointer-events-none absolute right-3 top-2.5 h-4 w-4 text-slate-500" />
+                      ) : (
+                        <Sun className="pointer-events-none absolute right-3 top-2.5 h-4 w-4 text-slate-500" />
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleSaveDefaultMode}
+                      disabled={isSavingDefaultMode}
+                      className="px-4 py-2 rounded-xl bg-medical-600 text-white text-sm font-medium hover:bg-medical-700 disabled:opacity-60"
+                    >
+                      {isSavingDefaultMode ? 'Enregistrement...' : 'Enregistrer'}
+                    </button>
+                  </div>
+                </div>
+
+                {profile.role !== 'admin' && (
+                  <div className="pt-4 border-t border-slate-100">
+                    <h4 className="text-sm font-semibold text-red-700 mb-2">Suppression définitive du compte</h4>
+                    <p className="text-xs text-slate-600 mb-3">
+                      Cette action est irréversible et supprime votre compte ainsi que vos données associées.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleDeleteAccountPermanently}
+                      disabled={isDeletingAccount}
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-red-600 text-white text-sm font-medium hover:bg-red-700 disabled:opacity-60"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      {isDeletingAccount ? 'Suppression...' : 'Supprimer définitivement mon compte'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          )}
+
+          {activeTab === 'storage' && profile.role === 'admin' && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8"
+            >
+              <h3 className="text-2xl font-bold text-slate-900 mb-2">Gestion de Stockage</h3>
+              <p className="text-sm text-slate-500 mb-6">
+                Configurez les identifiants Cloudinary utilisés par la plateforme.
+              </p>
+
+              <div className="max-w-xl space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Cloudinary Cloud Name</label>
+                  <input
+                    type="text"
+                    value={storageSettings.cloudName}
+                    onChange={(e) => setStorageSettings((prev) => ({ ...prev, cloudName: e.target.value }))}
+                    className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-medical-500 focus:border-medical-500 outline-none"
+                    placeholder="ex: demo-cloud"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">CLOUDINARY_API_KEY</label>
+                  <input
+                    type="text"
+                    value={storageSettings.apiKey}
+                    onChange={(e) => setStorageSettings((prev) => ({ ...prev, apiKey: e.target.value }))}
+                    className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-medical-500 focus:border-medical-500 outline-none"
+                    placeholder="ex: 123456789012345"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">CLOUDINARY_API_SECRET</label>
+                  <input
+                    type="password"
+                    value={storageSettings.apiSecret}
+                    onChange={(e) => setStorageSettings((prev) => ({ ...prev, apiSecret: e.target.value }))}
+                    className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-medical-500 focus:border-medical-500 outline-none"
+                    placeholder="Secret API"
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleSaveStorageSettings}
+                  disabled={isSavingStorageSettings}
+                  className="inline-flex items-center justify-center px-4 py-2 rounded-xl bg-medical-600 text-white text-sm font-medium hover:bg-medical-700 disabled:opacity-60"
+                >
+                  {isSavingStorageSettings ? 'Enregistrement...' : 'Enregistrer les paramètres'}
+                </button>
               </div>
             </motion.div>
           )}

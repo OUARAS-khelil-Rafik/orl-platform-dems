@@ -12,7 +12,6 @@ import type {
   ClinicalCaseModel,
   DiagramModel,
   OpenQuestionModel,
-  QcmMode,
   QcmModel,
   VideoModel,
 } from '@/lib/models';
@@ -28,11 +27,14 @@ import {
   X,
   Maximize2,
   AlertCircle,
-  RotateCcw
+  RotateCcw,
+  SendHorizontal
 } from 'lucide-react';
 import Image from 'next/image';
 
 type VideoTab = 'cas' | 'open' | 'qcm' | 'schemas';
+
+const VIEWED_VIDEOS_KEY = 'dems-viewed-videos-v1';
 
 export default function VideoPage() {
   const router = useRouter();
@@ -74,6 +76,13 @@ export default function VideoPage() {
 
   // Clinical case questions state (par cas et par question)
   const [caseQuestionAnswers, setCaseQuestionAnswers] = useState<Record<string, Record<string, CaseQuestionUiState>>>({});
+  // QCM, open question and diagram feedback drafts & visibility
+  const [qcmFeedbackDrafts, setQcmFeedbackDrafts] = useState<Record<string, string>>({});
+  const [qcmFeedbackVisible, setQcmFeedbackVisible] = useState<Record<string, boolean>>({});
+  const [openQuestionFeedbackDrafts, setOpenQuestionFeedbackDrafts] = useState<Record<string, string>>({});
+  const [openQuestionFeedbackVisible, setOpenQuestionFeedbackVisible] = useState<Record<string, boolean>>({});
+  const [diagramFeedbackDrafts, setDiagramFeedbackDrafts] = useState<Record<string, string>>({});
+  const [diagramFeedbackVisible, setDiagramFeedbackVisible] = useState<Record<string, boolean>>({});
 
   // Index de la question active par cas clinique
   const [activeCaseQuestionIndexes, setActiveCaseQuestionIndexes] = useState<Record<string, number>>({});
@@ -161,6 +170,26 @@ export default function VideoPage() {
       document.removeEventListener('copy', handleCopy);
     };
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !video?.id || !hasAccess) {
+      return;
+    }
+
+    try {
+      const raw = window.localStorage.getItem(VIEWED_VIDEOS_KEY);
+      const parsed = raw ? (JSON.parse(raw) as unknown) : [];
+      const current = Array.isArray(parsed)
+        ? parsed.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+        : [];
+
+      if (!current.includes(video.id)) {
+        window.localStorage.setItem(VIEWED_VIDEOS_KEY, JSON.stringify([...current, video.id]));
+      }
+    } catch {
+      window.localStorage.setItem(VIEWED_VIDEOS_KEY, JSON.stringify([video.id]));
+    }
+  }, [video?.id, hasAccess]);
 
   if (!router.isReady || loading || authLoading) {
     return (
@@ -251,6 +280,60 @@ export default function VideoPage() {
     } catch (error) {
       console.error('Error sending clinical case feedback:', error);
       alert('Erreur lors de l\'envoi de votre discussion.');
+    }
+  };
+
+  // Generic pedagogical feedback sender used by questions and diagrams
+  const handleSendPedagogicalFeedback = async (
+    itemType: 'caseQuestion' | 'qcm' | 'openQuestion' | 'diagram',
+    itemId: string,
+    parentCaseId?: string,
+  ) => {
+    // Read the draft message from the corresponding draft state instead of using prompt()
+    let message = '';
+    if (itemType === 'qcm') {
+      message = qcmFeedbackDrafts[itemId] ?? '';
+    } else if (itemType === 'openQuestion') {
+      message = openQuestionFeedbackDrafts[itemId] ?? '';
+    } else if (itemType === 'diagram') {
+      message = diagramFeedbackDrafts[itemId] ?? '';
+    } else if (itemType === 'caseQuestion') {
+      message = caseQuestionAnswers[parentCaseId ?? '']?.[itemId]?.feedbackText ?? '';
+    }
+
+    const trimmed = message?.trim();
+    if (!trimmed) return;
+
+    try {
+      await addDoc(collection(db, 'pedagogicalFeedback'), {
+        videoId: id,
+        itemType,
+        itemId,
+        caseId: parentCaseId ?? null,
+        userId: profile?.uid ?? null,
+        userEmail: profile?.email ?? null,
+        message: trimmed,
+        createdAt: new Date().toISOString(),
+      });
+
+      // Clear draft and hide the textarea after sending
+      if (itemType === 'qcm') {
+        setQcmFeedbackDrafts((prev) => ({ ...prev, [itemId]: '' }));
+        setQcmFeedbackVisible((prev) => ({ ...prev, [itemId]: false }));
+      } else if (itemType === 'openQuestion') {
+        setOpenQuestionFeedbackDrafts((prev) => ({ ...prev, [itemId]: '' }));
+        setOpenQuestionFeedbackVisible((prev) => ({ ...prev, [itemId]: false }));
+      } else if (itemType === 'diagram') {
+        setDiagramFeedbackDrafts((prev) => ({ ...prev, [itemId]: '' }));
+        setDiagramFeedbackVisible((prev) => ({ ...prev, [itemId]: false }));
+      } else if (itemType === 'caseQuestion') {
+        updateCaseQuestionState(parentCaseId ?? '', itemId, (cur) => ({ ...cur, feedbackText: '', showFeedback: false }));
+      }
+
+      alert('Feedback envoyé. Merci !');
+    } catch (error) {
+      console.error('Error sending pedagogical feedback:', error);
+      alert("Erreur lors de l'envoi du feedback.");
     }
   };
 
@@ -497,6 +580,7 @@ export default function VideoPage() {
                                             validated: true,
                                             isCorrect: ok,
                                             showExplanation: true,
+                                            showFeedback: true,
                                           };
                                         });
                                       };
@@ -756,6 +840,7 @@ export default function VideoPage() {
                                                     updateCaseQuestionState(c.id, questionId, (current) => ({
                                                       ...current,
                                                       showExplanation: !current.showExplanation,
+                                                      showFeedback: !current.showExplanation,
                                                     }))
                                                   }
                                                   className="text-[11px] font-medium text-slate-300 hover:text-medical-300"
@@ -774,24 +859,35 @@ export default function VideoPage() {
                                               </div>
                                             )}
 
-                                            {/* Feedback utilisateur par question (optionnel) */}
-                                            <div className="mt-3 border-t border-slate-800 pt-2 space-y-1">
-                                              <p className="text-[11px] font-medium text-slate-300">
-                                                Discussion / Feedback (optionnel)
-                                              </p>
-                                              <textarea
-                                                rows={2}
-                                                value={feedbackText}
-                                                onChange={(e) =>
-                                                  updateCaseQuestionState(c.id, questionId, (current) => ({
-                                                    ...current,
-                                                    feedbackText: e.target.value,
-                                                  }))
-                                                }
-                                                className="w-full rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-[11px] text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-medical-500"
-                                                placeholder="Notez vos remarques sur cette question (facultatif)..."
-                                              />
-                                            </div>
+                                            {/* Feedback utilisateur par question (optionnel) — affiché après interaction/réponse */}
+                                            {caseQuestionAnswers[c.id]?.[questionId]?.showFeedback && (
+                                              <div className="mt-3 border-t border-slate-800 pt-2 space-y-1">
+                                                <p className="text-[11px] font-medium text-slate-300">Discussion / Feedback (optionnel)</p>
+                                                <div className="relative mt-2 rounded-2xl border border-slate-700 bg-slate-900/60 focus-within:ring-1 focus-within:ring-medical-500">
+                                                  <textarea
+                                                    rows={2}
+                                                    value={feedbackText}
+                                                    onChange={(e) =>
+                                                      updateCaseQuestionState(c.id, questionId, (current) => ({
+                                                        ...current,
+                                                        feedbackText: e.target.value,
+                                                      }))
+                                                    }
+                                                    className="w-full rounded-2xl bg-transparent px-3 pr-12 py-2.5 text-[11px] leading-relaxed text-slate-100 placeholder:text-slate-500 focus:outline-none resize-none overflow-y-auto"
+                                                    placeholder="Saisir une discussion / feedback (optionnel)..."
+                                                  />
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => handleSendPedagogicalFeedback('caseQuestion', questionId, c.id)}
+                                                    disabled={!feedbackText.trim()}
+                                                    className="absolute right-2 bottom-2 inline-flex h-8 w-8 items-center justify-center rounded-full border border-medical-400/40 bg-medical-600 text-white shadow-sm hover:bg-medical-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                                                    aria-label="Envoyer le feedback à l'administration"
+                                                  >
+                                                    <SendHorizontal className="w-4 h-4" />
+                                                  </button>
+                                                </div>
+                                              </div>
+                                            )}
                                           </div>
 
                                           <div className="flex items-center justify-between mt-3 text-[11px] text-slate-400">
@@ -827,33 +923,7 @@ export default function VideoPage() {
                                   </div>
                                 )}
 
-                                {/* 5. Discussion globale du cas clinique */}
-                                <div className="mt-6 border-t border-slate-700 pt-4">
-                                  <h4 className="text-sm font-semibold text-slate-200 mb-2">Discussion / Feedback global</h4>
-                                  <p className="text-xs text-slate-400 mb-2">Partagez vos remarques ou votre réflexion globale sur ce cas clinique, elles seront envoyées à l'équipe pédagogique.</p>
-                                  <textarea
-                                    value={caseFeedbackDrafts[c.id] ?? ''}
-                                    onChange={(e) =>
-                                      setCaseFeedbackDrafts((prev) => ({
-                                        ...prev,
-                                        [c.id]: e.target.value,
-                                      }))
-                                    }
-                                    rows={3}
-                                    className="w-full rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-medical-500"
-                                    placeholder="Écrivez votre feedback ou votre réflexion clinique globale..."
-                                  />
-                                  <div className="mt-2 flex justify-end">
-                                    <button
-                                      type="button"
-                                      onClick={() => handleSubmitCaseFeedback(c.id)}
-                                      disabled={!caseFeedbackDrafts[c.id]?.trim()}
-                                      className="px-4 py-2 rounded-lg bg-medical-600 text-white text-xs font-medium hover:bg-medical-700 disabled:opacity-40 disabled:cursor-not-allowed"
-                                    >
-                                      Envoyer à l'admin
-                                    </button>
-                                  </div>
-                                </div>
+                                {/* Global clinical-case discussion removed — per UX change */}
                           </div>
                         </div>
                       );
@@ -907,7 +977,6 @@ export default function VideoPage() {
                       const showExplanation = showQcmExplanations[q.id];
                       const validationError = qcmValidationErrors[q.id] || '';
                       const selectedIndices = result?.selected ?? qcmSelections[q.id] ?? [];
-                      const qcmMode: QcmMode = q.mode === 'multiple' ? 'multiple' : 'single';
                       const safeOptions: string[] = Array.isArray(q.options) ? q.options.filter((opt) => typeof opt === 'string') : [];
                       const correctIndexes: number[] =
                         Array.isArray(q.correctOptionIndexes) && q.correctOptionIndexes.length > 0
@@ -929,14 +998,8 @@ export default function VideoPage() {
                         if (result || qcmConfigError) return; // locked after validation or invalid config
                         setQcmSelections((prev) => {
                           const current = prev[q.id] ?? [];
-                          let next = current;
-
-                          if (qcmMode === 'single') {
-                            next = [optIndex];
-                          } else {
-                            const exists = current.includes(optIndex);
-                            next = exists ? current.filter((i) => i !== optIndex) : [...current, optIndex];
-                          }
+                          const exists = current.includes(optIndex);
+                          const next = exists ? current.filter((i) => i !== optIndex) : [...current, optIndex];
 
                           return { ...prev, [q.id]: next };
                         });
@@ -954,6 +1017,7 @@ export default function VideoPage() {
                           current.every((idx) => correctIndexes.includes(idx));
                         setQcmResults(prev => ({ ...prev, [q.id]: { selected: current, isCorrect } }));
                         setShowQcmExplanations(prev => ({ ...prev, [q.id]: true }));
+                        setQcmFeedbackVisible((prev) => ({ ...prev, [q.id]: true }));
                         setQcmValidationErrors((prev) => {
                           const next = { ...prev };
                           delete next[q.id];
@@ -970,9 +1034,13 @@ export default function VideoPage() {
                               </span>
                               <div>
                                 <p className="font-medium text-white text-xl leading-relaxed">{q.question}</p>
-                                <p className="text-xs text-slate-400 mt-1">
-                                  {qcmMode === 'single' ? 'Choix unique' : 'Choix multiple'}
-                                </p>
+
+                                {q.reference && (
+                                  <div className="mt-3 rounded-xl border border-slate-700 bg-slate-900/40 p-3">
+                                    <h4 className="text-sm font-semibold text-slate-200 mb-1">Référence</h4>
+                                    <p className="text-sm text-slate-400 whitespace-pre-wrap">{q.reference}</p>
+                                  </div>
+                                )}
                               </div>
                             </div>
 
@@ -1063,6 +1131,7 @@ export default function VideoPage() {
                                     });
                                     setShowQcmExplanations(prev => ({ ...prev, [q.id]: false }));
                                     setQcmSelections(prev => ({ ...prev, [q.id]: [] }));
+                                    setQcmFeedbackVisible((prev) => ({ ...prev, [q.id]: false }));
                                     setQcmValidationErrors((prev) => {
                                       const next = { ...prev };
                                       delete next[q.id];
@@ -1074,6 +1143,28 @@ export default function VideoPage() {
                                   <RotateCcw className="w-4 h-4" />
                                   Recommencer
                                 </button>
+                              )}
+                              {qcmFeedbackVisible[q.id] && (
+                                <div className="w-full mt-3">
+                                  <div className="relative rounded-2xl border border-slate-700 bg-slate-900/60 focus-within:ring-1 focus-within:ring-medical-500">
+                                    <textarea
+                                      rows={3}
+                                      value={qcmFeedbackDrafts[q.id] ?? ''}
+                                      onChange={(e) => setQcmFeedbackDrafts((prev) => ({ ...prev, [q.id]: e.target.value }))}
+                                      className="w-full rounded-2xl bg-transparent px-3 pr-12 py-2.5 text-sm leading-relaxed text-slate-100 placeholder:text-slate-500 focus:outline-none resize-none overflow-y-auto"
+                                      placeholder="Saisir une discussion / feedback (optionnel)..."
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSendPedagogicalFeedback('qcm', q.id)}
+                                      disabled={!(qcmFeedbackDrafts[q.id] || '').trim()}
+                                      className="absolute right-2 bottom-2 inline-flex h-8 w-8 items-center justify-center rounded-full border border-medical-400/40 bg-medical-600 text-white shadow-sm hover:bg-medical-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                                      aria-label="Envoyer le feedback à l'administration"
+                                    >
+                                      <SendHorizontal className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                </div>
                               )}
                             </div>
 
@@ -1158,15 +1249,17 @@ export default function VideoPage() {
                               </div>
                             </div>
 
-                            <div className="flex justify-end">
+                              <div className="flex justify-end">
                               <button
                                 type="button"
-                                onClick={() =>
+                                onClick={() => {
+                                  const nextVisible = !isAnswerVisible;
                                   setOpenQuestionAnswersVisible((prev) => ({
                                     ...prev,
-                                    [item.id]: !isAnswerVisible,
-                                  }))
-                                }
+                                    [item.id]: nextVisible,
+                                  }));
+                                  setOpenQuestionFeedbackVisible((prev) => ({ ...prev, [item.id]: nextVisible }));
+                                }}
                                 className="px-4 py-2 rounded-lg border border-slate-600 text-slate-200 hover:bg-slate-700 text-xs font-medium"
                               >
                                 {isAnswerVisible ? 'Masquer la réponse' : 'Afficher la réponse'}
@@ -1184,6 +1277,30 @@ export default function VideoPage() {
                               <div className="rounded-xl border border-slate-700 bg-slate-900/40 p-4">
                                 <h3 className="text-sm font-semibold text-slate-200 mb-2">Références</h3>
                                 <p className="text-sm text-slate-400 whitespace-pre-wrap">{item.reference}</p>
+                              </div>
+                            )}
+
+                            {openQuestionFeedbackVisible[item.id] && (
+                              <div className="mt-3 border-t border-slate-800 pt-3">
+                                <p className="text-[11px] font-medium text-slate-300">Discussion / Feedback (optionnel)</p>
+                                <div className="relative mt-2 rounded-2xl border border-slate-700 bg-slate-900/60 focus-within:ring-1 focus-within:ring-medical-500">
+                                  <textarea
+                                    rows={3}
+                                    value={openQuestionFeedbackDrafts[item.id] ?? ''}
+                                    onChange={(e) => setOpenQuestionFeedbackDrafts((prev) => ({ ...prev, [item.id]: e.target.value }))}
+                                    className="w-full rounded-2xl bg-transparent px-3 pr-12 py-2.5 text-[11px] leading-relaxed text-slate-100 placeholder:text-slate-500 focus:outline-none resize-none overflow-y-auto"
+                                    placeholder="Saisir une discussion / feedback (optionnel)..."
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSendPedagogicalFeedback('openQuestion', item.id)}
+                                    disabled={!(openQuestionFeedbackDrafts[item.id] || '').trim()}
+                                    className="absolute right-2 bottom-2 inline-flex h-8 w-8 items-center justify-center rounded-full border border-medical-400/40 bg-medical-600 text-white shadow-sm hover:bg-medical-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                                    aria-label="Envoyer le feedback à l'administration"
+                                  >
+                                    <SendHorizontal className="w-4 h-4" />
+                                  </button>
+                                </div>
                               </div>
                             )}
                           </div>
@@ -1257,12 +1374,18 @@ export default function VideoPage() {
                                 </h3>
                                 <button
                                   type="button"
-                                  onClick={() =>
+                                  onClick={() => {
+                                    const nextVisible = !showAnswers;
                                     setDiagramAnswersVisible((prev) => ({
                                       ...prev,
-                                      [d.id]: !showAnswers,
-                                    }))
-                                  }
+                                      [d.id]: nextVisible,
+                                    }));
+                                    if (nextVisible) {
+                                      setDiagramFeedbackVisible((prev) => ({ ...prev, [d.id]: true }));
+                                    } else {
+                                      setDiagramFeedbackVisible((prev) => ({ ...prev, [d.id]: false }));
+                                    }
+                                  }}
                                   className="px-4 py-2 rounded-lg border border-slate-600 text-slate-200 hover:bg-slate-700 text-xs font-medium"
                                 >
                                   {showAnswers ? 'Masquer les réponses' : 'Afficher les réponses'}
@@ -1292,6 +1415,36 @@ export default function VideoPage() {
                                           </li>
                                         ))}
                                       </ul>
+                                    </div>
+                                  )}
+
+                                  {d.reference && (
+                                    <div className="mt-4 rounded-xl border border-slate-700 bg-slate-900/40 p-3">
+                                      <h4 className="text-sm font-semibold text-slate-200 mb-1">Référence</h4>
+                                      <p className="text-sm text-slate-400 whitespace-pre-wrap">{d.reference}</p>
+                                    </div>
+                                  )}
+                                  {diagramFeedbackVisible[d.id] && (
+                                    <div className="mt-3 border-t border-slate-800 pt-3">
+                                      <p className="text-[11px] font-medium text-slate-300">Discussion / Feedback (optionnel)</p>
+                                      <div className="relative mt-2 rounded-2xl border border-slate-700 bg-slate-900/60 focus-within:ring-1 focus-within:ring-medical-500">
+                                        <textarea
+                                          rows={3}
+                                          value={diagramFeedbackDrafts[d.id] ?? ''}
+                                          onChange={(e) => setDiagramFeedbackDrafts((prev) => ({ ...prev, [d.id]: e.target.value }))}
+                                          className="w-full rounded-2xl bg-transparent px-3 pr-12 py-2.5 text-[11px] leading-relaxed text-slate-100 placeholder:text-slate-500 focus:outline-none resize-none overflow-y-auto"
+                                          placeholder="Saisir une discussion / feedback (optionnel)..."
+                                        />
+                                        <button
+                                          type="button"
+                                          onClick={() => handleSendPedagogicalFeedback('diagram', d.id)}
+                                          disabled={!(diagramFeedbackDrafts[d.id] || '').trim()}
+                                          className="absolute right-2 bottom-2 inline-flex h-8 w-8 items-center justify-center rounded-full border border-medical-400/40 bg-medical-600 text-white shadow-sm hover:bg-medical-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                                          aria-label="Envoyer le feedback à l'administration"
+                                        >
+                                          <SendHorizontal className="w-4 h-4" />
+                                        </button>
+                                      </div>
                                     </div>
                                   )}
                                 </>

@@ -103,6 +103,7 @@ export interface DiagramModel {
   imageUrl: string;
   markers: DiagramMarkerModel[];
   description?: string;
+  reference?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -115,4 +116,5 @@ export interface CaseQuestionUiState {
   validated?: boolean;
   isCorrect?: boolean | null;
   showExplanation?: boolean;
+  showFeedback?: boolean;
 }

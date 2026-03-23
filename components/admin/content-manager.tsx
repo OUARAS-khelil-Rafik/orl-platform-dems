@@ -877,7 +877,8 @@ export function AdminContentManager() {
     videoId: '',
     title: '',
     imageUrl: '',
-    markers: [] as { number: number, x: number, y: number, label: string, description: string }[]
+    markers: [] as { number: number, x: number, y: number, label: string, description: string }[],
+    reference: '',
   });
 
   const handleDiagramSubmit = async (e: React.FormEvent) => {
@@ -915,7 +916,8 @@ export function AdminContentManager() {
         videoId: diagramData.videoId,
         title: '',
         imageUrl: '',
-        markers: []
+        markers: [],
+        reference: '',
       });
     } catch (error: unknown) {
       console.error('Error adding/updating diagram:', error);
@@ -931,7 +933,8 @@ export function AdminContentManager() {
       videoId: d.videoId || '',
       title: d.title || '',
       imageUrl: d.imageUrl || '',
-      markers: d.markers || []
+      markers: d.markers || [],
+      reference: d.reference || '',
     });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -2441,6 +2444,17 @@ export function AdminContentManager() {
                 </div>
 
                 <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-700">Référence (optionnel)</label>
+                  <input
+                    type="text"
+                    value={diagramData.reference}
+                    onChange={(e) => setDiagramData({...diagramData, reference: e.target.value})}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all"
+                    placeholder="Ex: TDM ORL - Article / Page / DOI"
+                  />
+                </div>
+
+                <div className="space-y-2">
                   <label className="text-sm font-medium text-slate-700">Schéma (upload d'image)</label>
                   <div className="space-y-3">
                     {diagramData.imageUrl && (
@@ -2548,7 +2562,7 @@ export function AdminContentManager() {
 
               <div className="pt-4 border-t border-slate-200 flex justify-end gap-3">
                 {editingDiagramId && (
-                  <button
+                      <button
                     type="button"
                     onClick={() => {
                       setEditingDiagramId(null);
@@ -2556,7 +2570,8 @@ export function AdminContentManager() {
                         videoId: '',
                         title: '',
                         imageUrl: '',
-                        markers: []
+                        markers: [],
+                        reference: '',
                       });
                     }}
                     className="flex items-center gap-2 border border-slate-300 text-slate-700 px-6 py-3 rounded-xl font-medium hover:bg-slate-100 transition-colors"

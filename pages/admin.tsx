@@ -29,14 +29,20 @@ import {
   Video,
   Lock,
   Unlock,
+  MessageSquare,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { useRouter } from 'next/router';
 import { AdminContentManager } from '@/components/admin/content-manager';
 import { SeedDataButton } from '@/components/admin/seed-data';
+import { formatFullName, normalizeNameParts, splitFullName } from '@/lib/name-utils';
 
 type AdminUser = {
   id: string;
   displayName?: string;
+  firstName?: string;
+  lastName?: string;
   email?: string;
   role?: 'admin' | 'user' | 'vip' | 'vip_plus';
   createdAt?: string;
@@ -53,6 +59,32 @@ type AdminVideo = {
   id: string;
   title?: string;
   isFreeDemo?: boolean;
+};
+
+type AdminQcm = {
+  id: string;
+  videoId?: string;
+};
+
+type AdminOpenQuestion = {
+  id: string;
+  videoId?: string;
+};
+
+type AdminDiagram = {
+  id: string;
+  videoId?: string;
+};
+
+type AdminCaseQuestion = {
+  id?: string;
+  kind?: 'qcm' | 'select' | 'open';
+};
+
+type AdminClinicalCase = {
+  id: string;
+  videoId?: string;
+  questions?: AdminCaseQuestion[];
 };
 
 type UserStatus = 'active' | 'expired' | 'pending';
@@ -79,21 +111,41 @@ type AdminPayment = {
   createdAt: string;
 };
 
+type DiscussionEntry = {
+  id: string;
+  source: 'pedagogical' | 'clinicalCase';
+  isRead: boolean;
+  createdAt: string;
+  userId?: string | null;
+  userEmail?: string | null;
+  videoId?: string | null;
+  caseId?: string | null;
+  itemType?: string | null;
+  itemId?: string | null;
+  message: string;
+};
+
 export default function AdminDashboard() {
   const { profile, loading: authLoading } = useAuth();
   const router = useRouter();
   
-  const [activeTab, setActiveTab] = useState<'users' | 'payments' | 'content'>('payments');
+  const [activeTab, setActiveTab] = useState<'users' | 'payments' | 'content' | 'discussions'>('payments');
   const [payments, setPayments] = useState<AdminPayment[]>([]);
   const [allPayments, setAllPayments] = useState<AdminPayment[]>([]);
   const [videos, setVideos] = useState<AdminVideo[]>([]);
+  const [qcms, setQcms] = useState<AdminQcm[]>([]);
+  const [openQuestions, setOpenQuestions] = useState<AdminOpenQuestion[]>([]);
+  const [diagrams, setDiagrams] = useState<AdminDiagram[]>([]);
+  const [clinicalCases, setClinicalCases] = useState<AdminClinicalCase[]>([]);
   const [users, setUsers] = useState<AdminUser[]>([]);
+  const [discussions, setDiscussions] = useState<DiscussionEntry[]>([]);
   const [purchaseModalUserId, setPurchaseModalUserId] = useState<string | null>(null);
   const [isCreateUserModalOpen, setIsCreateUserModalOpen] = useState(false);
   const [videoToAddByUser, setVideoToAddByUser] = useState<Record<string, string>>({});
   const [isCreatingUser, setIsCreatingUser] = useState(false);
   const [newUserForm, setNewUserForm] = useState({
-    displayName: '',
+    lastName: '',
+    firstName: '',
     email: '',
     password: '',
     role: 'user' as 'user' | 'vip' | 'vip_plus' | 'admin',
@@ -108,6 +160,8 @@ export default function AdminDashboard() {
       ? 'Paiements en attente'
       : activeTab === 'users'
         ? 'Utilisateurs'
+        : activeTab === 'discussions'
+          ? 'Gestion des Discussions'
         : 'Contenu pédagogique';
 
   useEffect(() => {
@@ -129,11 +183,28 @@ export default function AdminDashboard() {
       if (profile?.role !== 'admin') return;
       
       try {
-        const [paymentsSnap, allPaymentsSnap, usersSnap, videosSnap] = await Promise.all([
+        const [
+          paymentsSnap,
+          allPaymentsSnap,
+          usersSnap,
+          videosSnap,
+          qcmsSnap,
+          openQuestionsSnap,
+          diagramsSnap,
+          clinicalCasesSnap,
+          pedagogicalFeedbackSnap,
+          clinicalCaseFeedbackSnap,
+        ] = await Promise.all([
           getDocs(query(collection(db, 'payments'), where('status', '==', 'pending'))),
           getDocs(collection(db, 'payments')),
           getDocs(collection(db, 'users')),
           getDocs(collection(db, 'videos')),
+          getDocs(collection(db, 'qcms')),
+          getDocs(collection(db, 'openQuestions')),
+          getDocs(collection(db, 'diagrams')),
+          getDocs(collection(db, 'clinicalCases')),
+          getDocs(collection(db, 'pedagogicalFeedback')),
+          getDocs(collection(db, 'clinicalCaseFeedback')),
         ]);
 
         setPayments(paymentsSnap.docs.map(d => ({ id: d.id, ...d.data() } as AdminPayment)));
@@ -142,6 +213,51 @@ export default function AdminDashboard() {
         const nextUsers = usersSnap.docs.map(d => ({ id: d.id, ...d.data() } as AdminUser));
         setUsers(nextUsers);
         setVideos(videosSnap.docs.map((d) => ({ ...(d.data() as AdminVideo), id: d.id })));
+        setQcms(qcmsSnap.docs.map((d) => ({ ...(d.data() as AdminQcm), id: d.id })));
+        setOpenQuestions(openQuestionsSnap.docs.map((d) => ({ ...(d.data() as AdminOpenQuestion), id: d.id })));
+        setDiagrams(diagramsSnap.docs.map((d) => ({ ...(d.data() as AdminDiagram), id: d.id })));
+        setClinicalCases(clinicalCasesSnap.docs.map((d) => ({ ...(d.data() as AdminClinicalCase), id: d.id })));
+
+        const pedagogicalEntries = pedagogicalFeedbackSnap.docs.map((d) => {
+          const data = d.data() as Record<string, any>;
+          return {
+            id: d.id,
+            source: 'pedagogical' as const,
+            isRead: Boolean(data.isRead),
+            createdAt: String(data.createdAt || ''),
+            userId: data.userId ?? null,
+            userEmail: data.userEmail ?? null,
+            videoId: data.videoId ?? null,
+            caseId: data.caseId ?? null,
+            itemType: data.itemType ?? null,
+            itemId: data.itemId ?? null,
+            message: String(data.message || ''),
+          };
+        });
+
+        const clinicalEntries = clinicalCaseFeedbackSnap.docs.map((d) => {
+          const data = d.data() as Record<string, any>;
+          return {
+            id: d.id,
+            source: 'clinicalCase' as const,
+            isRead: Boolean(data.isRead),
+            createdAt: String(data.createdAt || ''),
+            userId: data.userId ?? null,
+            userEmail: data.userEmail ?? null,
+            videoId: data.videoId ?? null,
+            caseId: data.caseId ?? null,
+            itemType: 'clinicalCase' as const,
+            itemId: data.caseId ?? null,
+            message: String(data.message || ''),
+          };
+        });
+
+        const nextDiscussions = [...pedagogicalEntries, ...clinicalEntries].sort((a, b) => {
+          const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          return bTime - aTime;
+        });
+        setDiscussions(nextDiscussions);
       } catch (error) {
         console.error('Error fetching admin data:', error);
       } finally {
@@ -741,12 +857,13 @@ export default function AdminDashboard() {
 
   const handleCreateUser = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const displayName = newUserForm.displayName.trim();
+    const normalizedNames = normalizeNameParts(newUserForm.lastName, newUserForm.firstName);
+    const displayName = formatFullName(normalizedNames.lastName, normalizedNames.firstName);
     const email = newUserForm.email.trim().toLowerCase();
     const password = newUserForm.password;
 
     if (!displayName || !email || !password) {
-      alert('Nom, email et mot de passe sont obligatoires.');
+      alert('Nom, prénom, email et mot de passe sont obligatoires.');
       return;
     }
 
@@ -777,6 +894,8 @@ export default function AdminDashboard() {
       const baseUser: AdminUser = {
         id: authUser.uid,
         displayName,
+        firstName: normalizedNames.firstName,
+        lastName: normalizedNames.lastName,
         email,
         role: newUserForm.role,
         createdAt,
@@ -799,6 +918,8 @@ export default function AdminDashboard() {
         uid: authUser.uid,
         email,
         displayName,
+        firstName: normalizedNames.firstName,
+        lastName: normalizedNames.lastName,
         photoURL: '',
         role: baseUser.role,
         subscriptionEndDate: baseUser.subscriptionEndDate,
@@ -813,7 +934,8 @@ export default function AdminDashboard() {
 
       setUsers((prev) => [...prev, baseUser]);
       setNewUserForm({
-        displayName: '',
+        lastName: '',
+        firstName: '',
         email: '',
         password: '',
         role: 'user',
@@ -825,6 +947,132 @@ export default function AdminDashboard() {
     } finally {
       setIsCreatingUser(false);
     }
+  };
+
+  const getDiscussionCollectionName = (entry: DiscussionEntry) =>
+    entry.source === 'pedagogical' ? 'pedagogicalFeedback' : 'clinicalCaseFeedback';
+
+  const handleToggleDiscussionRead = async (entry: DiscussionEntry) => {
+    try {
+      await updateDoc(doc(db, getDiscussionCollectionName(entry), entry.id), {
+        isRead: !entry.isRead,
+      });
+      setDiscussions((prev) =>
+        prev.map((item) =>
+          item.id === entry.id && item.source === entry.source
+            ? { ...item, isRead: !item.isRead }
+            : item,
+        ),
+      );
+    } catch (error) {
+      console.error('Error updating discussion read state:', error);
+      alert('Erreur lors de la mise à jour du statut lu/non lu.');
+    }
+  };
+
+  const handleDeleteDiscussion = async (entry: DiscussionEntry) => {
+    if (!confirm('Supprimer cette discussion ?')) {
+      return;
+    }
+
+    try {
+      await deleteDoc(doc(db, getDiscussionCollectionName(entry), entry.id));
+      setDiscussions((prev) =>
+        prev.filter((item) => !(item.id === entry.id && item.source === entry.source)),
+      );
+    } catch (error) {
+      console.error('Error deleting discussion:', error);
+      alert('Erreur lors de la suppression de la discussion.');
+    }
+  };
+
+  const unreadDiscussionCount = discussions.filter((entry) => !entry.isRead).length;
+
+  const videoTitleById = new Map(videos.map((video) => [video.id, video.title || video.id]));
+
+  const buildPerVideoIndexMap = <T extends { id: string; videoId?: string }>(items: T[]) => {
+    const perVideoCounter = new Map<string, number>();
+    const map = new Map<string, number>();
+
+    items.forEach((item) => {
+      const videoId = item.videoId || '__unknown__';
+      const nextNumber = (perVideoCounter.get(videoId) || 0) + 1;
+      perVideoCounter.set(videoId, nextNumber);
+      map.set(item.id, nextNumber);
+    });
+
+    return map;
+  };
+
+  const qcmNumberById = buildPerVideoIndexMap(qcms);
+  const openQuestionNumberById = buildPerVideoIndexMap(openQuestions);
+  const diagramNumberById = buildPerVideoIndexMap(diagrams);
+
+  const caseQuestionMetaByKey = new Map<string, { kind: 'qcm' | 'select' | 'open'; number: number; videoId?: string }>();
+  clinicalCases.forEach((clinicalCase) => {
+    (clinicalCase.questions || []).forEach((question, index) => {
+      if (!question.id) return;
+      caseQuestionMetaByKey.set(`${clinicalCase.id}::${question.id}`, {
+        kind: question.kind || 'open',
+        number: index + 1,
+        videoId: clinicalCase.videoId,
+      });
+    });
+  });
+
+  const getDiscussionCourseTitle = (entry: DiscussionEntry) => {
+    if (entry.videoId) {
+      return videoTitleById.get(entry.videoId) || entry.videoId;
+    }
+
+    if (entry.itemType === 'caseQuestion' && entry.caseId && entry.itemId) {
+      const meta = caseQuestionMetaByKey.get(`${entry.caseId}::${entry.itemId}`);
+      if (meta?.videoId) {
+        return videoTitleById.get(meta.videoId) || meta.videoId;
+      }
+    }
+
+    return '-';
+  };
+
+  const getDiscussionTypeLabel = (entry: DiscussionEntry) => {
+    if (entry.itemType === 'caseQuestion' && entry.caseId && entry.itemId) {
+      const meta = caseQuestionMetaByKey.get(`${entry.caseId}::${entry.itemId}`);
+      const kindLabel =
+        meta?.kind === 'qcm'
+          ? 'QCM'
+          : meta?.kind === 'select'
+            ? 'Selecteur'
+            : 'Question ouverte';
+      return `Cas Clinique (${kindLabel} #${meta?.number ?? '?'})`;
+    }
+
+    if (entry.itemType === 'qcm') {
+      return `QCMs (QCM #${entry.itemId ? qcmNumberById.get(entry.itemId) ?? '?' : '?'})`;
+    }
+
+    if (entry.itemType === 'openQuestion') {
+      return `Questions Ouvertes (Question ouverte #${entry.itemId ? openQuestionNumberById.get(entry.itemId) ?? '?' : '?'})`;
+    }
+
+    if (entry.itemType === 'diagram') {
+      return `Schémas (Schémas #${entry.itemId ? diagramNumberById.get(entry.itemId) ?? '?' : '?'})`;
+    }
+
+    return 'Cas Clinique (Discussion globale)';
+  };
+
+  const getDiscussionUserDisplay = (entry: DiscussionEntry) => {
+    const matchedUser = entry.userId ? users.find((user) => user.id === entry.userId) : undefined;
+    const splitName = splitFullName(matchedUser?.displayName || '');
+    const fullName = formatFullName(
+      matchedUser?.lastName || splitName.lastName,
+      matchedUser?.firstName || splitName.firstName,
+    );
+    return {
+      displayName: fullName || matchedUser?.displayName || 'Utilisateur inconnu',
+      email: matchedUser?.email || entry.userEmail || '-',
+    };
   };
 
   if (loading || authLoading) {
@@ -843,6 +1091,7 @@ export default function AdminDashboard() {
             {[
               { id: 'payments', label: 'Paiements en attente', icon: CreditCard, count: payments.length },
               { id: 'users', label: 'Utilisateurs', icon: Users },
+              { id: 'discussions', label: 'Gestion des Discussions', icon: MessageSquare, count: unreadDiscussionCount },
               { id: 'content', label: 'Contenu Pédagogique', icon: FileText },
             ].map((item) => (
               <button
@@ -905,11 +1154,16 @@ export default function AdminDashboard() {
                     <tbody className="divide-y divide-slate-200">
                       {payments.map((payment) => {
                         const user = users.find(u => u.id === payment.userId);
+                        const splitName = splitFullName(user?.displayName || '');
+                        const paymentUserName = formatFullName(
+                          user?.lastName || splitName.lastName,
+                          user?.firstName || splitName.firstName,
+                        ) || user?.displayName || 'Inconnu';
                         return (
                           <tr key={payment.id} className="hover:bg-slate-50 transition-colors">
                             <td className="p-4 text-sm text-slate-600">{new Date(payment.createdAt).toLocaleDateString()}</td>
                             <td className="p-4">
-                              <div className="font-medium text-slate-900">{user?.displayName || 'Inconnu'}</div>
+                              <div className="font-medium text-slate-900">{paymentUserName}</div>
                               <div className="text-xs text-slate-500">{user?.email}</div>
                             </td>
                             <td className="p-4 text-sm font-medium text-slate-700 capitalize">{payment.type}</td>
@@ -965,10 +1219,12 @@ export default function AdminDashboard() {
                     {users.map((user) => {
                       const status = getUserStatus(user);
                       const effectiveExpiry = getEffectiveExpiryDate(user);
+                      const splitName = splitFullName(user.displayName || '');
+                      const fullName = formatFullName(user.lastName || splitName.lastName, user.firstName || splitName.firstName) || user.displayName;
 
                       return (
                         <tr key={user.id} className="hover:bg-slate-50 transition-colors align-top">
-                          <td className="p-4 font-medium text-slate-900">{user.displayName}</td>
+                          <td className="p-4 font-medium text-slate-900">{fullName}</td>
                           <td className="p-4 text-sm text-slate-600">{user.email}</td>
                           <td className="p-4 text-sm text-slate-600">
                             {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : '-'}
@@ -1110,7 +1366,14 @@ export default function AdminDashboard() {
                       <div>
                         <h3 className="text-lg font-bold text-slate-900">Details des achats video</h3>
                         <p className="text-sm text-slate-500">
-                          {users.find((u) => u.id === purchaseModalUserId)?.displayName || 'Utilisateur'}
+                          {(() => {
+                            const targetUser = users.find((u) => u.id === purchaseModalUserId);
+                            const splitName = splitFullName(targetUser?.displayName || '');
+                            return formatFullName(
+                              targetUser?.lastName || splitName.lastName,
+                              targetUser?.firstName || splitName.firstName,
+                            ) || targetUser?.displayName || 'Utilisateur';
+                          })()}
                         </p>
                       </div>
                       <button
@@ -1246,9 +1509,17 @@ export default function AdminDashboard() {
                     <form onSubmit={handleCreateUser} className="p-6 space-y-4">
                       <input
                         type="text"
-                        placeholder="Nom d affichage"
-                        value={newUserForm.displayName}
-                        onChange={(e) => setNewUserForm((prev) => ({ ...prev, displayName: e.target.value }))}
+                        placeholder="Nom (MAJUSCULES)"
+                        value={newUserForm.lastName}
+                        onChange={(e) => setNewUserForm((prev) => ({ ...prev, lastName: e.target.value }))}
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:ring-2 focus:ring-medical-500 outline-none"
+                        required
+                      />
+                      <input
+                        type="text"
+                        placeholder="Prénom"
+                        value={newUserForm.firstName}
+                        onChange={(e) => setNewUserForm((prev) => ({ ...prev, firstName: e.target.value }))}
                         className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:ring-2 focus:ring-medical-500 outline-none"
                         required
                       />
@@ -1303,6 +1574,96 @@ export default function AdminDashboard() {
 
           {activeTab === 'content' && (
             <AdminContentManager />
+          )}
+
+          {activeTab === 'discussions' && (
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+              {discussions.length === 0 ? (
+                <div className="p-10 text-center text-slate-500">Aucune discussion envoyée pour le moment.</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-medium text-sm">
+                        <th className="p-4">Date</th>
+                        <th className="p-4">Utilisateur</th>
+                        <th className="p-4">Nom Cours</th>
+                        <th className="p-4">Type</th>
+                        <th className="p-4">Message</th>
+                        <th className="p-4 text-right">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200">
+                      {discussions.map((entry) => {
+                        const discussionUser = getDiscussionUserDisplay(entry);
+                        const courseTitle = getDiscussionCourseTitle(entry);
+                        const discussionType = getDiscussionTypeLabel(entry);
+
+                        return (
+                          <tr
+                            key={`${entry.source}-${entry.id}`}
+                            className={`transition-colors align-top border-l-4 ${
+                              entry.isRead
+                                ? 'bg-slate-50/40 border-l-slate-200 hover:bg-slate-50'
+                                : 'bg-amber-50/60 border-l-amber-300 hover:bg-amber-50'
+                            }`}
+                          >
+                            <td className="p-4 text-sm text-slate-600 whitespace-nowrap">
+                              {entry.createdAt ? new Date(entry.createdAt).toLocaleString() : '-'}
+                            </td>
+                            <td className="p-4">
+                              <div className="font-medium text-slate-900">{discussionUser.displayName}</div>
+                              <div className="text-xs text-slate-500">{discussionUser.email}</div>
+                            </td>
+                            <td className="p-4 text-sm text-slate-800">
+                              {courseTitle}
+                            </td>
+                            <td className="p-4 text-xs text-slate-700 max-w-sm">
+                              <p className="whitespace-pre-wrap leading-relaxed">{discussionType}</p>
+                            </td>
+                            <td className="p-4 max-w-xl">
+                              <div
+                                className="max-h-24 overflow-y-auto pr-2 text-sm text-slate-800 leading-relaxed whitespace-pre-wrap"
+                                title="Message feedback"
+                                aria-label="Message feedback"
+                              >
+                                {entry.message || '-'}
+                              </div>
+                            </td>
+                            <td className="p-4 text-right">
+                              <div className="flex items-center justify-end gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleDiscussionRead(entry)}
+                                  className={`p-2 rounded-lg transition-colors ${
+                                    entry.isRead
+                                      ? 'text-amber-700 bg-amber-100 hover:bg-amber-200'
+                                      : 'text-emerald-700 bg-emerald-100 hover:bg-emerald-200'
+                                  }`}
+                                  title={entry.isRead ? 'Marquer comme non lue' : 'Marquer comme lue'}
+                                  aria-label={entry.isRead ? 'Marquer comme non lue' : 'Marquer comme lue'}
+                                >
+                                  {entry.isRead ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteDiscussion(entry)}
+                                  className="p-2 rounded-lg text-red-600 bg-red-50 hover:bg-red-100 transition-colors"
+                                  title="Supprimer"
+                                  aria-label="Supprimer"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
           )}
         </div>
       </main>

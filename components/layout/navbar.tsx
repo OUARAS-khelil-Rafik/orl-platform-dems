@@ -3,17 +3,64 @@
 import Link from 'next/link';
 import { useAuth } from '@/components/providers/auth-provider';
 import { useCart } from '@/components/providers/cart-provider';
-import { LogIn, LogOut, User, Menu, X, Stethoscope, ShoppingCart, ChevronDown, LayoutDashboard, ShoppingBag, Settings } from 'lucide-react';
+import {
+  LogIn,
+  LogOut,
+  User,
+  Menu,
+  X,
+  Stethoscope,
+  ShoppingCart,
+  ChevronDown,
+  LayoutDashboard,
+  ShoppingBag,
+  Settings,
+  Bell,
+  Mail,
+  MailOpen,
+  Trash2,
+} from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import Image from 'next/image';
+import { db, collection, getDocs, query, where } from '@/lib/local-data';
+
+type NavbarNotification = {
+  id: string;
+  title: string;
+  description: string;
+  createdAt: number;
+  type: 'payment' | 'video' | 'qcm' | 'openQuestion' | 'diagram' | 'clinicalCase';
+};
+
+type VideoNotificationSource = {
+  id: string;
+  title?: string;
+  isFreeDemo?: boolean;
+  createdAt?: string;
+};
+
+type NotificationStorageState = {
+  readIds: string[];
+  deletedIds: string[];
+};
+
+const NOTIFICATION_STORAGE_PREFIX = 'dems-navbar-notifications-v1';
 
 export function Navbar() {
   const { user, profile, loading, signOut } = useAuth();
   const { itemCount } = useCart();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [showAllNotifications, setShowAllNotifications] = useState(false);
+  const [isLoadingNotifications, setIsLoadingNotifications] = useState(false);
+  const [notifications, setNotifications] = useState<NavbarNotification[]>([]);
+  const [notificationReadIds, setNotificationReadIds] = useState<string[]>([]);
+  const [notificationDeletedIds, setNotificationDeletedIds] = useState<string[]>([]);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
+  const notificationDesktopRef = useRef<HTMLDivElement | null>(null);
+  const notificationMobileRef = useRef<HTMLDivElement | null>(null);
 
   const isAdmin = profile?.role === 'admin';
 
@@ -42,20 +89,243 @@ export function Navbar() {
       : `Dr. ${displayName}`
     : '';
 
+  const getNotificationStorageKey = (uid: string) => `${NOTIFICATION_STORAGE_PREFIX}-${uid}`;
+
+  const loadNotificationStorage = (uid: string): NotificationStorageState => {
+    if (typeof window === 'undefined') {
+      return { readIds: [], deletedIds: [] };
+    }
+
+    try {
+      const raw = window.localStorage.getItem(getNotificationStorageKey(uid));
+      if (!raw) {
+        return { readIds: [], deletedIds: [] };
+      }
+
+      const parsed = JSON.parse(raw) as NotificationStorageState;
+      return {
+        readIds: Array.isArray(parsed.readIds) ? parsed.readIds : [],
+        deletedIds: Array.isArray(parsed.deletedIds) ? parsed.deletedIds : [],
+      };
+    } catch {
+      return { readIds: [], deletedIds: [] };
+    }
+  };
+
+  const saveNotificationStorage = (uid: string, nextState: NotificationStorageState) => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(getNotificationStorageKey(uid), JSON.stringify(nextState));
+  };
+
+  const parseDateToMs = (value: unknown) => {
+    if (typeof value !== 'string') return 0;
+    const parsed = new Date(value).getTime();
+    return Number.isNaN(parsed) ? 0 : parsed;
+  };
+
+  const fetchNotifications = async () => {
+    if (!user || !profile) {
+      setNotifications([]);
+      return;
+    }
+
+    try {
+      setIsLoadingNotifications(true);
+
+      const [videosSnap, qcmsSnap, openQuestionsSnap, diagramsSnap, clinicalCasesSnap] = await Promise.all([
+        getDocs(collection(db, 'videos')),
+        getDocs(collection(db, 'qcms')),
+        getDocs(collection(db, 'openQuestions')),
+        getDocs(collection(db, 'diagrams')),
+        getDocs(collection(db, 'clinicalCases')),
+      ]);
+
+      const pendingPaymentsSnap =
+        profile.role === 'admin'
+          ? await getDocs(query(collection(db, 'payments'), where('status', '==', 'pending')))
+          : null;
+
+      const allVideos: VideoNotificationSource[] = videosSnap.docs.map((d) => ({
+        id: d.id,
+        ...(d.data() as Record<string, any>),
+      }));
+      const allowedVideos =
+        profile.role === 'admin' || profile.role === 'vip' || profile.role === 'vip_plus'
+          ? allVideos
+          : allVideos.filter((video) => Boolean(video.isFreeDemo));
+
+      const allowedVideoIds = new Set(allowedVideos.map((video) => video.id));
+      const videoTitleById = new Map(allowedVideos.map((video) => [video.id, String(video.title || video.id)]));
+      const nextNotifications: NavbarNotification[] = [];
+
+      if (profile.role === 'admin' && pendingPaymentsSnap) {
+        pendingPaymentsSnap.docs.forEach((d) => {
+          const data = d.data() as Record<string, any>;
+          nextNotifications.push({
+            id: `payment:${d.id}`,
+            type: 'payment',
+            title: 'Nouveau paiement en attente',
+            description: `Paiement ${d.id} en attente de validation.`,
+            createdAt: parseDateToMs(data.createdAt),
+          });
+        });
+      }
+
+      allowedVideos.forEach((video) => {
+        nextNotifications.push({
+          id: `video:${video.id}`,
+          type: 'video',
+          title: 'Nouveau cours vidéo',
+          description: `${String(video.title || video.id)}`,
+          createdAt: parseDateToMs(video.createdAt),
+        });
+      });
+
+      qcmsSnap.docs.forEach((d) => {
+        const data = d.data() as Record<string, any>;
+        if (!allowedVideoIds.has(String(data.videoId || ''))) return;
+        const videoTitle = videoTitleById.get(String(data.videoId || '')) || String(data.videoId || 'Cours');
+        nextNotifications.push({
+          id: `qcm:${d.id}`,
+          type: 'qcm',
+          title: 'Nouveau QCM',
+          description: `QCM ajouté dans ${videoTitle}.`,
+          createdAt: parseDateToMs(data.createdAt),
+        });
+      });
+
+      openQuestionsSnap.docs.forEach((d) => {
+        const data = d.data() as Record<string, any>;
+        if (!allowedVideoIds.has(String(data.videoId || ''))) return;
+        const videoTitle = videoTitleById.get(String(data.videoId || '')) || String(data.videoId || 'Cours');
+        nextNotifications.push({
+          id: `openQuestion:${d.id}`,
+          type: 'openQuestion',
+          title: 'Nouvelle question ouverte',
+          description: `Question ouverte ajoutée dans ${videoTitle}.`,
+          createdAt: parseDateToMs(data.createdAt),
+        });
+      });
+
+      diagramsSnap.docs.forEach((d) => {
+        const data = d.data() as Record<string, any>;
+        if (!allowedVideoIds.has(String(data.videoId || ''))) return;
+        const videoTitle = videoTitleById.get(String(data.videoId || '')) || String(data.videoId || 'Cours');
+        nextNotifications.push({
+          id: `diagram:${d.id}`,
+          type: 'diagram',
+          title: 'Nouveau schéma',
+          description: `Schéma ajouté dans ${videoTitle}.`,
+          createdAt: parseDateToMs(data.createdAt),
+        });
+      });
+
+      clinicalCasesSnap.docs.forEach((d) => {
+        const data = d.data() as Record<string, any>;
+        if (!allowedVideoIds.has(String(data.videoId || ''))) return;
+        const videoTitle = videoTitleById.get(String(data.videoId || '')) || String(data.videoId || 'Cours');
+        nextNotifications.push({
+          id: `clinicalCase:${d.id}`,
+          type: 'clinicalCase',
+          title: 'Nouveau cas clinique',
+          description: `Cas clinique ajouté dans ${videoTitle}.`,
+          createdAt: parseDateToMs(data.createdAt),
+        });
+      });
+
+      const filtered = nextNotifications
+        .filter((item) => !notificationDeletedIds.includes(item.id))
+        .sort((a, b) => b.createdAt - a.createdAt);
+
+      setNotifications(filtered);
+    } catch (error) {
+      console.error('Error fetching notifications:', error);
+    } finally {
+      setIsLoadingNotifications(false);
+    }
+  };
+
+  const toggleNotificationRead = (notificationId: string) => {
+    if (!user) return;
+
+    const nextReadIds = notificationReadIds.includes(notificationId)
+      ? notificationReadIds.filter((id) => id !== notificationId)
+      : [...notificationReadIds, notificationId];
+
+    setNotificationReadIds(nextReadIds);
+    saveNotificationStorage(user.uid, {
+      readIds: nextReadIds,
+      deletedIds: notificationDeletedIds,
+    });
+  };
+
+  const deleteNotification = (notificationId: string) => {
+    if (!user) return;
+
+    if (notificationDeletedIds.includes(notificationId)) return;
+
+    const nextDeletedIds = [...notificationDeletedIds, notificationId];
+    setNotificationDeletedIds(nextDeletedIds);
+    setNotifications((prev) => prev.filter((item) => item.id !== notificationId));
+
+    saveNotificationStorage(user.uid, {
+      readIds: notificationReadIds,
+      deletedIds: nextDeletedIds,
+    });
+  };
+
+  const unreadNotificationCount = notifications.filter((item) => !notificationReadIds.includes(item.id)).length;
+  const visibleNotifications = showAllNotifications ? notifications : notifications.slice(0, 5);
+
   useEffect(() => {
-    if (!isUserMenuOpen) return;
+    if (!user) {
+      setNotificationReadIds([]);
+      setNotificationDeletedIds([]);
+      setNotifications([]);
+      return;
+    }
+
+    const stored = loadNotificationStorage(user.uid);
+    setNotificationReadIds(stored.readIds);
+    setNotificationDeletedIds(stored.deletedIds);
+  }, [user]);
+
+  useEffect(() => {
+    if (!user || !profile) return;
+    fetchNotifications();
+    const timer = window.setInterval(() => {
+      fetchNotifications();
+    }, 60000);
+
+    return () => window.clearInterval(timer);
+  }, [user, profile, notificationDeletedIds]);
+
+  useEffect(() => {
+    if (!isUserMenuOpen && !isNotificationsOpen) return;
 
     const handlePointerDown = (event: MouseEvent | TouchEvent) => {
-      if (!userMenuRef.current) return;
       const targetNode = event.target as Node | null;
-      if (targetNode && !userMenuRef.current.contains(targetNode)) {
+      if (userMenuRef.current && targetNode && !userMenuRef.current.contains(targetNode)) {
         setIsUserMenuOpen(false);
+      }
+      const isInsideDesktopNotification =
+        notificationDesktopRef.current && targetNode
+          ? notificationDesktopRef.current.contains(targetNode)
+          : false;
+      const isInsideMobileNotification =
+        notificationMobileRef.current && targetNode
+          ? notificationMobileRef.current.contains(targetNode)
+          : false;
+
+      if (!isInsideDesktopNotification && !isInsideMobileNotification) {
+        setIsNotificationsOpen(false);
       }
     };
 
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setIsUserMenuOpen(false);
+        setIsNotificationsOpen(false);
       }
     };
 
@@ -68,7 +338,7 @@ export function Navbar() {
       document.removeEventListener('touchstart', handlePointerDown);
       document.removeEventListener('keydown', handleEscape);
     };
-  }, [isUserMenuOpen]);
+  }, [isUserMenuOpen, isNotificationsOpen]);
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-slate-200 bg-white/80 backdrop-blur-md">
@@ -92,6 +362,98 @@ export function Navbar() {
         </nav>
 
         <div className="hidden md:flex items-center gap-4">
+          {user && (
+            <div ref={notificationDesktopRef} className="relative">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsNotificationsOpen((v) => !v);
+                  setIsUserMenuOpen(false);
+                  setShowAllNotifications(false);
+                }}
+                className="relative p-2 text-slate-500 hover:text-medical-600 hover:bg-slate-100 rounded-full transition-colors"
+                title="Notifications"
+                aria-label="Notifications"
+              >
+                <Bell className="h-5 w-5" />
+                {unreadNotificationCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 bg-red-500 text-white text-[10px] font-bold flex items-center justify-center rounded-full">
+                    {unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}
+                  </span>
+                )}
+              </button>
+
+              {isNotificationsOpen && (
+                <div className="absolute right-0 top-11 w-[360px] max-w-[calc(100vw-2rem)] rounded-xl border border-slate-200 bg-white shadow-lg py-2 z-50">
+                  <div className="px-3 pb-2 border-b border-slate-100 flex items-center justify-between">
+                    <p className="text-sm font-semibold text-slate-800">Notifications</p>
+                    <span className="text-xs text-slate-500">{unreadNotificationCount} non lue(s)</span>
+                  </div>
+
+                  <div className="max-h-80 overflow-y-auto">
+                    {isLoadingNotifications ? (
+                      <p className="px-3 py-4 text-sm text-slate-500">Chargement...</p>
+                    ) : visibleNotifications.length === 0 ? (
+                      <p className="px-3 py-4 text-sm text-slate-500">Aucune notification.</p>
+                    ) : (
+                      <ul className="divide-y divide-slate-100">
+                        {visibleNotifications.map((notification) => {
+                          const isRead = notificationReadIds.includes(notification.id);
+                          return (
+                            <li key={notification.id} className={`px-3 py-2 ${isRead ? 'bg-white' : 'bg-blue-50/50'}`}>
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <p className="text-sm font-medium text-slate-800 truncate">{notification.title}</p>
+                                  <p className="text-xs text-slate-600 line-clamp-2">{notification.description}</p>
+                                </div>
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleNotificationRead(notification.id)}
+                                    className={`p-1.5 rounded-md transition-colors ${
+                                      isRead
+                                        ? 'text-amber-700 bg-amber-100 hover:bg-amber-200'
+                                        : 'text-emerald-700 bg-emerald-100 hover:bg-emerald-200'
+                                    }`}
+                                    title={isRead ? 'Marquer non lue' : 'Marquer lue'}
+                                    aria-label={isRead ? 'Marquer non lue' : 'Marquer lue'}
+                                  >
+                                    {isRead ? <MailOpen className="h-4 w-4" /> : <Mail className="h-4 w-4" />}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => deleteNotification(notification.id)}
+                                    className="p-1.5 rounded-md text-red-600 bg-red-50 hover:bg-red-100 transition-colors"
+                                    title="Supprimer"
+                                    aria-label="Supprimer"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </button>
+                                </div>
+                              </div>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </div>
+
+                  {notifications.length > 5 && (
+                    <div className="px-3 pt-2 border-t border-slate-100">
+                      <button
+                        type="button"
+                        onClick={() => setShowAllNotifications((v) => !v)}
+                        className="text-xs font-medium text-medical-700 hover:text-medical-800"
+                      >
+                        {showAllNotifications ? 'Voir moins' : 'Voir toutes les notifications'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {user && !isAdmin && (
             <Link href="/checkout" className="relative p-2 text-slate-500 hover:text-medical-600 hover:bg-slate-100 rounded-full transition-colors">
               <ShoppingCart className="h-5 w-5" />
@@ -201,6 +563,27 @@ export function Navbar() {
 
         {/* Mobile Menu Toggle */}
         <div className="md:hidden flex items-center gap-2">
+          {user && (
+            <button
+              type="button"
+              onClick={() => {
+                setIsNotificationsOpen((v) => !v);
+                setIsUserMenuOpen(false);
+                setIsMobileMenuOpen(false);
+                setShowAllNotifications(false);
+              }}
+              className="relative p-2 text-slate-500 hover:text-medical-600 hover:bg-slate-100 rounded-full transition-colors"
+              title="Notifications"
+              aria-label="Notifications"
+            >
+              <Bell className="h-5 w-5" />
+              {unreadNotificationCount > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 bg-red-500 text-white text-[10px] font-bold flex items-center justify-center rounded-full">
+                  {unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}
+                </span>
+              )}
+            </button>
+          )}
           {user && !isAdmin && (
             <Link href="/checkout" className="relative p-2 text-slate-500 hover:text-medical-600 hover:bg-slate-100 rounded-full transition-colors">
               <ShoppingCart className="h-5 w-5" />
@@ -326,6 +709,75 @@ export function Navbar() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {user && isNotificationsOpen && (
+        <div ref={notificationMobileRef} className="md:hidden absolute top-16 right-4 left-4 rounded-xl border border-slate-200 bg-white shadow-lg py-2 z-50">
+          <div className="px-3 pb-2 border-b border-slate-100 flex items-center justify-between">
+            <p className="text-sm font-semibold text-slate-800">Notifications</p>
+            <span className="text-xs text-slate-500">{unreadNotificationCount} non lue(s)</span>
+          </div>
+
+          <div className="max-h-80 overflow-y-auto">
+            {isLoadingNotifications ? (
+              <p className="px-3 py-4 text-sm text-slate-500">Chargement...</p>
+            ) : visibleNotifications.length === 0 ? (
+              <p className="px-3 py-4 text-sm text-slate-500">Aucune notification.</p>
+            ) : (
+              <ul className="divide-y divide-slate-100">
+                {visibleNotifications.map((notification) => {
+                  const isRead = notificationReadIds.includes(notification.id);
+                  return (
+                    <li key={notification.id} className={`px-3 py-2 ${isRead ? 'bg-white' : 'bg-blue-50/50'}`}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-slate-800 truncate">{notification.title}</p>
+                          <p className="text-xs text-slate-600 line-clamp-2">{notification.description}</p>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => toggleNotificationRead(notification.id)}
+                            className={`p-1.5 rounded-md transition-colors ${
+                              isRead
+                                ? 'text-amber-700 bg-amber-100 hover:bg-amber-200'
+                                : 'text-emerald-700 bg-emerald-100 hover:bg-emerald-200'
+                            }`}
+                            title={isRead ? 'Marquer non lue' : 'Marquer lue'}
+                            aria-label={isRead ? 'Marquer non lue' : 'Marquer lue'}
+                          >
+                            {isRead ? <MailOpen className="h-4 w-4" /> : <Mail className="h-4 w-4" />}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => deleteNotification(notification.id)}
+                            className="p-1.5 rounded-md text-red-600 bg-red-50 hover:bg-red-100 transition-colors"
+                            title="Supprimer"
+                            aria-label="Supprimer"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+
+          {notifications.length > 5 && (
+            <div className="px-3 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowAllNotifications((v) => !v)}
+                className="text-xs font-medium text-medical-700 hover:text-medical-800"
+              >
+                {showAllNotifications ? 'Voir moins' : 'Voir toutes les notifications'}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
     </header>
   );
 }

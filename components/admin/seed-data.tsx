@@ -51,7 +51,7 @@ export function SeedDataButton() {
         {
           title: "Anatomie de l'oreille moyenne",
           description: "Exploration des structures de l'oreille moyenne : chaîne ossiculaire, fenêtre ovale, trompe d'Eustache.",
-          url: "https://www.youtube.com/watch?v=2G8Zp_S40p4",
+          url: "https://www.youtube.com/watch?v=qSV5J46B2TY",
           subspecialty: "otologie",
           section: "anatomie",
           isFreeDemo: true,
@@ -62,7 +62,7 @@ export function SeedDataButton() {
         {
           title: "Examen clinique de la cloison nasale",
           description: "Techniques de rhinoscopie et d'endoscopie pour évaluer les déviations septales et l'obstruction nasale.",
-          url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+          url: "https://www.youtube.com/watch?v=GBtUCl-xr6U",
           subspecialty: "rhinologie",
           section: "pathologie",
           isFreeDemo: false,
@@ -73,7 +73,7 @@ export function SeedDataButton() {
         {
           title: "Laryngoscopie indirecte et directe",
           description: "Comparaison des techniques de visualisation du larynx et des cordes vocales en pratique courante.",
-          url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+          url: "https://www.youtube.com/watch?v=0EdDJNqdEYY",
           subspecialty: "laryngologie",
           section: "anatomie",
           isFreeDemo: false,
@@ -249,6 +249,7 @@ export function SeedDataButton() {
           explanation:
             "L'étrier est le dernier osselet de la chaîne ; sa platine s'insère dans la fenêtre ovale pour transmettre les vibrations.",
           images: ["https://picsum.photos/seed/qcm-ear/800/600"],
+          reference: "Atlas d'anatomie DEMS – oreille moyenne",
           createdAt: now,
         },
         {
@@ -266,6 +267,7 @@ export function SeedDataButton() {
           explanation:
             "La rhinoscopie et la palpation des sinus s'intègrent à l'examen de la cloison et de la perméabilité nasale.",
           images: [],
+          reference: "Recommandations DEMS – examen rhinoscopique de base",
           createdAt: now,
         },
         {
@@ -283,6 +285,7 @@ export function SeedDataButton() {
           explanation:
             "La dysphonie chronique d'effort chez un professionnel de la voix est typique des nodules bénins.",
           images: ["https://picsum.photos/seed/qcm-voice/800/600"],
+          reference: "Cours de laryngologie DEMS – dysphonies fonctionnelles",
           createdAt: now,
         },
       ];
@@ -334,6 +337,7 @@ export function SeedDataButton() {
             { number: 2, x: 50, y: 35, label: "Chaîne ossiculaire", description: "Transmet les vibrations au labyrinthe." },
             { number: 3, x: 70, y: 60, label: "Trompe d'Eustache", description: "Équilibre les pressions de part et d'autre du tympan." }
           ],
+          reference: "Atlas d'anatomie DEMS - oreille moyenne",
           createdAt: now,
         },
         {
@@ -344,6 +348,7 @@ export function SeedDataButton() {
             { number: 1, x: 35, y: 45, label: "Cloison nasale", description: "Structure ostéo-cartilagineuse séparant les fosses nasales." },
             { number: 2, x: 60, y: 50, label: "Cornet inférieur", description: "Contribue à la régulation du flux aérien et à l'humidification." }
           ],
+          reference: "Référentiel DEMS – anatomie nasale",
           createdAt: now,
         },
         {
@@ -354,6 +359,7 @@ export function SeedDataButton() {
             { number: 1, x: 40, y: 40, label: "Cordes vocales", description: "Structures vibratiles responsables de la phonation." },
             { number: 2, x: 65, y: 55, label: "Nodules bénins", description: "Épaississements symétriques liés au surmenage vocal." }
           ],
+          reference: "Cours de laryngologie DEMS - schémas",
           createdAt: now,
         },
       ];

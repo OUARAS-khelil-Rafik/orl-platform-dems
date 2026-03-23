@@ -1,4 +1,4 @@
-# Erreurs et Fautes à Corriger
+# Erreurs et Fautes à Corriger et remarques de qualite
 
 ## Fautes logiques corrigees
 

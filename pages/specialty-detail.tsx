@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { db, collection, query, where, getDocs } from '@/lib/local-data';
 import { motion } from 'motion/react';
-import { PlayCircle, Lock, Unlock, ArrowRight } from 'lucide-react';
+import { PlayCircle, Lock, Clock3, Search, SlidersHorizontal, ListChecks, Stethoscope, MessageSquare, Network } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/components/providers/auth-provider';
 import { canAccessVideo } from '@/lib/access-control';
@@ -21,7 +21,90 @@ interface Video {
   isFreeDemo: boolean;
   price: number;
   packId: string;
+  duration?: string | number;
+  durationMinutes?: number;
+  durationSeconds?: number;
 }
+
+type SectionFilter = 'all' | 'anatomie' | 'pathologie';
+
+const VIEWED_VIDEOS_KEY = 'dems-viewed-videos-v1';
+
+const formatSectionLabel = (section: string) =>
+  section === 'anatomie' ? 'Anatomie' : section === 'pathologie' ? 'Pathologie' : 'Autre';
+
+const getSectionBadgeClass = (section: string) => {
+  if (section === 'anatomie') {
+    return 'bg-cyan-500/90 text-white border-cyan-300/80';
+  }
+
+  if (section === 'pathologie') {
+    return 'bg-amber-500/90 text-white border-amber-300/80';
+  }
+
+  return 'bg-slate-900/75 text-slate-100 border-white/20';
+};
+
+const formatVideoDuration = (video: Video): string => {
+  const durationRaw = video.duration ?? video.durationMinutes ?? video.durationSeconds;
+
+  // Helper to render minutes as "Xh Y min", "Xh" or "Y min" (always returns something)
+  const minutesToLabel = (totalMinutes: number) => {
+    const mins = Math.max(0, Math.floor(totalMinutes));
+    const hours = Math.floor(mins / 60);
+    const minutes = mins % 60;
+    if (hours > 0 && minutes > 0) return `${hours}h ${minutes} min`;
+    if (hours > 0 && minutes === 0) return `${hours}h`;
+    return `${minutes} min`;
+  };
+
+  // If string, attempt to parse common patterns like "HH:MM:SS" or "MM:SS" or numeric string
+  if (typeof durationRaw === 'string') {
+    const s = durationRaw.trim();
+    if (s.length === 0) return '0 min';
+
+    // colon-delimited time
+    if (s.includes(':')) {
+      const parts = s.split(':').map(p => Number(p));
+      if (parts.every(Number.isFinite)) {
+        let totalSeconds = 0;
+        if (parts.length === 3) {
+          totalSeconds = parts[0] * 3600 + parts[1] * 60 + parts[2];
+        } else if (parts.length === 2) {
+          totalSeconds = parts[0] * 60 + parts[1];
+        } else {
+          totalSeconds = Math.floor(parts[0]);
+        }
+        const totalMinutes = Math.floor(totalSeconds / 60);
+        return minutesToLabel(totalMinutes);
+      }
+    }
+
+    // try numeric parse (minutes)
+    const asNum = Number(s);
+    if (Number.isFinite(asNum)) {
+      return minutesToLabel(asNum);
+    }
+
+    // fallback: return the raw string (but not empty)
+    return s;
+  }
+
+  // If number: interpret as minutes by default. If it's likely seconds (durationSeconds), handled below.
+  if (typeof durationRaw === 'number' && Number.isFinite(durationRaw)) {
+    // If explicit durationSeconds provided on the model use it as seconds
+    if (typeof video.durationSeconds === 'number' && Number.isFinite(video.durationSeconds)) {
+      const totalMinutes = Math.floor(video.durationSeconds / 60);
+      return minutesToLabel(totalMinutes);
+    }
+
+    // Otherwise interpret numeric as minutes
+    return minutesToLabel(durationRaw);
+  }
+
+  // Default fallback: always show 0 min
+  return '0 min';
+};
 
 const SPECIALTIES = {
   otologie: { title: 'Otologie', desc: 'Anatomie et pathologie de l\'oreille', color: 'from-blue-500 to-cyan-500' },
@@ -38,6 +121,10 @@ export default function SpecialtyPage() {
   const { user, profile, loading: authLoading } = useAuth();
   const { addItem, items } = useCart();
   const [videos, setVideos] = useState<Video[]>([]);
+  const [videoNameFilter, setVideoNameFilter] = useState('');
+  const [sectionFilter, setSectionFilter] = useState<SectionFilter>('all');
+  const [viewedVideoIds, setViewedVideoIds] = useState<string[]>([]);
+  const [contentCounts, setContentCounts] = useState<Record<string, { qcm: number; cases: number; open: number; diagrams: number }>>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -57,6 +144,82 @@ export default function SpecialtyPage() {
     fetchVideos();
   }, [slug, router.isReady]);
 
+  useEffect(() => {
+    if (!videos || videos.length === 0) return;
+
+    const fetchCounts = async () => {
+      const map: Record<string, { qcm: number; cases: number; open: number; diagrams: number }> = {};
+      await Promise.all(videos.map(async (v) => {
+        try {
+          const [qcmSnap, caseSnap, openSnap, diagramSnap] = await Promise.all([
+            getDocs(query(collection(db, 'qcms'), where('videoId', '==', v.id))),
+            getDocs(query(collection(db, 'clinicalCases'), where('videoId', '==', v.id))),
+            getDocs(query(collection(db, 'openQuestions'), where('videoId', '==', v.id))),
+            getDocs(query(collection(db, 'diagrams'), where('videoId', '==', v.id))),
+          ]);
+
+          map[v.id] = {
+            qcm: Array.isArray(qcmSnap.docs) ? qcmSnap.docs.length : 0,
+            cases: Array.isArray(caseSnap.docs) ? caseSnap.docs.length : 0,
+            open: Array.isArray(openSnap.docs) ? openSnap.docs.length : 0,
+            diagrams: Array.isArray(diagramSnap.docs) ? diagramSnap.docs.length : 0,
+          };
+        } catch (e) {
+          map[v.id] = { qcm: 0, cases: 0, open: 0, diagrams: 0 };
+        }
+      }));
+
+      setContentCounts(map);
+    };
+
+    fetchCounts();
+  }, [videos]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const readViewed = () => {
+      try {
+        const raw = window.localStorage.getItem(VIEWED_VIDEOS_KEY);
+        if (!raw) {
+          setViewedVideoIds([]);
+          return;
+        }
+
+        const parsed = JSON.parse(raw) as unknown;
+        if (!Array.isArray(parsed)) {
+          setViewedVideoIds([]);
+          return;
+        }
+
+        const normalized = parsed
+          .filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+          .map((entry) => entry.trim());
+
+        setViewedVideoIds(normalized);
+      } catch {
+        setViewedVideoIds([]);
+      }
+    };
+
+    const handleStorage = (event: StorageEvent) => {
+      if (!event.key || event.key === VIEWED_VIDEOS_KEY) {
+        readViewed();
+      }
+    };
+
+    readViewed();
+    window.addEventListener('storage', handleStorage);
+    window.addEventListener('focus', readViewed);
+
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('focus', readViewed);
+    };
+  }, []);
+
   if (!router.isReady) {
     return (
       <div className="flex-1 flex items-center justify-center py-20">
@@ -74,8 +237,43 @@ export default function SpecialtyPage() {
   const packId = slug;
   const isPackInCart = !!(packId && items.some(item => item.id === packId));
 
-  const anatomieVideos = videos.filter(v => v.section === 'anatomie');
-  const pathologieVideos = videos.filter(v => v.section === 'pathologie');
+  const trimmedNameFilter = videoNameFilter.trim();
+
+  // Build a RegExp from the user input. If the regex is invalid,
+  // fall back to a case-insensitive substring match to avoid breaking the UI.
+  let nameRegex: RegExp | null = null;
+  if (trimmedNameFilter.length > 0) {
+    try {
+      nameRegex = new RegExp(trimmedNameFilter, 'i');
+    } catch (err) {
+      // invalid regex: keep nameRegex as null and fallback to substring matching
+      console.warn('Invalid video name RegExp:', trimmedNameFilter);
+      nameRegex = null;
+    }
+  }
+
+  const normalizedFilter = trimmedNameFilter.toLowerCase();
+
+  const filteredVideos = videos.filter((video) => {
+    if (trimmedNameFilter.length > 0) {
+      if (nameRegex) {
+        if (!nameRegex.test(video.title)) {
+          return false;
+        }
+      } else {
+        // fallback: substring match
+        if (!video.title.toLowerCase().includes(normalizedFilter)) {
+          return false;
+        }
+      }
+    }
+
+    if (sectionFilter !== 'all' && video.section !== sectionFilter) {
+      return false;
+    }
+
+    return true;
+  });
 
   return (
     <div className="flex-1 bg-slate-50 pb-24">
@@ -144,39 +342,79 @@ export default function SpecialtyPage() {
           </div>
         ) : (
           <div className="space-y-16">
-            {/* Anatomie Section */}
+            <div className="rounded-3xl border border-slate-200 bg-gradient-to-br from-white to-slate-100/80 p-5 md:p-6 shadow-sm">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-end">
+                <div className="lg:col-span-6">
+                  <label htmlFor="video-name-filter" className="text-sm font-semibold text-slate-700 mb-2 inline-flex items-center gap-2">
+                    <Search className="h-4 w-4" />
+                    Filtre par nom vidéo
+                  </label>
+                  <input
+                    id="video-name-filter"
+                    type="text"
+                    value={videoNameFilter}
+                    onChange={(e) => setVideoNameFilter(e.target.value)}
+                    placeholder="Ex: otite, sinusite, larynx..."
+                    className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-medical-500 focus:border-medical-500"
+                  />
+                </div>
+
+                <div className="lg:col-span-3">
+                  <label htmlFor="section-filter" className="text-sm font-semibold text-slate-700 mb-2 inline-flex items-center gap-2">
+                    <SlidersHorizontal className="h-4 w-4" />
+                    Filtre sous-specialite
+                  </label>
+                  <select
+                    id="section-filter"
+                    value={sectionFilter}
+                    onChange={(e) => setSectionFilter(e.target.value as SectionFilter)}
+                    className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-medical-500 focus:border-medical-500"
+                  >
+                    <option value="all">Toutes</option>
+                    <option value="anatomie">Anatomie</option>
+                    <option value="pathologie">Pathologie</option>
+                  </select>
+                </div>
+
+              </div>
+
+              <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold">
+                <span className="inline-flex items-center rounded-full bg-white border border-slate-200 px-3 py-1 text-slate-700">
+                  {filteredVideos.length} videos affichees
+                </span>
+                <span className="inline-flex items-center rounded-full bg-emerald-50 border border-emerald-200 px-3 py-1 text-emerald-700">
+                  {filteredVideos.filter((video) => video.isFreeDemo).length} demos
+                </span>
+                <span className="inline-flex items-center rounded-full bg-blue-50 border border-blue-200 px-3 py-1 text-blue-700">
+                  {filteredVideos.filter((video) => viewedVideoIds.includes(video.id)).length} deja vues
+                </span>
+              </div>
+            </div>
+
             <section>
-              <h2 className="text-3xl font-bold text-slate-900 mb-8 flex items-center gap-3">
-                <span className="w-8 h-8 rounded-lg bg-medical-100 text-medical-600 flex items-center justify-center text-lg">A</span>
-                Anatomie
-              </h2>
-              {anatomieVideos.length === 0 ? (
+              {filteredVideos.length === 0 ? (
                 <p className="text-slate-500">Aucune vidéo disponible pour le moment.</p>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {anatomieVideos.map((video, i) => (
-                    <VideoCard key={video.id} video={video} hasAccess={hasAccess(video)} index={i} />
+                  {filteredVideos.map((video, i) => (
+                    <VideoCard
+                      key={video.id}
+                      video={video}
+                      hasAccess={hasAccess(video)}
+                      isViewed={viewedVideoIds.includes(video.id)}
+                      counts={contentCounts[video.id] ?? { qcm: 0, cases: 0, open: 0, diagrams: 0 }}
+                      index={i}
+                    />
                   ))}
                 </div>
               )}
             </section>
 
-            {/* Pathologie Section */}
-            <section>
-              <h2 className="text-3xl font-bold text-slate-900 mb-8 flex items-center gap-3">
-                <span className="w-8 h-8 rounded-lg bg-accent-100 text-accent-600 flex items-center justify-center text-lg">P</span>
-                Pathologie
-              </h2>
-              {pathologieVideos.length === 0 ? (
-                <p className="text-slate-500">Aucune vidéo disponible pour le moment.</p>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {pathologieVideos.map((video, i) => (
-                    <VideoCard key={video.id} video={video} hasAccess={hasAccess(video)} index={i} />
-                  ))}
-                </div>
-              )}
-            </section>
+            {filteredVideos.length === 0 && (
+              <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-500">
+                Aucune video ne correspond aux filtres.
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -184,7 +422,19 @@ export default function SpecialtyPage() {
   );
 }
 
-function VideoCard({ video, hasAccess, index }: { video: Video; hasAccess: boolean; index: number }) {
+function VideoCard({
+  video,
+  hasAccess,
+  isViewed,
+  counts,
+  index,
+}: {
+  video: Video;
+  hasAccess: boolean;
+  isViewed: boolean;
+  counts: { qcm: number; cases: number; open: number; diagrams: number };
+  index: number;
+}) {
   const statusLabel = video.isFreeDemo
     ? 'Démo Gratuite'
     : hasAccess
@@ -212,6 +462,22 @@ function VideoCard({ video, hasAccess, index }: { video: Video; hasAccess: boole
           className="object-cover opacity-60 group-hover:opacity-80 transition-opacity"
           referrerPolicy="no-referrer"
         />
+        <div className="absolute top-3 left-3 flex items-center gap-2">
+          <span
+            className={`text-[10px] sm:text-xs font-bold px-2 py-1 rounded-md uppercase tracking-wider backdrop-blur-sm border ${getSectionBadgeClass(video.section)}`}
+          >
+            {formatSectionLabel(video.section)}
+          </span>
+          <span
+            className={`text-[10px] sm:text-xs font-bold px-2 py-1 rounded-md uppercase tracking-wider backdrop-blur-sm border ${
+              isViewed
+                ? 'bg-emerald-500/85 text-white border-emerald-300/70'
+                : 'bg-slate-900/70 text-slate-100 border-white/20'
+            }`}
+          >
+            {isViewed ? 'Deja vue' : 'Non vue'}
+          </span>
+        </div>
         <div className="absolute inset-0 flex items-center justify-center">
           {hasAccess ? (
             <Link
@@ -236,16 +502,50 @@ function VideoCard({ video, hasAccess, index }: { video: Video; hasAccess: boole
       <div className="p-5 flex-1 flex flex-col">
         <h3 className="text-lg font-bold text-slate-900 mb-2 line-clamp-2">{video.title}</h3>
         <p className="text-sm text-slate-500 mb-4 line-clamp-2 flex-1">{video.description}</p>
-        
-        {hasAccess ? (
-          <Link 
-            href={`/videos/${video.id}`}
-            className="flex items-center justify-between w-full py-2.5 px-4 bg-medical-50 text-medical-700 rounded-xl font-medium hover:bg-medical-100 transition-colors"
+        <div className="mb-4 flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-700">
+          <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 border border-slate-200 px-2.5 py-1.5">
+            <Clock3 className="h-3.5 w-3.5" />
+            <span>{formatVideoDuration(video)}</span>
+          </span>
+
+          <span
+            className="inline-flex items-center gap-1.5 rounded-full bg-blue-100 text-blue-800 border border-blue-200 px-2.5 py-1"
+            title={`Nombre de QCM: ${counts.qcm}`}
+            aria-label={`Nombre de QCM: ${counts.qcm}`}
           >
-            <span>Regarder le cours</span>
-            <ArrowRight className="h-4 w-4" />
-          </Link>
-        ) : (
+            <ListChecks className="h-3.5 w-3.5" />
+            <strong>{counts.qcm}</strong>
+          </span>
+
+          <span
+            className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 px-2.5 py-1"
+            title={`Nombre de cas cliniques: ${counts.cases}`}
+            aria-label={`Nombre de cas cliniques: ${counts.cases}`}
+          >
+            <Stethoscope className="h-3.5 w-3.5" />
+            <strong>{counts.cases}</strong>
+          </span>
+
+          <span
+            className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200 px-2.5 py-1"
+            title={`Nombre de questions ouvertes: ${counts.open}`}
+            aria-label={`Nombre de questions ouvertes: ${counts.open}`}
+          >
+            <MessageSquare className="h-3.5 w-3.5" />
+            <strong>{counts.open}</strong>
+          </span>
+
+          <span
+            className="inline-flex items-center gap-1.5 rounded-full bg-violet-100 text-violet-800 border border-violet-200 px-2.5 py-1"
+            title={`Nombre de schémas: ${counts.diagrams}`}
+            aria-label={`Nombre de schémas: ${counts.diagrams}`}
+          >
+            <Network className="h-3.5 w-3.5" />
+            <strong>{counts.diagrams}</strong>
+          </span>
+        </div>
+        
+        {hasAccess ? null : (
           <div className="flex items-center justify-between">
             <span className="text-lg font-bold text-slate-900">{video.price} DZD</span>
             <Link 
