@@ -18,7 +18,7 @@ export default function SignInPage() {
 
   useEffect(() => {
     if (!loading && user) {
-      router.replace('/dashboard');
+      router.replace('/');
     }
   }, [loading, user, router]);
 
@@ -29,7 +29,7 @@ export default function SignInPage() {
     try {
       setIsSubmitting(true);
       await signIn(email, password, rememberMe);
-      router.push('/dashboard');
+      router.push('/');
     } catch (submitError) {
       const message = submitError instanceof Error ? submitError.message : 'Connexion impossible.';
       setError(message);

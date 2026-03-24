@@ -71,6 +71,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isAuthReady, setIsAuthReady] = useState(false);
 
   const normalizeProfile = (profile: UserProfile, authUser?: LocalAuthUser): UserProfile => {
+    const uniquePurchasedVideos = Array.isArray(profile.purchasedVideos)
+      ? Array.from(new Set(profile.purchasedVideos.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)))
+      : [];
+    const uniquePurchasedPacks = Array.isArray(profile.purchasedPacks)
+      ? Array.from(new Set(profile.purchasedPacks.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)))
+      : [];
+
     const sourceDisplayName = profile.displayName || authUser?.displayName || 'Utilisateur';
     const splitSourceName = splitFullName(sourceDisplayName);
     const normalizedNames = normalizeNameParts(
@@ -91,8 +98,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       defaultMode: profile.defaultMode === 'dark' ? 'dark' : 'light',
       role: profile.role || 'user',
       subscriptionApprovalStatus: profile.subscriptionApprovalStatus || 'none',
-      purchasedVideos: Array.isArray(profile.purchasedVideos) ? profile.purchasedVideos : [],
-      purchasedPacks: Array.isArray(profile.purchasedPacks) ? profile.purchasedPacks : [],
+      purchasedVideos: uniquePurchasedVideos,
+      purchasedPacks: uniquePurchasedPacks,
       blockedVideoIds: Array.isArray(profile.blockedVideoIds) ? profile.blockedVideoIds : [],
       isBlocked: Boolean(profile.isBlocked),
       createdAt: profile.createdAt || new Date().toISOString(),

@@ -702,9 +702,47 @@ export default function AdminDashboard() {
       const nextPurchasedVideos = (user.purchasedVideos || []).filter((id) => id !== videoId);
       const nextPurchaseDates = { ...(user.purchasedVideoDates || {}) };
       delete nextPurchaseDates[videoId];
+      const nextBlockedVideoIds = (user.blockedVideoIds || []).filter((id) => id !== videoId);
+
+      const removedPaymentIds = new Set<string>();
+      const updatedPaymentsById = new Map<string, { items: AdminPayment['items']; amount: number }>();
+
+      const relatedCartPayments = allPayments.filter(
+        (payment) =>
+          payment.userId === user.id
+          && payment.type === 'cart'
+          && Array.isArray(payment.items)
+          && payment.items.some((item) => item.type === 'video' && item.id === videoId),
+      );
+
+      await Promise.all(
+        relatedCartPayments.map(async (payment) => {
+          const remainingItems = (payment.items || []).filter(
+            (item) => !(item.type === 'video' && item.id === videoId),
+          );
+
+          if (remainingItems.length === 0) {
+            await deleteDoc(doc(db, 'payments', payment.id));
+            removedPaymentIds.add(payment.id);
+            return;
+          }
+
+          const nextAmount = remainingItems.reduce((sum, item) => sum + Number(item.price || 0), 0);
+          await updateDoc(doc(db, 'payments', payment.id), {
+            items: remainingItems,
+            amount: nextAmount,
+          });
+          updatedPaymentsById.set(payment.id, {
+            items: remainingItems,
+            amount: nextAmount,
+          });
+        }),
+      );
+
       await updateDoc(doc(db, 'users', user.id), {
         purchasedVideos: nextPurchasedVideos,
         purchasedVideoDates: nextPurchaseDates,
+        blockedVideoIds: nextBlockedVideoIds,
       });
 
       setUsers((prev) =>
@@ -714,10 +752,27 @@ export default function AdminDashboard() {
                 ...entry,
                 purchasedVideos: nextPurchasedVideos,
                 purchasedVideoDates: nextPurchaseDates,
+                blockedVideoIds: nextBlockedVideoIds,
               }
             : entry,
         ),
       );
+
+      const applyPaymentCleanup = (prev: AdminPayment[]) =>
+        prev
+          .filter((payment) => !removedPaymentIds.has(payment.id))
+          .map((payment) => {
+            const updates = updatedPaymentsById.get(payment.id);
+            if (!updates) return payment;
+            return {
+              ...payment,
+              items: updates.items,
+              amount: updates.amount,
+            };
+          });
+
+      setAllPayments((prev) => applyPaymentCleanup(prev));
+      setPayments((prev) => applyPaymentCleanup(prev));
     } catch (error) {
       console.error('Error removing purchased video:', error);
       alert('Erreur lors de la suppression de la video.');

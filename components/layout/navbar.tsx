@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/router';
 import { useAuth } from '@/components/providers/auth-provider';
 import { useCart } from '@/components/providers/cart-provider';
 import {
@@ -22,7 +23,7 @@ import {
   Sun,
   Moon,
 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import Image from 'next/image';
 import { db, collection, getDocs, query, where } from '@/lib/local-data';
@@ -33,6 +34,7 @@ type NavbarNotification = {
   description: string;
   createdAt: number;
   type: 'payment' | 'video' | 'qcm' | 'openQuestion' | 'diagram' | 'clinicalCase';
+  targetHref: string;
 };
 
 type VideoNotificationSource = {
@@ -51,6 +53,7 @@ const NOTIFICATION_STORAGE_PREFIX = 'dems-navbar-notifications-v1';
 const THEME_STORAGE_KEY = 'dems-theme-mode-v1';
 
 export function Navbar() {
+  const router = useRouter();
   const { user, profile, loading, signOut } = useAuth();
   const { itemCount } = useCart();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -126,7 +129,7 @@ export function Navbar() {
 
   const getNotificationStorageKey = (uid: string) => `${NOTIFICATION_STORAGE_PREFIX}-${uid}`;
 
-  const loadNotificationStorage = (uid: string): NotificationStorageState => {
+  const loadNotificationStorage = useCallback((uid: string): NotificationStorageState => {
     if (typeof window === 'undefined') {
       return { readIds: [], deletedIds: [] };
     }
@@ -145,7 +148,7 @@ export function Navbar() {
     } catch {
       return { readIds: [], deletedIds: [] };
     }
-  };
+  }, []);
 
   const saveNotificationStorage = (uid: string, nextState: NotificationStorageState) => {
     if (typeof window === 'undefined') return;
@@ -158,7 +161,7 @@ export function Navbar() {
     return Number.isNaN(parsed) ? 0 : parsed;
   };
 
-  const fetchNotifications = async () => {
+  const fetchNotifications = useCallback(async () => {
     if (!user || !profile) {
       setNotifications([]);
       return;
@@ -202,6 +205,7 @@ export function Navbar() {
             title: 'Nouveau paiement en attente',
             description: `Paiement ${d.id} en attente de validation.`,
             createdAt: parseDateToMs(data.createdAt),
+            targetHref: '/admin',
           });
         });
       }
@@ -213,6 +217,7 @@ export function Navbar() {
           title: 'Nouveau cours vidéo',
           description: `${String(video.title || video.id)}`,
           createdAt: parseDateToMs(video.createdAt),
+          targetHref: `/videos/${video.id}`,
         });
       });
 
@@ -226,6 +231,7 @@ export function Navbar() {
           title: 'Nouveau QCM',
           description: `QCM ajouté dans ${videoTitle}.`,
           createdAt: parseDateToMs(data.createdAt),
+          targetHref: `/videos/${String(data.videoId)}?tab=qcm`,
         });
       });
 
@@ -239,6 +245,7 @@ export function Navbar() {
           title: 'Nouvelle question ouverte',
           description: `Question ouverte ajoutée dans ${videoTitle}.`,
           createdAt: parseDateToMs(data.createdAt),
+          targetHref: `/videos/${String(data.videoId)}?tab=open`,
         });
       });
 
@@ -252,6 +259,7 @@ export function Navbar() {
           title: 'Nouveau schéma',
           description: `Schéma ajouté dans ${videoTitle}.`,
           createdAt: parseDateToMs(data.createdAt),
+          targetHref: `/videos/${String(data.videoId)}?tab=diagram`,
         });
       });
 
@@ -265,6 +273,7 @@ export function Navbar() {
           title: 'Nouveau cas clinique',
           description: `Cas clinique ajouté dans ${videoTitle}.`,
           createdAt: parseDateToMs(data.createdAt),
+          targetHref: `/videos/${String(data.videoId)}?tab=cas`,
         });
       });
 
@@ -278,7 +287,7 @@ export function Navbar() {
     } finally {
       setIsLoadingNotifications(false);
     }
-  };
+  }, [user, profile, notificationDeletedIds]);
 
   const toggleNotificationRead = (notificationId: string) => {
     if (!user) return;
@@ -309,6 +318,35 @@ export function Navbar() {
     });
   };
 
+  const markAllNotificationsRead = () => {
+    if (!user || notifications.length === 0) return;
+
+    const nextReadIds = Array.from(new Set([...notificationReadIds, ...notifications.map((item) => item.id)]));
+    setNotificationReadIds(nextReadIds);
+    saveNotificationStorage(user.uid, {
+      readIds: nextReadIds,
+      deletedIds: notificationDeletedIds,
+    });
+  };
+
+  const openNotification = (notification: NavbarNotification) => {
+    if (!user) return;
+
+    if (!notificationReadIds.includes(notification.id)) {
+      const nextReadIds = [...notificationReadIds, notification.id];
+      setNotificationReadIds(nextReadIds);
+      saveNotificationStorage(user.uid, {
+        readIds: nextReadIds,
+        deletedIds: notificationDeletedIds,
+      });
+    }
+
+    setIsNotificationsOpen(false);
+    setIsUserMenuOpen(false);
+    setIsMobileMenuOpen(false);
+    router.push(notification.targetHref);
+  };
+
   const unreadNotificationCount = notifications.filter((item) => !notificationReadIds.includes(item.id)).length;
   const visibleNotifications = showAllNotifications ? notifications : notifications.slice(0, 5);
 
@@ -323,7 +361,7 @@ export function Navbar() {
     const stored = loadNotificationStorage(user.uid);
     setNotificationReadIds(stored.readIds);
     setNotificationDeletedIds(stored.deletedIds);
-  }, [user]);
+  }, [user, loadNotificationStorage]);
 
   useEffect(() => {
     if (!user || !profile) return;
@@ -333,7 +371,7 @@ export function Navbar() {
     }, 60000);
 
     return () => window.clearInterval(timer);
-  }, [user, profile, notificationDeletedIds]);
+  }, [user, profile, fetchNotifications]);
 
   useEffect(() => {
     if (!isUserMenuOpen && !isNotificationsOpen) return;
@@ -431,8 +469,20 @@ export function Navbar() {
               {isNotificationsOpen && (
                 <div className="absolute right-0 top-11 w-[360px] max-w-[calc(100vw-2rem)] rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] shadow-lg py-2 z-50">
                   <div className="px-3 pb-2 border-b border-[var(--app-border)] flex items-center justify-between">
-                    <p className="text-sm font-semibold text-[var(--app-text)]">Notifications</p>
-                    <span className="text-xs text-[var(--app-muted)]">{unreadNotificationCount} non lue(s)</span>
+                    <div>
+                      <p className="text-sm font-semibold text-[var(--app-text)]">Notifications</p>
+                      <span className="text-xs text-[var(--app-muted)]">{unreadNotificationCount} non lue(s)</span>
+                    </div>
+                    {notifications.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={markAllNotificationsRead}
+                        disabled={unreadNotificationCount === 0}
+                        className="text-xs font-medium text-[var(--app-accent)] hover:opacity-85 disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        Marquer tout lu
+                      </button>
+                    )}
                   </div>
 
                   <div className="max-h-80 overflow-y-auto">
@@ -455,18 +505,26 @@ export function Navbar() {
                               }}
                             >
                               <div className="flex items-start justify-between gap-3">
-                                <div className="min-w-0">
+                                <button
+                                  type="button"
+                                  onClick={() => openNotification(notification)}
+                                  className="min-w-0 flex-1 text-left rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--app-accent)]"
+                                  title="Ouvrir la notification"
+                                  aria-label="Ouvrir la notification"
+                                >
                                   <p className="text-sm font-medium truncate" style={{ color: 'var(--app-text)' }}>
                                     {notification.title}
                                   </p>
                                   <p className="text-xs line-clamp-2" style={{ color: 'color-mix(in oklab, var(--app-text) 72%, var(--app-muted) 28%)' }}>
                                     {notification.description}
                                   </p>
-                                </div>
+                                </button>
                                 <div className="flex items-center gap-1 shrink-0">
                                   <button
                                     type="button"
-                                    onClick={() => toggleNotificationRead(notification.id)}
+                                    onClick={() => {
+                                      toggleNotificationRead(notification.id);
+                                    }}
                                     className="p-1.5 rounded-md transition-colors"
                                     style={{
                                       color: isRead
@@ -483,7 +541,9 @@ export function Navbar() {
                                   </button>
                                   <button
                                     type="button"
-                                    onClick={() => deleteNotification(notification.id)}
+                                    onClick={() => {
+                                      deleteNotification(notification.id);
+                                    }}
                                     className="p-1.5 rounded-md transition-colors"
                                     style={{
                                       color: 'color-mix(in oklab, var(--app-danger) 82%, var(--app-text) 18%)',
@@ -788,8 +848,20 @@ export function Navbar() {
       {user && isNotificationsOpen && (
         <div ref={notificationMobileRef} className="md:hidden absolute top-16 right-4 left-4 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] shadow-lg py-2 z-50">
           <div className="px-3 pb-2 border-b border-[var(--app-border)] flex items-center justify-between">
-            <p className="text-sm font-semibold text-[var(--app-text)]">Notifications</p>
-            <span className="text-xs text-[var(--app-muted)]">{unreadNotificationCount} non lue(s)</span>
+            <div>
+              <p className="text-sm font-semibold text-[var(--app-text)]">Notifications</p>
+              <span className="text-xs text-[var(--app-muted)]">{unreadNotificationCount} non lue(s)</span>
+            </div>
+            {notifications.length > 0 && (
+              <button
+                type="button"
+                onClick={markAllNotificationsRead}
+                disabled={unreadNotificationCount === 0}
+                className="text-xs font-medium text-[var(--app-accent)] hover:opacity-85 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Marquer tout lu
+              </button>
+            )}
           </div>
 
           <div className="max-h-80 overflow-y-auto">
@@ -812,16 +884,24 @@ export function Navbar() {
                       }}
                     >
                       <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
+                        <button
+                          type="button"
+                          onClick={() => openNotification(notification)}
+                          className="min-w-0 flex-1 text-left rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--app-accent)]"
+                          title="Ouvrir la notification"
+                          aria-label="Ouvrir la notification"
+                        >
                           <p className="text-sm font-medium text-[var(--app-text)] truncate">{notification.title}</p>
                           <p className="text-xs line-clamp-2" style={{ color: 'color-mix(in oklab, var(--app-text) 72%, var(--app-muted) 28%)' }}>
                             {notification.description}
                           </p>
-                        </div>
+                        </button>
                         <div className="flex items-center gap-1 shrink-0">
                           <button
                             type="button"
-                            onClick={() => toggleNotificationRead(notification.id)}
+                            onClick={() => {
+                              toggleNotificationRead(notification.id);
+                            }}
                             className="p-1.5 rounded-md transition-colors"
                             style={{
                               color: isRead
@@ -838,7 +918,9 @@ export function Navbar() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => deleteNotification(notification.id)}
+                            onClick={() => {
+                              deleteNotification(notification.id);
+                            }}
                             className="p-1.5 rounded-md transition-colors"
                             style={{
                               color: 'color-mix(in oklab, var(--app-danger) 82%, var(--app-text) 18%)',

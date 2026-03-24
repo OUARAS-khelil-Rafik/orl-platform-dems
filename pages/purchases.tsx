@@ -17,6 +17,11 @@ export default function PurchasesPage() {
   const [purchasedVideoTitlesById, setPurchasedVideoTitlesById] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
 
+  const uniquePurchasedVideoIds = useMemo(() => {
+    const source = Array.isArray(profile?.purchasedVideos) ? profile.purchasedVideos : [];
+    return Array.from(new Set(source));
+  }, [profile?.purchasedVideos]);
+
   const isLightMode = themeMode === 'light';
 
   const cardStyle = {
@@ -117,15 +122,14 @@ export default function PurchasesPage() {
 
   useEffect(() => {
     const loadPurchasedVideoTitles = async () => {
-      const purchasedVideoIds = Array.isArray(profile?.purchasedVideos) ? profile.purchasedVideos : [];
-      if (purchasedVideoIds.length === 0) {
+      if (uniquePurchasedVideoIds.length === 0) {
         setPurchasedVideoTitlesById({});
         return;
       }
 
       try {
         const entries = await Promise.all(
-          purchasedVideoIds.map(async (videoId) => {
+          uniquePurchasedVideoIds.map(async (videoId) => {
             const snap = await getDoc(doc(db, 'videos', videoId));
             if (!snap.exists()) return [videoId, ''] as const;
 
@@ -147,7 +151,7 @@ export default function PurchasesPage() {
     };
 
     loadPurchasedVideoTitles();
-  }, [profile?.purchasedVideos]);
+  }, [uniquePurchasedVideoIds]);
 
   const paymentRequests = useMemo(() => {
     return [...payments]
@@ -247,9 +251,9 @@ export default function PurchasesPage() {
 
             <section>
               <h2 className="text-lg font-bold mb-4" style={{ color: 'var(--app-text)' }}>Videos individuelles</h2>
-              {profile.purchasedVideos && profile.purchasedVideos.length > 0 ? (
+              {uniquePurchasedVideoIds.length > 0 ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                  {profile.purchasedVideos.map((videoId: string) => (
+                  {uniquePurchasedVideoIds.map((videoId: string) => (
                     <div key={videoId} className="border rounded-xl p-6 transition-transform duration-200 hover:-translate-y-1" style={tileStyle}>
                       <div className="w-12 h-12 rounded-xl flex items-center justify-center mb-4" style={{ background: 'color-mix(in oklab, var(--app-info) 18%, var(--app-surface) 82%)', color: 'var(--app-text)' }}>
                         <PlayCircle className="h-6 w-6" />
@@ -276,7 +280,7 @@ export default function PurchasesPage() {
               )}
             </section>
 
-            {(!profile.purchasedPacks?.length && !profile.purchasedVideos?.length) && (
+            {(!profile.purchasedPacks?.length && !uniquePurchasedVideoIds.length) && (
               <p className="italic" style={{ color: subtleText }}>Aucun achat enregistre pour le moment.</p>
             )}
 
