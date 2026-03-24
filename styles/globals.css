@@ -923,6 +923,7 @@ html[data-theme='dark'] .from-slate-900\/60 {
   }
 
   .video-learning-section .rounded-full.border {
+    -webkit-backdrop-filter: blur(4px);
     backdrop-filter: blur(4px);
   }
 
