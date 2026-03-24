@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { db, collection, query, where, getDocs } from '@/lib/local-data';
 import { motion } from 'motion/react';
-import { PlayCircle, Lock, Clock3, Search, SlidersHorizontal, ListChecks, Stethoscope, MessageSquare, Network, RotateCcw } from 'lucide-react';
+import { PlayCircle, Lock, Clock3, Search, SlidersHorizontal, ListChecks, Stethoscope, MessageSquare, Network } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/components/providers/auth-provider';
 import { canAccessVideo } from '@/lib/access-control';
@@ -25,6 +25,8 @@ interface Video {
   durationMinutes?: number;
   durationSeconds?: number;
 }
+
+type VideoPaymentStatus = 'pending' | 'rejected';
 
 type SectionFilter = 'all' | 'anatomie' | 'pathologie';
 
@@ -131,7 +133,68 @@ export default function SpecialtyPage() {
   const [sectionFilter, setSectionFilter] = useState<SectionFilter>('all');
   const [viewedVideoIds, setViewedVideoIds] = useState<string[]>([]);
   const [contentCounts, setContentCounts] = useState<Record<string, { qcm: number; cases: number; open: number; diagrams: number }>>({});
+  const [videoPaymentStatusById, setVideoPaymentStatusById] = useState<Record<string, VideoPaymentStatus>>({});
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchVideoPaymentStatuses = async () => {
+      if (!user) {
+        setVideoPaymentStatusById({});
+        return;
+      }
+
+      try {
+        const paymentsSnap = await getDocs(query(collection(db, 'payments'), where('userId', '==', user.uid)));
+        const latestByVideo = new Map<string, { status: VideoPaymentStatus | 'approved'; createdAt: number }>();
+
+        paymentsSnap.docs.forEach((paymentDoc) => {
+          const payment = paymentDoc.data() as Record<string, any>;
+          const status = String(payment.status || '').toLowerCase();
+          if (status !== 'pending' && status !== 'rejected' && status !== 'approved') return;
+
+          const createdAtRaw = payment.createdAt;
+          const createdAt = typeof createdAtRaw === 'string' ? new Date(createdAtRaw).getTime() : 0;
+          const itemIds: string[] = [];
+
+          if (Array.isArray(payment.items)) {
+            payment.items.forEach((entry: any) => {
+              if (entry?.type === 'video' && typeof entry.id === 'string') {
+                itemIds.push(entry.id);
+              }
+            });
+          }
+
+          if (payment.type === 'video' && typeof payment.targetId === 'string') {
+            itemIds.push(payment.targetId);
+          }
+
+          itemIds.forEach((videoId) => {
+            const previous = latestByVideo.get(videoId);
+            if (!previous || createdAt >= previous.createdAt) {
+              latestByVideo.set(videoId, {
+                status: status as VideoPaymentStatus | 'approved',
+                createdAt,
+              });
+            }
+          });
+        });
+
+        const nextStatuses: Record<string, VideoPaymentStatus> = {};
+        latestByVideo.forEach((entry, videoId) => {
+          if (entry.status === 'pending' || entry.status === 'rejected') {
+            nextStatuses[videoId] = entry.status;
+          }
+        });
+
+        setVideoPaymentStatusById(nextStatuses);
+      } catch (error) {
+        console.error('Error fetching video payment statuses:', error);
+        setVideoPaymentStatusById({});
+      }
+    };
+
+    fetchVideoPaymentStatuses();
+  }, [user]);
 
   useEffect(() => {
     const fetchVideos = async () => {
@@ -282,6 +345,57 @@ export default function SpecialtyPage() {
   const filteredUnlockedCount = filteredVideos.filter((video) => hasAccess(video)).length;
   const filteredViewedCount = filteredVideos.filter((video) => viewedVideoIds.includes(video.id)).length;
 
+  const getLockedVideoAction = (video: Video, isInCart: boolean) => {
+    const paymentStatus = videoPaymentStatusById[video.id];
+
+    if (!user) {
+      return {
+        label: 'Débloquer',
+        onClick: () => router.push(`/sign-in?redirect=${encodeURIComponent(`/specialties/${slug}`)}`),
+      };
+    }
+
+    if (isInCart) {
+      return {
+        label: 'Aller au panier',
+        onClick: () => router.push('/checkout'),
+      };
+    }
+
+    if (paymentStatus === 'pending') {
+      return {
+        label: 'Aller a la liste des achats',
+        onClick: () => router.push('/purchases'),
+      };
+    }
+
+    if (paymentStatus === 'rejected') {
+      return {
+        label: 'Recommencer l\'achat',
+        onClick: () =>
+          addItem({
+            id: video.id,
+            title: video.title,
+            price: video.price,
+            type: 'video',
+            imageUrl: '',
+          }),
+      };
+    }
+
+    return {
+      label: 'Débloquer',
+      onClick: () =>
+        addItem({
+          id: video.id,
+          title: video.title,
+          price: video.price,
+          type: 'video',
+          imageUrl: '',
+        }),
+    };
+  };
+
   return (
     <div className="flex-1 pb-24" style={{ background: 'linear-gradient(180deg, color-mix(in oklab, var(--app-surface) 94%, white 6%) 0%, color-mix(in oklab, var(--app-surface-alt) 76%, var(--app-accent) 24%) 100%)' }}>
       {/* Header */}
@@ -348,22 +462,22 @@ export default function SpecialtyPage() {
           <div className="space-y-16">
             <div className="rounded-3xl border p-5 md:p-6 shadow-md" style={{ borderColor: 'color-mix(in oklab, var(--app-accent) 24%, var(--app-border) 76%)', background: 'linear-gradient(140deg, color-mix(in oklab, var(--app-surface) 94%, white 6%) 0%, color-mix(in oklab, var(--app-surface-alt) 72%, var(--app-accent) 28%) 100%)' }}>
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-end">
-                <div className="lg:col-span-6">
+                <div className="lg:col-span-8">
                   <label htmlFor="video-name-filter" className="text-sm font-semibold text-slate-700 mb-2 inline-flex items-center gap-2">
                     <Search className="h-4 w-4" />
-                    Filtre par nom vidéo (regex acceptée)
+                    Filtre par nom vidéo
                   </label>
                   <input
                     id="video-name-filter"
                     type="text"
                     value={videoNameFilter}
                     onChange={(e) => setVideoNameFilter(e.target.value)}
-                    placeholder="Ex: otite, sinusite, larynx..."
+                    placeholder="Ex: Anatomie de l'oreille moyenne, Otite moyenne, Laryngite, ..."
                     className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
                   />
                 </div>
 
-                <div className="lg:col-span-3">
+                <div className="lg:col-span-4">
                   <label htmlFor="section-filter" className="text-sm font-semibold text-slate-700 mb-2 inline-flex items-center gap-2">
                     <SlidersHorizontal className="h-4 w-4" />
                     Filtre sous-specialite
@@ -380,20 +494,6 @@ export default function SpecialtyPage() {
                       </option>
                     ))}
                   </select>
-                </div>
-
-                <div className="lg:col-span-3">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setVideoNameFilter('');
-                      setSectionFilter('all');
-                    }}
-                    className="w-full inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-amber-50"
-                  >
-                    <RotateCcw className="h-4 w-4" />
-                    Réinitialiser
-                  </button>
                 </div>
 
               </div>
@@ -422,6 +522,11 @@ export default function SpecialtyPage() {
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {filteredVideos.map((video, i) => (
+                    (() => {
+                      const isInCart = items.some((item) => item.id === video.id);
+                      const action = getLockedVideoAction(video, isInCart);
+
+                      return (
                     <VideoCard
                       key={video.id}
                       video={video}
@@ -429,39 +534,17 @@ export default function SpecialtyPage() {
                       isViewed={viewedVideoIds.includes(video.id)}
                       counts={contentCounts[video.id] ?? { qcm: 0, cases: 0, open: 0, diagrams: 0 }}
                       role={profile?.role}
-                      isInCart={items.some((item) => item.id === video.id)}
-                      onUnlock={() => {
-                        if (!user) {
-                          router.push(`/sign-in?redirect=${encodeURIComponent(`/specialties/${slug}`)}`);
-                          return;
-                        }
-
-                        const alreadyInCart = items.some((item) => item.id === video.id);
-                        if (alreadyInCart) {
-                          router.push('/checkout');
-                          return;
-                        }
-
-                        addItem({
-                          id: video.id,
-                          title: video.title,
-                          price: video.price,
-                          type: 'video',
-                          imageUrl: '',
-                        });
-                      }}
+                      isInCart={isInCart}
+                      lockActionLabel={action.label}
+                      onUnlock={action.onClick}
                       index={i}
                     />
+                      );
+                    })()
                   ))}
                 </div>
               )}
             </section>
-
-            {filteredVideos.length === 0 && (
-              <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-500">
-                Aucune video ne correspond aux filtres.
-              </div>
-            )}
 
           </div>
         )}
@@ -477,6 +560,7 @@ function VideoCard({
   counts,
   role,
   isInCart,
+  lockActionLabel,
   onUnlock,
   index,
 }: {
@@ -486,6 +570,7 @@ function VideoCard({
   counts: { qcm: number; cases: number; open: number; diagrams: number };
   role?: 'admin' | 'user' | 'vip' | 'vip_plus';
   isInCart: boolean;
+  lockActionLabel: string;
   onUnlock: () => void;
   index: number;
 }) {
@@ -610,7 +695,7 @@ function VideoCard({
               className="px-4 py-2 rounded-xl text-sm font-medium transition-colors"
               style={{ background: 'linear-gradient(90deg, color-mix(in oklab, var(--app-accent) 76%, #51392a 24%), color-mix(in oklab, var(--app-accent) 90%, #35261c 10%))', color: 'var(--app-accent-contrast)' }}
             >
-              {isInCart ? 'Aller au panier' : 'Débloquer'}
+              {lockActionLabel}
             </button>
           </div>
         )}

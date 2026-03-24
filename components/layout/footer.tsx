@@ -10,9 +10,8 @@ export function Footer() {
 
   return (
     <footer
-      className="relative overflow-hidden py-14 border-t mt-auto"
+      className="relative overflow-hidden py-14 mt-auto"
       style={{
-        borderColor: 'color-mix(in oklab, var(--footer-border) 80%, transparent)',
         background:
           'linear-gradient(145deg, var(--footer-bg-start) 0%, color-mix(in oklab, var(--footer-bg-end) 82%, var(--app-accent) 18%) 100%)',
       }}
@@ -21,10 +20,7 @@ export function Footer() {
       <div className="absolute -bottom-28 right-0 w-96 h-96 rounded-full blur-3xl" style={{ background: 'color-mix(in oklab, var(--app-accent) 18%, transparent)' }} />
 
       <div className="container mx-auto px-4 relative z-10">
-        <div
-          className="rounded-3xl border backdrop-blur-sm p-6 md:p-8 mb-10 grid grid-cols-1 md:grid-cols-4 gap-8 shadow-[0_24px_60px_-30px_rgba(0,0,0,0.75)]"
-          style={{ borderColor: 'var(--footer-border)', backgroundColor: 'var(--footer-panel)' }}
-        >
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
         <div className="flex flex-col gap-4">
           <Link href="/" className="flex items-center gap-2" style={{ color: 'color-mix(in oklab, var(--app-accent) 78%, white 22%)' }}>
             <Stethoscope className="h-6 w-6" />
@@ -47,6 +43,7 @@ export function Footer() {
         <div>
           <h3 className="font-semibold mb-4" style={{ color: 'var(--footer-text)' }}>Liens Utiles</h3>
           <ul className="space-y-2 text-sm">
+            <li><Link href="/planning" className="transition-opacity hover:opacity-80" style={{ color: 'var(--footer-link)' }}>Planning</Link></li>
             {!isAdmin && (
               <li><Link href="/pricing" className="transition-opacity hover:opacity-80" style={{ color: 'var(--footer-link)' }}>Tarifs & Abonnements</Link></li>
             )}
@@ -79,10 +76,10 @@ export function Footer() {
         </div>
       </div>
 
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pt-6 border-t text-sm" style={{ borderColor: 'color-mix(in oklab, var(--footer-border) 75%, transparent)', color: 'var(--footer-muted)' }}>
-          <div className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 w-fit" style={{ borderColor: 'var(--footer-border)', backgroundColor: 'color-mix(in oklab, var(--footer-panel) 88%, transparent)' }}>
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pt-8 text-sm">
+          <div className="inline-flex items-center gap-2">
             <span style={{ color: 'color-mix(in oklab, var(--app-accent) 84%, white 16%)' }}>●</span>
-            <p style={{ color: 'var(--footer-text)' }}>&copy; {new Date().getFullYear()} DEMS ENT. Tous droits réservés.</p>
+            <p style={{ color: 'var(--footer-text)' }}>OUARAS Khelil Rafik &copy; {new Date().getFullYear()} DEMS ENT. Tous droits réservés.</p>
           </div>
           <div className="flex gap-4">
             <Link href="/cgv" className="transition-opacity hover:opacity-80" style={{ color: 'var(--footer-link)' }}>CGV</Link>

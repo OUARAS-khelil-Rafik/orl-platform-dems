@@ -35,6 +35,22 @@ interface DemoVideo {
   isFreeDemo?: boolean;
 }
 
+type WatchProgressEntry = {
+  currentTime: number;
+  duration: number;
+  completed?: boolean;
+  updatedAt?: string;
+};
+
+type UnfinishedVideoItem = {
+  id: string;
+  title: string;
+  currentTime: number;
+  duration: number;
+  remainingSeconds: number;
+  progressPercent: number;
+};
+
 declare global {
   interface Window {
     YT?: {
@@ -62,6 +78,7 @@ declare global {
 }
 
 const FALLBACK_DEMO_VIDEO_URL = 'https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4';
+const WATCH_PROGRESS_KEY = 'dems-video-watch-progress-v1';
 
 const extractYouTubeVideoId = (url: string) => {
   const trimmed = url.trim();
@@ -112,6 +129,40 @@ const formatDemoDurationLabel = (video: DemoVideo | null) => {
   return '45 min';
 };
 
+const parseDurationToSeconds = (video: DemoVideo): number => {
+  if (typeof video.durationSeconds === 'number' && Number.isFinite(video.durationSeconds)) {
+    return Math.max(0, video.durationSeconds);
+  }
+
+  if (typeof video.durationMinutes === 'number' && Number.isFinite(video.durationMinutes)) {
+    return Math.max(0, Math.round(video.durationMinutes * 60));
+  }
+
+  if (typeof video.duration === 'number' && Number.isFinite(video.duration)) {
+    return Math.max(0, Math.round(video.duration * 60));
+  }
+
+  if (typeof video.duration === 'string') {
+    const raw = video.duration.trim();
+    if (!raw) return 0;
+
+    if (raw.includes(':')) {
+      const parts = raw.split(':').map((part) => Number(part));
+      if (parts.some((part) => !Number.isFinite(part))) return 0;
+      if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+      if (parts.length === 2) return parts[0] * 60 + parts[1];
+      if (parts.length === 1) return parts[0] * 60;
+    }
+
+    const asNumber = Number(raw);
+    if (Number.isFinite(asNumber)) {
+      return Math.max(0, Math.round(asNumber * 60));
+    }
+  }
+
+  return 0;
+};
+
 const formatSubspecialtyLabel = (subspecialty?: string) => {
   if (!subspecialty) return 'Otologie';
   return `${subspecialty.charAt(0).toUpperCase()}${subspecialty.slice(1)}`;
@@ -133,6 +184,7 @@ export default function HomePage() {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [areVideoControlsVisible, setAreVideoControlsVisible] = useState(true);
+  const [unfinishedVideos, setUnfinishedVideos] = useState<UnfinishedVideoItem[]>([]);
   const hideControlsTimeoutRef = useRef<number | null>(null);
 
   const youtubeVideoId = extractYouTubeVideoId(demoVideo?.url || '');
@@ -183,6 +235,85 @@ export default function HomePage() {
       isMounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !isAuthReady || !user) {
+      setUnfinishedVideos([]);
+      return;
+    }
+
+    const storageKey = `${WATCH_PROGRESS_KEY}:${user.uid}`;
+
+    const loadUnfinishedVideos = async () => {
+      try {
+        const raw = window.localStorage.getItem(storageKey);
+        const progressMap = raw ? (JSON.parse(raw) as Record<string, WatchProgressEntry>) : {};
+
+        const progressEntries = Object.entries(progressMap).filter(([, entry]) => {
+          if (!entry) return false;
+          const duration = Number(entry.duration) || 0;
+          const current = Number(entry.currentTime) || 0;
+          if (duration <= 0 || current <= 0) return false;
+          const ratio = current / duration;
+          return ratio < 0.98 && !entry.completed;
+        });
+
+        if (progressEntries.length === 0) {
+          setUnfinishedVideos([]);
+          return;
+        }
+
+        const snapshot = await getDocs(collection(db, 'videos'));
+        const videos = snapshot.docs.map((doc) => ({ id: doc.id, ...(doc.data() as Omit<DemoVideo, 'id'>) }));
+        const videosById = new Map(videos.map((video) => [video.id, video]));
+
+        const nextItems: UnfinishedVideoItem[] = progressEntries
+          .map(([videoId, entry]) => {
+            const source = videosById.get(videoId);
+            if (!source) return null;
+
+            const fallbackDuration = parseDurationToSeconds(source);
+            const duration = Math.max(Number(entry.duration) || 0, fallbackDuration);
+            const currentTime = Math.min(Math.max(Number(entry.currentTime) || 0, 0), duration);
+            if (duration <= 0 || currentTime <= 0) return null;
+
+            const remainingSeconds = Math.max(0, Math.floor(duration - currentTime));
+            const progressPercent = Math.min(100, Math.max(0, (currentTime / duration) * 100));
+
+            return {
+              id: videoId,
+              title: source.title || 'Vidéo sans titre',
+              currentTime,
+              duration,
+              remainingSeconds,
+              progressPercent,
+            };
+          })
+          .filter((item): item is UnfinishedVideoItem => Boolean(item))
+          .sort((a, b) => b.progressPercent - a.progressPercent);
+
+        setUnfinishedVideos(nextItems);
+      } catch {
+        setUnfinishedVideos([]);
+      }
+    };
+
+    loadUnfinishedVideos();
+
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === storageKey) {
+        loadUnfinishedVideos();
+      }
+    };
+
+    window.addEventListener('storage', onStorage);
+    window.addEventListener('focus', loadUnfinishedVideos);
+
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener('focus', loadUnfinishedVideos);
+    };
+  }, [isAuthReady, user?.uid, user]);
 
   useEffect(() => {
     setIsPlaying(false);
@@ -612,6 +743,65 @@ export default function HomePage() {
           </div>
         </div>
       </div>
+
+      {isAuthReady && user && unfinishedVideos.length > 0 && (
+        <div className="relative py-10">
+          <div className="container mx-auto px-4">
+            <div
+              className="rounded-3xl border p-6 md:p-8"
+              style={{
+                borderColor: 'color-mix(in oklab, var(--app-accent) 22%, var(--app-border) 78%)',
+                background: 'linear-gradient(180deg, color-mix(in oklab, var(--app-surface) 96%, white 4%) 0%, color-mix(in oklab, var(--app-surface-alt) 84%, var(--app-accent) 16%) 100%)',
+              }}
+            >
+              <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3 mb-5">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.14em]" style={{ color: 'var(--app-muted)' }}>Continuer vos vidéos</p>
+                  <h2 className="text-2xl md:text-3xl font-bold" style={{ color: 'var(--app-text)' }}>
+                    Listes des vidéos pas encore terminées
+                  </h2>
+                </div>
+                <span className="text-sm font-semibold" style={{ color: 'color-mix(in oklab, var(--app-accent) 76%, var(--app-text) 24%)' }}>
+                  {unfinishedVideos.length} en cours
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                {unfinishedVideos.map((item) => (
+                  <Link
+                    key={item.id}
+                    href={`/videos/${item.id}`}
+                    className="rounded-2xl border px-4 py-4 transition-all hover:-translate-y-0.5 hover:shadow-md"
+                    style={{
+                      borderColor: 'color-mix(in oklab, var(--app-accent) 20%, var(--app-border) 80%)',
+                      backgroundColor: 'color-mix(in oklab, var(--app-surface) 90%, white 10%)',
+                    }}
+                  >
+                    <div className="flex items-center justify-between gap-4 mb-2">
+                      <p className="font-semibold line-clamp-1" style={{ color: 'var(--app-text)' }}>{item.title}</p>
+                      <span className="text-xs font-medium whitespace-nowrap" style={{ color: 'var(--app-muted)' }}>
+                        Reste {formatClock(item.remainingSeconds)}
+                      </span>
+                    </div>
+                    <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: 'color-mix(in oklab, var(--app-border) 76%, transparent)' }}>
+                      <div
+                        className="h-full rounded-full"
+                        style={{
+                          width: `${item.progressPercent}%`,
+                          background: 'linear-gradient(90deg, color-mix(in oklab, var(--app-accent) 76%, #6b4a35 24%), color-mix(in oklab, var(--app-accent) 92%, #2e1f16 8%))',
+                        }}
+                      />
+                    </div>
+                    <div className="mt-2 text-xs" style={{ color: 'var(--app-muted)' }}>
+                      {formatClock(item.currentTime)} / {formatClock(item.duration)}
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="relative py-20">
         <div className="container mx-auto px-4">

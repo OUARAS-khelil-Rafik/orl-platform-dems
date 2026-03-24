@@ -81,6 +81,7 @@ export function Navbar() {
     { name: 'Otologie', href: '/specialties/otologie' },
     { name: 'Rhinologie', href: '/specialties/rhinologie' },
     { name: 'Laryngologie', href: '/specialties/laryngologie' },
+    { name: 'Planning', href: '/planning' },
     { name: 'Tarifs', href: '/pricing' },
   ];
   const visibleNavLinks = isAdmin ? navLinks.filter((link) => link.name !== 'Tarifs') : navLinks;
@@ -444,21 +445,37 @@ export function Navbar() {
                         {visibleNotifications.map((notification) => {
                           const isRead = notificationReadIds.includes(notification.id);
                           return (
-                            <li key={notification.id} className={`px-3 py-2 ${isRead ? 'bg-white' : 'bg-blue-50/50'}`}>
+                            <li
+                              key={notification.id}
+                              className="px-3 py-2"
+                              style={{
+                                backgroundColor: isRead
+                                  ? 'color-mix(in oklab, var(--app-surface) 92%, var(--app-border) 8%)'
+                                  : 'color-mix(in oklab, var(--app-accent) 14%, var(--app-surface) 86%)',
+                              }}
+                            >
                               <div className="flex items-start justify-between gap-3">
                                 <div className="min-w-0">
-                                  <p className="text-sm font-medium text-slate-800 truncate">{notification.title}</p>
-                                  <p className="text-xs text-[var(--app-muted)] line-clamp-2">{notification.description}</p>
+                                  <p className="text-sm font-medium truncate" style={{ color: 'var(--app-text)' }}>
+                                    {notification.title}
+                                  </p>
+                                  <p className="text-xs line-clamp-2" style={{ color: 'color-mix(in oklab, var(--app-text) 72%, var(--app-muted) 28%)' }}>
+                                    {notification.description}
+                                  </p>
                                 </div>
                                 <div className="flex items-center gap-1 shrink-0">
                                   <button
                                     type="button"
                                     onClick={() => toggleNotificationRead(notification.id)}
-                                    className={`p-1.5 rounded-md transition-colors ${
-                                      isRead
-                                        ? 'text-amber-700 bg-amber-100 hover:bg-amber-200'
-                                        : 'text-emerald-700 bg-emerald-100 hover:bg-emerald-200'
-                                    }`}
+                                    className="p-1.5 rounded-md transition-colors"
+                                    style={{
+                                      color: isRead
+                                        ? 'color-mix(in oklab, var(--app-warning) 78%, var(--app-text) 22%)'
+                                        : 'color-mix(in oklab, #0f766e 72%, var(--app-text) 28%)',
+                                      backgroundColor: isRead
+                                        ? 'color-mix(in oklab, var(--app-warning) 26%, var(--app-surface) 74%)'
+                                        : 'color-mix(in oklab, #10b981 24%, var(--app-surface) 76%)',
+                                    }}
                                     title={isRead ? 'Marquer non lue' : 'Marquer lue'}
                                     aria-label={isRead ? 'Marquer non lue' : 'Marquer lue'}
                                   >
@@ -467,7 +484,11 @@ export function Navbar() {
                                   <button
                                     type="button"
                                     onClick={() => deleteNotification(notification.id)}
-                                    className="p-1.5 rounded-md text-red-600 bg-red-50 hover:bg-red-100 transition-colors"
+                                    className="p-1.5 rounded-md transition-colors"
+                                    style={{
+                                      color: 'color-mix(in oklab, var(--app-danger) 82%, var(--app-text) 18%)',
+                                      backgroundColor: 'color-mix(in oklab, var(--app-danger) 20%, var(--app-surface) 80%)',
+                                    }}
                                     title="Supprimer"
                                     aria-label="Supprimer"
                                   >
@@ -551,8 +572,8 @@ export function Navbar() {
                       )}
 
                       {(profile.role === 'vip' || profile.role === 'vip_plus') && (
-                        <Link
-                          href="/dashboard?tab=purchases"
+                          <Link
+                            href="/purchases"
                           onClick={() => setIsUserMenuOpen(false)}
                           className="flex items-center gap-2 px-3 py-2 text-sm text-[var(--app-text)] hover:bg-[var(--app-surface-2)]"
                         >
@@ -713,7 +734,7 @@ export function Navbar() {
 
                     {(profile?.role === 'vip' || profile?.role === 'vip_plus') && (
                       <Link
-                        href="/dashboard?tab=purchases"
+                        href="/purchases"
                         onClick={() => setIsMobileMenuOpen(false)}
                         className="flex items-center gap-2 text-base font-medium text-[var(--app-text)]"
                       >
@@ -781,21 +802,35 @@ export function Navbar() {
                 {visibleNotifications.map((notification) => {
                   const isRead = notificationReadIds.includes(notification.id);
                   return (
-                    <li key={notification.id} className={`px-3 py-2 ${isRead ? 'bg-white' : 'bg-blue-50/50'}`}>
+                    <li
+                      key={notification.id}
+                      className="px-3 py-2"
+                      style={{
+                        backgroundColor: isRead
+                          ? 'color-mix(in oklab, var(--app-surface) 92%, var(--app-border) 8%)'
+                          : 'color-mix(in oklab, var(--app-accent) 14%, var(--app-surface) 86%)',
+                      }}
+                    >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <p className="text-sm font-medium text-[var(--app-text)] truncate">{notification.title}</p>
-                          <p className="text-xs text-[var(--app-muted)] line-clamp-2">{notification.description}</p>
+                          <p className="text-xs line-clamp-2" style={{ color: 'color-mix(in oklab, var(--app-text) 72%, var(--app-muted) 28%)' }}>
+                            {notification.description}
+                          </p>
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
                           <button
                             type="button"
                             onClick={() => toggleNotificationRead(notification.id)}
-                            className={`p-1.5 rounded-md transition-colors ${
-                              isRead
-                                ? 'text-amber-700 bg-amber-100 hover:bg-amber-200'
-                                : 'text-emerald-700 bg-emerald-100 hover:bg-emerald-200'
-                            }`}
+                            className="p-1.5 rounded-md transition-colors"
+                            style={{
+                              color: isRead
+                                ? 'color-mix(in oklab, var(--app-warning) 78%, var(--app-text) 22%)'
+                                : 'color-mix(in oklab, #0f766e 72%, var(--app-text) 28%)',
+                              backgroundColor: isRead
+                                ? 'color-mix(in oklab, var(--app-warning) 26%, var(--app-surface) 74%)'
+                                : 'color-mix(in oklab, #10b981 24%, var(--app-surface) 76%)',
+                            }}
                             title={isRead ? 'Marquer non lue' : 'Marquer lue'}
                             aria-label={isRead ? 'Marquer non lue' : 'Marquer lue'}
                           >
@@ -804,7 +839,11 @@ export function Navbar() {
                           <button
                             type="button"
                             onClick={() => deleteNotification(notification.id)}
-                            className="p-1.5 rounded-md text-red-600 bg-red-50 hover:bg-red-100 transition-colors"
+                            className="p-1.5 rounded-md transition-colors"
+                            style={{
+                              color: 'color-mix(in oklab, var(--app-danger) 82%, var(--app-text) 18%)',
+                              backgroundColor: 'color-mix(in oklab, var(--app-danger) 20%, var(--app-surface) 80%)',
+                            }}
                             title="Supprimer"
                             aria-label="Supprimer"
                           >

@@ -1,6 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/router';
+import Image from 'next/image';
+import Link from 'next/link';
+import { motion } from 'motion/react';
+import { User, Star, Camera, LockKeyhole, Moon, Sun, Trash2 } from 'lucide-react';
 import { useAuth } from '@/components/providers/auth-provider';
 import {
   db,
@@ -17,24 +22,18 @@ import {
   updateAuthPhotoURL,
   updateAuthPassword,
 } from '@/lib/local-data';
-import { motion } from 'motion/react';
-import { User, PlayCircle, Star, Camera, LockKeyhole, HardDrive, Moon, Sun, Trash2 } from 'lucide-react';
-import { useRouter } from 'next/router';
-import Image from 'next/image';
-import Link from 'next/link';
 import { isSubscriptionActive } from '@/lib/access-control';
 import { formatFullName, normalizeNameParts, splitFullName } from '@/lib/name-utils';
 
 export default function UserDashboard() {
   const { user, profile, loading: authLoading, signOut } = useAuth();
   const router = useRouter();
-  
-  const [activeTab, setActiveTab] = useState<'profile' | 'storage' | 'purchases'>('profile');
-  const [payments, setPayments] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+
+  const [activeTab, setActiveTab] = useState<'profile' | 'storage'>('profile');
   const [isEditing, setIsEditing] = useState(false);
   const [lastName, setLastName] = useState('');
   const [firstName, setFirstName] = useState('');
+  const [themeMode, setThemeMode] = useState<'light' | 'dark'>('light');
   const [defaultMode, setDefaultMode] = useState<'light' | 'dark'>('light');
   const [isSavingDefaultMode, setIsSavingDefaultMode] = useState(false);
   const [avatarUploading, setAvatarUploading] = useState(false);
@@ -50,11 +49,75 @@ export default function UserDashboard() {
   });
   const [isSavingStorageSettings, setIsSavingStorageSettings] = useState(false);
 
+  const isLightMode = themeMode === 'light';
+
+  const cardStyle = {
+    background: isLightMode
+      ? 'color-mix(in oklab, var(--app-bg) 94%, var(--app-surface) 6%)'
+      : 'color-mix(in oklab, var(--app-surface) 96%, var(--app-bg) 4%)',
+    borderColor: isLightMode
+      ? 'color-mix(in oklab, var(--app-border) 88%, var(--app-surface-2) 12%)'
+      : 'color-mix(in oklab, var(--app-border) 90%, var(--app-deep-surface) 10%)',
+    boxShadow: '0 14px 48px -24px rgba(0, 0, 0, 0.55)',
+  };
+
+  const insetCardStyle = {
+    background: isLightMode
+      ? 'color-mix(in oklab, var(--app-bg) 96%, var(--app-surface-2) 4%)'
+      : 'color-mix(in oklab, var(--app-surface-2) 86%, var(--app-deep-surface) 14%)',
+    borderColor: isLightMode
+      ? 'color-mix(in oklab, var(--app-border) 92%, var(--app-surface) 8%)'
+      : 'color-mix(in oklab, var(--app-border) 86%, var(--app-deep-surface-2) 14%)',
+  };
+
+  const inputClasses =
+    'w-full px-4 py-2 rounded-xl border bg-[var(--app-surface)] text-[var(--app-text)] border-[var(--app-border)] placeholder:text-[var(--app-muted)] focus:ring-2 focus:ring-[var(--app-accent)] focus:border-[var(--app-accent)] outline-none transition-all';
+
+  const inputTone = {
+    background: isLightMode
+      ? 'color-mix(in oklab, var(--app-bg) 96%, var(--app-surface) 4%)'
+      : 'var(--app-surface)',
+    borderColor: isLightMode
+      ? 'color-mix(in oklab, var(--app-border) 92%, var(--app-surface-2) 8%)'
+      : 'var(--app-border)',
+    color: 'var(--app-text)',
+  };
+
+  const subtleText = { color: 'color-mix(in oklab, var(--app-text) 78%, var(--app-muted) 22%)' };
+
   useEffect(() => {
     if (!authLoading && !user) {
       router.push('/');
     }
   }, [user, authLoading, router]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const root = document.documentElement;
+    const syncThemeMode = () => {
+      const attrTheme = root.getAttribute('data-theme');
+      setThemeMode(attrTheme === 'dark' ? 'dark' : 'light');
+    };
+
+    syncThemeMode();
+
+    const observer = new MutationObserver((mutations) => {
+      const hasThemeMutation = mutations.some((mutation) => mutation.attributeName === 'data-theme');
+      if (hasThemeMutation) {
+        syncThemeMode();
+      }
+    });
+
+    observer.observe(root, {
+      attributes: true,
+      attributeFilter: ['data-theme'],
+    });
+
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
 
   useEffect(() => {
     if (profile) {
@@ -68,7 +131,7 @@ export default function UserDashboard() {
   useEffect(() => {
     const tabParam = router.query.tab;
     if (!tabParam || Array.isArray(tabParam)) return;
-    if (tabParam === 'profile' || tabParam === 'purchases' || tabParam === 'storage') {
+    if (tabParam === 'profile' || tabParam === 'storage') {
       setActiveTab(tabParam);
     }
   }, [router.query.tab]);
@@ -97,23 +160,8 @@ export default function UserDashboard() {
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', defaultMode);
+    setThemeMode(defaultMode);
   }, [defaultMode]);
-
-  useEffect(() => {
-    const fetchHistory = async () => {
-      if (!user) return;
-      try {
-        const q = query(collection(db, 'payments'), where('userId', '==', user.uid));
-        const snap = await getDocs(q);
-        setPayments(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-      } catch (error) {
-        console.error('Error fetching history:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    if (!authLoading) fetchHistory();
-  }, [user, authLoading]);
 
   const handleUpdateProfile = async () => {
     if (!user) return;
@@ -283,100 +331,24 @@ export default function UserDashboard() {
     }
   };
 
-  if (loading || authLoading) {
+  if (authLoading) {
     return <div className="flex-1 flex items-center justify-center"><div className="w-12 h-12 border-4 border-medical-500 border-t-transparent rounded-full animate-spin" /></div>;
   }
 
   if (!profile) return null;
 
   const isVipPlus = isSubscriptionActive(profile);
-  const purchasedPacksCount = profile.purchasedPacks?.length || 0;
-  const purchasedVideosCount = profile.purchasedVideos?.length || 0;
   const accountLevelLabel = isVipPlus ? 'VIP Plus' : profile.role === 'vip' ? 'VIP' : profile.role === 'admin' ? 'Admin' : 'Demo';
 
   return (
-    <div className="flex-1 bg-gradient-to-br from-slate-100 via-stone-50 to-slate-100 flex flex-col md:flex-row">
-      {/* Sidebar */}
-      <aside className="w-full md:w-64 bg-white/85 backdrop-blur-md border-r border-slate-200 flex-shrink-0 md:sticky md:top-0 md:h-[calc(100vh-4rem)]">
-        <div className="p-6 border-b border-slate-100 flex flex-col items-center text-center">
-          <div className="relative w-24 h-24 rounded-full overflow-hidden bg-slate-100 mb-4 border-4 border-white shadow-md">
-            {profile.photoURL ? (
-              <Image src={profile.photoURL} alt={profile.displayName} fill className="object-cover" referrerPolicy="no-referrer" />
-            ) : (
-              <User className="w-12 h-12 text-slate-400 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
-            )}
-            <label
-              className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-xs py-1 flex justify-center items-center gap-1 hover:bg-black/70 transition-colors cursor-pointer"
-              title="Changer la photo"
-              aria-label="Changer la photo"
-            >
-              {avatarUploading ? (
-                <span>Chargement...</span>
-              ) : (
-                <>
-                  <Camera className="w-3 h-3" />
-                  <span>Changer la photo</span>
-                </>
-              )}
-              <input
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={handleAvatarChange}
-                disabled={avatarUploading}
-              />
-            </label>
-          </div>
-          <h2 className="text-lg font-bold text-slate-900">{formatFullName(lastName, firstName) || profile.displayName}</h2>
-          <p className="text-sm text-slate-500 mb-3">{profile.email}</p>
-          <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider
-            ${isVipPlus ? 'bg-accent-100 text-accent-700' :
-              profile.role === 'vip' ? 'bg-medical-100 text-medical-700' :
-              profile.role === 'admin' ? 'bg-purple-100 text-purple-700' :
-              'bg-slate-100 text-slate-700'}`}
-          >
-            {isVipPlus ? <Star className="w-3 h-3 fill-current" /> : null}
-            {isVipPlus ? 'VIP Plus' : profile.role.replace('_', ' ')}
-          </span>
-        </div>
-        <nav className="p-4 space-y-1">
-          <button
-            onClick={() => setActiveTab('profile')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors text-sm font-medium ${
-              activeTab === 'profile' ? 'bg-medical-50 text-medical-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-            }`}
-          >
-            <User className={`h-5 w-5 ${activeTab === 'profile' ? 'text-medical-600' : 'text-slate-400'}`} />
-            Mon Profil
-          </button>
-          {profile.role === 'admin' && (
-            <button
-              onClick={() => setActiveTab('storage')}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors text-sm font-medium ${
-                activeTab === 'storage' ? 'bg-medical-50 text-medical-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-              }`}
-            >
-              <HardDrive className={`h-5 w-5 ${activeTab === 'storage' ? 'text-medical-600' : 'text-slate-400'}`} />
-              Gestion de Stockage
-            </button>
-          )}
-          {(profile.role === 'vip' || isVipPlus) && (
-            <button
-              onClick={() => setActiveTab('purchases')}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors text-sm font-medium ${
-                activeTab === 'purchases' ? 'bg-medical-50 text-medical-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-              }`}
-            >
-              <PlayCircle className={`h-5 w-5 ${activeTab === 'purchases' ? 'text-medical-600' : 'text-slate-400'}`} />
-              Mes Achats
-            </button>
-          )}
-        </nav>
-      </aside>
-
-      {/* Main Content */}
-      <main className="flex-1 p-6 md:p-10 overflow-y-auto">
-        <div className="max-w-4xl mx-auto">
+    <div
+      className="flex-1 min-h-screen py-8 md:py-10"
+      style={{
+        background: 'radial-gradient(130% 120% at 20% 20%, color-mix(in oklab, var(--app-accent) 4%, var(--app-bg) 96%), var(--app-bg))',
+      }}
+    >
+      <main className="px-4 md:px-10">
+        <div className="max-w-5xl mx-auto">
           <div
             className="mb-6 rounded-3xl border p-6 shadow-xl"
             style={{
@@ -385,178 +357,223 @@ export default function UserDashboard() {
               background: 'linear-gradient(140deg, var(--hero-bg-start) 0%, color-mix(in oklab, var(--hero-bg-end) 82%, var(--app-accent) 18%) 100%)',
             }}
           >
-            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-              <div>
-                <p className="text-xs uppercase tracking-[0.16em]" style={{ color: 'var(--hero-body)' }}>Espace personnel</p>
-                <h1 className="text-2xl md:text-3xl font-bold mt-1">{formatFullName(lastName, firstName) || profile.displayName}</h1>
-                <p className="text-sm mt-2" style={{ color: 'var(--hero-body)' }}>Gérez votre profil, votre sécurité et vos accès pédagogiques depuis un seul espace.</p>
+            <div className="flex flex-col gap-5">
+              <div className="flex flex-col lg:flex-row lg:items-center gap-5">
+                <div className="p-4 rounded-2xl flex flex-col items-center text-center min-w-[220px]">
+                  <div className="relative w-24 h-24 rounded-full overflow-hidden bg-slate-100 mb-3 border-4 border-white shadow-md">
+                    {profile.photoURL ? (
+                      <Image src={profile.photoURL} alt={profile.displayName} fill className="object-cover" referrerPolicy="no-referrer" />
+                    ) : (
+                      <User className="w-12 h-12 text-[var(--app-muted)] absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+                    )}
+                    <label
+                      className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-xs py-1 flex justify-center items-center gap-1 hover:bg-black/70 transition-colors cursor-pointer"
+                      title="Changer la photo"
+                      aria-label="Changer la photo"
+                    >
+                      {avatarUploading ? (
+                        <span>Chargement...</span>
+                      ) : (
+                        <>
+                          <Camera className="w-3 h-3" />
+                          <span>Changer la photo</span>
+                        </>
+                      )}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={handleAvatarChange}
+                        disabled={avatarUploading}
+                      />
+                    </label>
+                  </div>
+                  <h2 className="text-base font-bold">{formatFullName(lastName, firstName) || profile.displayName}</h2>
+                  <p className="text-xs mb-2" style={{ color: 'var(--hero-body)' }}>{profile.email}</p>
+                  <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
+                    isVipPlus
+                      ? 'bg-accent-100 text-accent-700'
+                      : profile.role === 'vip'
+                        ? 'bg-medical-100 text-medical-700'
+                        : profile.role === 'admin'
+                          ? 'bg-purple-100 text-purple-700'
+                          : 'bg-[var(--app-surface-2)] text-[var(--app-text)]'
+                  }`}>
+                    {isVipPlus ? <Star className="w-3 h-3 fill-current" /> : null}
+                    {accountLevelLabel}
+                  </span>
+                </div>
+
+                <div className="flex-1">
+                  <p className="text-xs uppercase tracking-[0.16em]" style={{ color: 'var(--hero-body)' }}>Espace personnel</p>
+                  <h1 className="text-2xl md:text-3xl font-bold mt-1">{formatFullName(lastName, firstName) || profile.displayName}</h1>
+                  <p className="text-sm mt-2" style={{ color: 'var(--hero-body)' }}>Gérez votre profil, votre sécurité et vos accès pédagogiques depuis un seul espace.</p>
+                </div>
               </div>
-              <div className="grid grid-cols-2 gap-2 sm:min-w-[300px]">
-                <div className="rounded-2xl border px-3 py-2" style={{ borderColor: 'var(--hero-panel-border)', backgroundColor: 'var(--hero-panel-bg)' }}>
-                  <p className="text-[11px] uppercase tracking-[0.14em]" style={{ color: 'var(--hero-body)' }}>Niveau</p>
-                  <p className="text-sm font-semibold">{accountLevelLabel}</p>
-                </div>
-                <div className="rounded-2xl border px-3 py-2" style={{ borderColor: 'var(--hero-panel-border)', backgroundColor: 'var(--hero-panel-bg)' }}>
-                  <p className="text-[11px] uppercase tracking-[0.14em]" style={{ color: 'var(--hero-body)' }}>Packs</p>
-                  <p className="text-sm font-semibold">{purchasedPacksCount}</p>
-                </div>
-                <div className="rounded-2xl border px-3 py-2" style={{ borderColor: 'var(--hero-panel-border)', backgroundColor: 'var(--hero-panel-bg)' }}>
-                  <p className="text-[11px] uppercase tracking-[0.14em]" style={{ color: 'var(--hero-body)' }}>Videos</p>
-                  <p className="text-sm font-semibold">{purchasedVideosCount}</p>
-                </div>
-                <div className="rounded-2xl border px-3 py-2" style={{ borderColor: 'var(--hero-panel-border)', backgroundColor: 'var(--hero-panel-bg)' }}>
-                  <p className="text-[11px] uppercase tracking-[0.14em]" style={{ color: 'var(--hero-body)' }}>Mode</p>
-                  <p className="text-sm font-semibold">{defaultMode === 'dark' ? 'Sombre' : 'Clair'}</p>
-                </div>
-              </div>
+
             </div>
           </div>
 
           {activeTab === 'profile' && (
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-white rounded-2xl shadow-md border border-slate-200 p-8">
-              <h3 className="text-2xl font-bold text-slate-900 mb-6">Informations Personnelles</h3>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-5 space-y-6">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Nom et prénom</label>
-                  {isEditing ? (
-                    <div className="grid sm:grid-cols-2 gap-2">
-                      <input 
-                        type="text" 
-                        value={lastName}
-                        onChange={(e) => setLastName(e.target.value)}
-                        title="Nom"
-                        aria-label="Nom"
-                        placeholder="NOM"
-                        className="flex-1 px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-medical-500 focus:border-medical-500 outline-none transition-all"
-                      />
-                      <input
-                        type="text"
-                        value={firstName}
-                        onChange={(e) => setFirstName(e.target.value)}
-                        title="Prénom"
-                        aria-label="Prénom"
-                        placeholder="Prénom"
-                        className="flex-1 px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-medical-500 focus:border-medical-500 outline-none transition-all"
-                      />
-                      <button onClick={handleUpdateProfile} className="bg-medical-600 text-white px-4 py-2 rounded-xl font-medium hover:bg-medical-700">Enregistrer</button>
-                      <button
-                        onClick={() => {
-                          setIsEditing(false);
-                          const splitName = splitFullName(profile.displayName || '');
-                          setLastName(profile.lastName || splitName.lastName);
-                          setFirstName(profile.firstName || splitName.firstName);
-                        }}
-                        className="bg-slate-100 text-slate-700 px-4 py-2 rounded-xl font-medium hover:bg-slate-200"
-                      >
-                        Annuler
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="flex justify-between items-center px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl">
-                      <span className="text-slate-900 font-medium">{formatFullName(lastName, firstName) || profile.displayName}</span>
-                      <button onClick={() => setIsEditing(true)} className="text-sm text-medical-600 font-medium hover:underline">Modifier</button>
-                    </div>
-                  )}
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Adresse Email</label>
-                  <div className="px-4 py-3 bg-slate-100 border border-slate-200 rounded-xl text-slate-500 cursor-not-allowed">
-                    {profile.email}
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+              <section className="rounded-2xl p-8 shadow-lg" style={cardStyle}>
+                <h3 className="text-2xl font-bold mb-6" style={{ color: 'var(--app-text)' }}>Mon Profil</h3>
+                <div className="rounded-2xl border p-5 space-y-6" style={insetCardStyle}>
+                  <div>
+                    <label className="block text-sm font-medium mb-2" style={subtleText}>Nom et prénom</label>
+                    {isEditing ? (
+                      <div className="grid sm:grid-cols-2 gap-2">
+                        <input
+                          type="text"
+                          value={lastName}
+                          onChange={(e) => setLastName(e.target.value)}
+                          title="Nom"
+                          aria-label="Nom"
+                          placeholder="NOM"
+                          className={inputClasses}
+                          style={inputTone}
+                        />
+                        <input
+                          type="text"
+                          value={firstName}
+                          onChange={(e) => setFirstName(e.target.value)}
+                          title="Prénom"
+                          aria-label="Prénom"
+                          placeholder="Prénom"
+                          className={inputClasses}
+                          style={inputTone}
+                        />
+                        <button onClick={handleUpdateProfile} className="bg-[var(--app-accent)] text-[var(--app-accent-contrast)] px-4 py-2 rounded-xl font-medium hover:brightness-110 transition-colors">Enregistrer</button>
+                        <button
+                          onClick={() => {
+                            setIsEditing(false);
+                            const splitName = splitFullName(profile.displayName || '');
+                            setLastName(profile.lastName || splitName.lastName);
+                            setFirstName(profile.firstName || splitName.firstName);
+                          }}
+                          className="bg-[var(--app-surface-2)] text-[var(--app-text)] px-4 py-2 rounded-xl font-medium border border-[var(--app-border)] hover:brightness-105 transition-colors"
+                        >
+                          Annuler
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex justify-between items-center px-4 py-3 border rounded-xl" style={insetCardStyle}>
+                        <span className="font-medium text-[var(--app-text)]">{formatFullName(lastName, firstName) || profile.displayName}</span>
+                        <button onClick={() => setIsEditing(true)} className="text-sm font-medium text-[var(--app-accent)] hover:underline">Modifier</button>
+                      </div>
+                    )}
                   </div>
-                  <p className="text-xs text-slate-500 mt-2">L'adresse email ne peut pas être modifiée depuis votre espace.</p>
-                </div>
-                </div>
-
-                <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-5 space-y-5">
-                <div>
-                  <h4 className="text-sm font-semibold text-slate-900 mb-3 flex items-center gap-2">
-                    <LockKeyhole className="w-4 h-4 text-slate-500" />
-                    Changer le mot de passe
-                  </h4>
-                  <div className="space-y-3">
-                    <input
-                      type="password"
-                      value={currentPassword}
-                      onChange={(e) => setCurrentPassword(e.target.value)}
-                      placeholder="Mot de passe actuel"
-                      className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-medical-500 focus:border-medical-500 outline-none transition-all"
-                    />
-                    <input
-                      type="password"
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                      placeholder="Nouveau mot de passe"
-                      className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-medical-500 focus:border-medical-500 outline-none transition-all"
-                    />
-                    <input
-                      type="password"
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      placeholder="Confirmer le nouveau mot de passe"
-                      className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-medical-500 focus:border-medical-500 outline-none transition-all"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleChangePassword}
-                      disabled={isUpdatingPassword}
-                      className="mt-1 inline-flex items-center justify-center px-4 py-2 rounded-xl bg-medical-600 text-white text-sm font-medium hover:bg-medical-700 disabled:opacity-60 disabled:cursor-not-allowed"
-                    >
-                      {isUpdatingPassword ? 'Mise à jour...' : 'Mettre à jour le mot de passe'}
-                    </button>
+                  <div>
+                    <label className="block text-sm font-medium mb-2" style={subtleText}>Adresse Email</label>
+                    <div className="px-4 py-3 border rounded-xl text-[var(--app-muted)] cursor-not-allowed" style={insetCardStyle}>
+                      {profile.email}
+                    </div>
+                    <p className="text-xs mt-2" style={subtleText}>L'adresse email ne peut pas être modifiée depuis votre espace.</p>
                   </div>
                 </div>
+              </section>
 
-                <div className="pt-1">
-                  <h4 className="text-sm font-semibold text-slate-900 mb-3">Mode par défaut</h4>
+              <section className="rounded-2xl p-8 shadow-lg" style={cardStyle}>
+                <h3 className="text-xl font-bold mb-4 flex items-center gap-2" style={{ color: 'var(--app-text)' }}>
+                  <LockKeyhole className="w-5 h-5 text-[var(--app-muted)]" />
+                  Changement du mot de passe
+                </h3>
+                <div className="rounded-2xl border p-5 space-y-3" style={insetCardStyle}>
+                  <input
+                    type="password"
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    placeholder="Mot de passe actuel"
+                    className={inputClasses}
+                    style={inputTone}
+                  />
+                  <input
+                    type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="Nouveau mot de passe"
+                    className={inputClasses}
+                    style={inputTone}
+                  />
+                  <input
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Confirmer le nouveau mot de passe"
+                    className={inputClasses}
+                    style={inputTone}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleChangePassword}
+                    disabled={isUpdatingPassword}
+                    className="mt-1 inline-flex items-center justify-center px-4 py-2 rounded-xl bg-[var(--app-accent)] text-[var(--app-accent-contrast)] text-sm font-medium hover:brightness-110 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {isUpdatingPassword ? 'Mise à jour...' : 'Mettre à jour le mot de passe'}
+                  </button>
+                </div>
+              </section>
+
+              <section className="rounded-2xl p-8 shadow-lg" style={cardStyle}>
+                <h3 className="text-xl font-bold mb-4" style={{ color: 'var(--app-text)' }}>Mode par défaut</h3>
+                <div className="rounded-2xl border p-5" style={insetCardStyle}>
                   <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                     <div className="relative flex-1">
                       <select
                         value={defaultMode}
                         onChange={(e) => setDefaultMode(e.target.value as 'light' | 'dark')}
-                        className="w-full appearance-none px-4 py-2 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-medical-500 focus:border-medical-500 outline-none"
+                        className={`${inputClasses} appearance-none pr-10`}
                         title="Mode par défaut"
                         aria-label="Mode par défaut"
+                        style={inputTone}
                       >
                         <option value="light">Light mode</option>
                         <option value="dark">Dark mode</option>
                       </select>
                       {defaultMode === 'dark' ? (
-                        <Moon className="pointer-events-none absolute right-3 top-2.5 h-4 w-4 text-slate-500" />
+                        <Moon className="pointer-events-none absolute right-3 top-2.5 h-4 w-4 text-[var(--app-muted)]" />
                       ) : (
-                        <Sun className="pointer-events-none absolute right-3 top-2.5 h-4 w-4 text-slate-500" />
+                        <Sun className="pointer-events-none absolute right-3 top-2.5 h-4 w-4 text-[var(--app-muted)]" />
                       )}
                     </div>
                     <button
                       type="button"
                       onClick={handleSaveDefaultMode}
                       disabled={isSavingDefaultMode}
-                      className="px-4 py-2 rounded-xl bg-medical-600 text-white text-sm font-medium hover:bg-medical-700 disabled:opacity-60"
+                      className="px-4 py-2 rounded-xl bg-[var(--app-accent)] text-[var(--app-accent-contrast)] text-sm font-medium hover:brightness-110 disabled:opacity-60 transition-colors"
                     >
                       {isSavingDefaultMode ? 'Enregistrement...' : 'Enregistrer'}
                     </button>
                   </div>
                 </div>
+              </section>
 
-                {profile.role !== 'admin' && (
-                  <div className="pt-3 border-t border-slate-200">
-                    <h4 className="text-sm font-semibold text-red-700 mb-2">Suppression définitive du compte</h4>
-                    <p className="text-xs text-slate-600 mb-3">
-                      Cette action est irréversible et supprime votre compte ainsi que vos données associées.
-                    </p>
-                    <button
-                      type="button"
-                      onClick={handleDeleteAccountPermanently}
-                      disabled={isDeletingAccount}
-                      className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-red-600 text-white text-sm font-medium hover:bg-red-700 disabled:opacity-60"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                      {isDeletingAccount ? 'Suppression...' : 'Supprimer définitivement mon compte'}
-                    </button>
-                  </div>
-                )}
-                </div>
-              </div>
+              {profile.role !== 'admin' && (
+                <section
+                  className="rounded-2xl shadow-lg border p-8"
+                  style={{
+                    ...cardStyle,
+                    background: 'color-mix(in oklab, var(--app-surface) 88%, var(--app-danger) 12%)',
+                    borderColor: 'color-mix(in oklab, var(--app-danger) 52%, var(--app-border) 48%)',
+                  }}
+                >
+                  <h3 className="text-xl font-bold mb-2" style={{ color: 'var(--app-danger)' }}>
+                    Suppression définitive du compte
+                  </h3>
+                  <p className="text-sm mb-4" style={subtleText}>
+                    Cette action est irréversible et supprime votre compte ainsi que vos données associées.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleDeleteAccountPermanently}
+                    disabled={isDeletingAccount}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--app-danger)] text-[var(--app-accent-contrast)] text-sm font-medium hover:brightness-110 disabled:opacity-60"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    {isDeletingAccount ? 'Suppression...' : 'Supprimer définitivement mon compte'}
+                  </button>
+                </section>
+              )}
             </motion.div>
           )}
 
@@ -564,44 +581,48 @@ export default function UserDashboard() {
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="bg-white rounded-2xl shadow-md border border-slate-200 p-8"
+              className="rounded-2xl shadow-lg border p-8"
+              style={cardStyle}
             >
-              <h3 className="text-2xl font-bold text-slate-900 mb-2">Gestion de Stockage</h3>
-              <p className="text-sm text-slate-500 mb-6">
+              <h3 className="text-2xl font-bold mb-2" style={{ color: 'var(--app-text)' }}>Gestion de Stockage</h3>
+              <p className="text-sm mb-6" style={subtleText}>
                 Configurez les identifiants Cloudinary utilisés par la plateforme.
               </p>
 
               <div className="max-w-xl space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Cloudinary Cloud Name</label>
+                  <label className="block text-sm font-medium mb-2" style={subtleText}>Cloudinary Cloud Name</label>
                   <input
                     type="text"
                     value={storageSettings.cloudName}
                     onChange={(e) => setStorageSettings((prev) => ({ ...prev, cloudName: e.target.value }))}
-                    className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-medical-500 focus:border-medical-500 outline-none"
+                    className={inputClasses}
                     placeholder="ex: demo-cloud"
+                    style={inputTone}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">CLOUDINARY_API_KEY</label>
+                  <label className="block text-sm font-medium mb-2" style={subtleText}>CLOUDINARY_API_KEY</label>
                   <input
                     type="text"
                     value={storageSettings.apiKey}
                     onChange={(e) => setStorageSettings((prev) => ({ ...prev, apiKey: e.target.value }))}
-                    className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-medical-500 focus:border-medical-500 outline-none"
+                    className={inputClasses}
                     placeholder="ex: 123456789012345"
+                    style={inputTone}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">CLOUDINARY_API_SECRET</label>
+                  <label className="block text-sm font-medium mb-2" style={subtleText}>CLOUDINARY_API_SECRET</label>
                   <input
                     type="password"
                     value={storageSettings.apiSecret}
                     onChange={(e) => setStorageSettings((prev) => ({ ...prev, apiSecret: e.target.value }))}
-                    className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-medical-500 focus:border-medical-500 outline-none"
+                    className={inputClasses}
                     placeholder="Secret API"
+                    style={inputTone}
                   />
                 </div>
 
@@ -609,7 +630,7 @@ export default function UserDashboard() {
                   type="button"
                   onClick={handleSaveStorageSettings}
                   disabled={isSavingStorageSettings}
-                  className="inline-flex items-center justify-center px-4 py-2 rounded-xl bg-medical-600 text-white text-sm font-medium hover:bg-medical-700 disabled:opacity-60"
+                  className="inline-flex items-center justify-center px-4 py-2 rounded-xl bg-[var(--app-accent)] text-[var(--app-accent-contrast)] text-sm font-medium hover:brightness-110 disabled:opacity-60"
                 >
                   {isSavingStorageSettings ? 'Enregistrement...' : 'Enregistrer les paramètres'}
                 </button>
@@ -617,61 +638,6 @@ export default function UserDashboard() {
             </motion.div>
           )}
 
-          {activeTab === 'purchases' && (
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-white rounded-2xl shadow-md border border-slate-200 p-8">
-              <h3 className="text-2xl font-bold text-slate-900 mb-6">Mes Achats</h3>
-              
-              <div className="space-y-8">
-                {/* Packs */}
-                <div>
-                  <h4 className="text-lg font-bold text-slate-800 mb-4">Packs de spécialités</h4>
-                  {profile.purchasedPacks && profile.purchasedPacks.length > 0 ? (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                      {profile.purchasedPacks.map((packId) => (
-                        <div key={packId} className="border border-slate-200 rounded-xl p-6 hover:border-medical-300 transition-colors group">
-                          <div className="w-12 h-12 bg-medical-50 text-medical-600 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                            <PlayCircle className="h-6 w-6" />
-                          </div>
-                          <h4 className="font-bold text-slate-900 mb-2 capitalize">Pack {packId}</h4>
-                          <Link href={`/specialties/${packId}`} className="text-sm font-medium text-medical-600 hover:text-medical-700 flex items-center gap-1">
-                            Accéder au contenu &rarr;
-                          </Link>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-slate-500 italic">Aucun pack acheté.</p>
-                  )}
-                </div>
-
-                {/* Videos */}
-                <div>
-                  <h4 className="text-lg font-bold text-slate-800 mb-4">Vidéos individuelles</h4>
-                  {profile.purchasedVideos && profile.purchasedVideos.length > 0 ? (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                      {profile.purchasedVideos.map((videoId) => (
-                        <div key={videoId} className="border border-slate-200 rounded-xl p-6 hover:border-medical-300 transition-colors group">
-                          <div className="w-12 h-12 bg-accent-50 text-accent-600 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                            <PlayCircle className="h-6 w-6" />
-                          </div>
-                          <h4 className="font-bold text-slate-900 mb-2 truncate">Vidéo {videoId}</h4>
-                          <Link href={`/videos/${videoId}`} className="text-sm font-medium text-accent-600 hover:text-accent-700 flex items-center gap-1">
-                            Regarder la vidéo &rarr;
-                          </Link>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-slate-500 italic">Aucune vidéo individuelle achetée.</p>
-                  )}
-                </div>
-
-                {(!profile.purchasedPacks?.length && !profile.purchasedVideos?.length) && (
-                  <p className="text-slate-500 italic">Aucun achat enregistré pour le moment.</p>
-                )}
-              </div>
-            </motion.div>
-          )}
         </div>
       </main>
     </div>

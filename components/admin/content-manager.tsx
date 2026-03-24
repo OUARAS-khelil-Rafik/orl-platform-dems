@@ -1017,23 +1017,6 @@ export function AdminContentManager() {
     };
   };
 
-  const getSubspecialtyCompletionReport = () => {
-    const subspecialties = Array.from(new Set(videos.map((v) => v.subspecialty || 'non-defini')));
-    return subspecialties.map((subspecialty) => {
-      const scopedVideos = videos.filter((v) => (v.subspecialty || 'non-defini') === subspecialty);
-      const completeCount = scopedVideos.filter((video) => getVideoExtensionStats(video.id).isComplete).length;
-      const total = scopedVideos.length;
-      const completionRate = total > 0 ? Math.round((completeCount / total) * 100) : 0;
-
-      return {
-        subspecialty,
-        total,
-        completeCount,
-        completionRate,
-      };
-    });
-  };
-
   const renderSelectedVideoPreview = (videoId: string) => {
     if (!videoId) return null;
 
@@ -1328,21 +1311,6 @@ export function AdminContentManager() {
           
           <div className="mt-12 border-t border-slate-200 pt-8">
             <h3 className="text-lg font-bold text-slate-900 mb-4">Vidéos existantes</h3>
-
-            <div className="mb-6 rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <h4 className="text-sm font-semibold text-slate-800 mb-3">Rapport de complétion par sous-spécialité</h4>
-              <div className="grid gap-2">
-                {getSubspecialtyCompletionReport().map((row) => (
-                  <div key={row.subspecialty} className="flex items-center justify-between rounded-lg bg-white border border-slate-200 px-3 py-2 text-sm">
-                    <span className="capitalize text-slate-700">{row.subspecialty}</span>
-                    <span className="text-slate-600">{row.completeCount}/{row.total} complètes ({row.completionRate}%)</span>
-                  </div>
-                ))}
-                {videos.length === 0 && (
-                  <p className="text-xs text-slate-500">Aucune vidéo disponible pour générer le rapport.</p>
-                )}
-              </div>
-            </div>
 
             <div className="grid gap-4">
               {videos.map(video => (

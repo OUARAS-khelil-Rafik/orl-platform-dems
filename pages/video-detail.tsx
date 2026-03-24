@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import { db, doc, getDoc, collection, query, where, getDocs, addDoc } from '@/lib/local-data';
 import { useAuth } from '@/components/providers/auth-provider';
@@ -35,6 +35,16 @@ import Image from 'next/image';
 type VideoTab = 'cas' | 'open' | 'qcm' | 'schemas';
 
 const VIEWED_VIDEOS_KEY = 'dems-viewed-videos-v1';
+const WATCH_PROGRESS_KEY = 'dems-video-watch-progress-v1';
+
+type WatchProgressEntry = {
+  currentTime: number;
+  duration: number;
+  completed: boolean;
+  updatedAt: string;
+};
+
+type LockedVideoPaymentStatus = 'pending' | 'rejected';
 
 export default function VideoPage() {
   const router = useRouter();
@@ -47,6 +57,7 @@ export default function VideoPage() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<VideoTab>('cas');
   const [hasAccess, setHasAccess] = useState(false);
+  const [lockedVideoPaymentStatus, setLockedVideoPaymentStatus] = useState<LockedVideoPaymentStatus | null>(null);
 
   // Content states
   const [qcms, setQcms] = useState<QcmModel[]>([]);
@@ -89,6 +100,8 @@ export default function VideoPage() {
 
   // Lightbox state
   const [selectedImage, setSelectedImage] = useState<{ url: string, title: string } | null>(null);
+  const playerRef = useRef<HTMLVideoElement | null>(null);
+  const lastPersistedSecondRef = useRef(0);
 
   useEffect(() => {
     if (!router.isReady) {
@@ -157,6 +170,55 @@ export default function VideoPage() {
     }
   }, [id, profile, authLoading, router.isReady]);
 
+  useEffect(() => {
+    const fetchLockedVideoPaymentStatus = async () => {
+      if (!user || !id) {
+        setLockedVideoPaymentStatus(null);
+        return;
+      }
+
+      try {
+        const paymentsSnap = await getDocs(query(collection(db, 'payments'), where('userId', '==', user.uid)));
+        let latestStatusValue: LockedVideoPaymentStatus | 'approved' | null = null;
+        let latestStatusCreatedAt = -1;
+
+        paymentsSnap.docs.forEach((paymentDoc) => {
+          const payment = paymentDoc.data() as Record<string, any>;
+          const status = String(payment.status || '').toLowerCase();
+          if (status !== 'pending' && status !== 'rejected' && status !== 'approved') return;
+
+          const createdAtRaw = payment.createdAt;
+          const createdAt = typeof createdAtRaw === 'string' ? new Date(createdAtRaw).getTime() : 0;
+
+          const hasVideoInItems = Array.isArray(payment.items)
+            ? payment.items.some((entry: any) => entry?.type === 'video' && entry?.id === id)
+            : false;
+          const isDirectVideoPayment = payment.type === 'video' && payment.targetId === id;
+
+          if (!hasVideoInItems && !isDirectVideoPayment) return;
+
+          if (createdAt >= latestStatusCreatedAt) {
+            latestStatusCreatedAt = createdAt;
+            latestStatusValue = status as LockedVideoPaymentStatus | 'approved';
+          }
+        });
+
+        const finalStatus = latestStatusValue;
+
+        if (finalStatus === 'pending' || finalStatus === 'rejected') {
+          setLockedVideoPaymentStatus(finalStatus);
+        } else {
+          setLockedVideoPaymentStatus(null);
+        }
+      } catch (error) {
+        console.error('Error fetching locked video payment status:', error);
+        setLockedVideoPaymentStatus(null);
+      }
+    };
+
+    fetchLockedVideoPaymentStatus();
+  }, [user, id]);
+
   // Prevent right click and copy
   useEffect(() => {
     const handleContextMenu = (e: MouseEvent) => e.preventDefault();
@@ -190,6 +252,72 @@ export default function VideoPage() {
       window.localStorage.setItem(VIEWED_VIDEOS_KEY, JSON.stringify([video.id]));
     }
   }, [video?.id, hasAccess]);
+
+  useEffect(() => {
+    if (!video?.id || !hasAccess) {
+      return;
+    }
+
+    const player = playerRef.current;
+    if (!player || typeof window === 'undefined') {
+      return;
+    }
+
+    const storageKey = `${WATCH_PROGRESS_KEY}:${user?.uid ?? 'guest'}`;
+
+    const persistProgress = (force = false) => {
+      const duration = Number.isFinite(player.duration) && player.duration > 0 ? player.duration : 0;
+      if (duration <= 0) {
+        return;
+      }
+
+      const currentTime = Number.isFinite(player.currentTime) ? player.currentTime : 0;
+      const roundedCurrent = Math.floor(currentTime);
+
+      if (!force && Math.abs(roundedCurrent - lastPersistedSecondRef.current) < 2) {
+        return;
+      }
+      lastPersistedSecondRef.current = roundedCurrent;
+
+      const completed = duration > 0 && currentTime / duration >= 0.98;
+      const entry: WatchProgressEntry = {
+        currentTime,
+        duration,
+        completed,
+        updatedAt: new Date().toISOString(),
+      };
+
+      try {
+        const raw = window.localStorage.getItem(storageKey);
+        const parsed = raw ? (JSON.parse(raw) as Record<string, WatchProgressEntry>) : {};
+        parsed[video.id] = entry;
+        window.localStorage.setItem(storageKey, JSON.stringify(parsed));
+      } catch {
+        window.localStorage.setItem(storageKey, JSON.stringify({ [video.id]: entry }));
+      }
+    };
+
+    const handleLoadedMetadata = () => {
+      persistProgress(true);
+    };
+    const handleTimeUpdate = () => {
+      persistProgress(false);
+    };
+    const handleEnded = () => {
+      persistProgress(true);
+    };
+
+    player.addEventListener('loadedmetadata', handleLoadedMetadata);
+    player.addEventListener('timeupdate', handleTimeUpdate);
+    player.addEventListener('ended', handleEnded);
+
+    return () => {
+      player.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      player.removeEventListener('timeupdate', handleTimeUpdate);
+      player.removeEventListener('ended', handleEnded);
+      persistProgress(true);
+    };
+  }, [video?.id, hasAccess, user?.uid]);
 
   if (!router.isReady || loading || authLoading) {
     return (
@@ -225,6 +353,45 @@ export default function VideoPage() {
       : 'Bloquée';
 
   if (!hasAccess) {
+    const lockedAction = !user
+      ? {
+          label: 'Débloquer',
+          onClick: () => router.push(`/sign-in?redirect=${encodeURIComponent(`/videos/${video.id}`)}`),
+        }
+      : isInCart
+        ? {
+            label: 'Aller au panier',
+            onClick: () => router.push('/checkout'),
+          }
+        : lockedVideoPaymentStatus === 'pending'
+          ? {
+              label: 'Aller a la liste des achats',
+              onClick: () => router.push('/purchases'),
+            }
+          : lockedVideoPaymentStatus === 'rejected'
+            ? {
+                label: 'Recommencer l\'achat',
+                onClick: () =>
+                  addItem({
+                    id: video.id,
+                    title: video.title,
+                    price: video.price,
+                    type: 'video',
+                    imageUrl: '',
+                  }),
+              }
+            : {
+                label: 'Débloquer',
+                onClick: () =>
+                  addItem({
+                    id: video.id,
+                    title: video.title,
+                    price: video.price,
+                    type: 'video',
+                    imageUrl: '',
+                  }),
+              };
+
     return (
       <div
         className="flex-1 flex flex-col items-center justify-center p-4 text-center"
@@ -248,28 +415,11 @@ export default function VideoPage() {
           <div className="text-3xl font-bold text-medical-400 mb-8">{video.price} DZD</div>
           
           <button
-            onClick={() => {
-              if (!user) {
-                router.push(`/sign-in?redirect=${encodeURIComponent(`/videos/${video.id}`)}`);
-                return;
-              }
-
-              if (!isInCart) {
-                addItem({
-                  id: video.id,
-                  title: video.title,
-                  price: video.price,
-                  type: 'video',
-                  imageUrl: '' // Add a placeholder or real image URL if available
-                });
-              } else {
-                router.push('/checkout');
-              }
-            }}
+            onClick={lockedAction.onClick}
             className="w-full flex items-center justify-center gap-2 bg-medical-600 text-white px-6 py-4 rounded-xl font-bold text-lg hover:bg-medical-700 transition-colors"
           >
             <ShoppingCart className="w-5 h-5" />
-            {isInCart ? 'Aller au panier' : 'Débloquer'}
+            {lockedAction.label}
           </button>
         </div>
       </div>
@@ -379,6 +529,7 @@ export default function VideoPage() {
         
         {/* Video Element (Simulated with iframe or video tag) */}
         <video 
+          ref={playerRef}
           src={video.url || "https://www.w3schools.com/html/mov_bbb.mp4"} 
           controls 
           controlsList="nodownload"
