@@ -28,7 +28,11 @@ import {
   Maximize2,
   AlertCircle,
   RotateCcw,
-  SendHorizontal
+  SendHorizontal,
+  ChevronLeft,
+  ChevronRight,
+  Lightbulb,
+  ClipboardList,
 } from 'lucide-react';
 import Image from 'next/image';
 
@@ -712,43 +716,70 @@ export default function VideoPage() {
                       const c = clinicalCases[Math.min(activeCaseIndex, clinicalCases.length - 1)];
                       const index = Math.min(activeCaseIndex, clinicalCases.length - 1);
                       return (
-                        <div key={c.id} className="video-learning-card rounded-xl p-6 border space-y-6">
-                          <h3 className="text-xl font-semibold border-b border-[var(--app-border)] pb-4">Cas Clinique {String(index + 1).padStart(2, '0')}</h3>
+                        <div key={c.id} className="video-learning-card rounded-2xl border overflow-hidden">
+                          <div className="cas-card-accent-bar" />
+                          <div className="p-6 space-y-6">
+                          <div className="flex items-center gap-3 pb-4 border-b border-[var(--app-border)]">
+                            <span className="cas-number-badge flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold">
+                              {String(index + 1).padStart(2, '0')}
+                            </span>
+                            <div>
+                              <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--app-accent)] mb-0.5">Cas Clinique</p>
+                              <h3 className="text-xl font-bold text-[var(--app-text)] leading-tight">Raisonnement clinique</h3>
+                            </div>
+                          </div>
                           
-                          <div className="space-y-4">
-                                {/* 1. Description du cas clinique */}
-                                <div>
-                                  <div className="space-y-3 text-[var(--app-muted)] leading-relaxed">
-                                    {c.description ? (
-                                      <p className="whitespace-pre-wrap">{c.description}</p>
-                                    ) : (
-                                      <>
-                                        {c.patientHistory && (
-                                          <p className="whitespace-pre-wrap"><span className="font-semibold text-[var(--app-text)]">Histoire&nbsp;: </span>{c.patientHistory}</p>
-                                        )}
-                                        {c.clinicalExamination && (
-                                          <p className="whitespace-pre-wrap"><span className="font-semibold text-[var(--app-text)]">Examen clinique&nbsp;: </span>{c.clinicalExamination}</p>
-                                        )}
-                                        {c.additionalTests && (
-                                          <p className="whitespace-pre-wrap"><span className="font-semibold text-[var(--app-text)]">Examens complémentaires&nbsp;: </span>{c.additionalTests}</p>
-                                        )}
-                                        {c.diagnosis && (
-                                          <p className="whitespace-pre-wrap"><span className="font-semibold text-[var(--app-text)]">Diagnostic&nbsp;: </span>{c.diagnosis}</p>
-                                        )}
-                                        {c.treatment && (
-                                          <p className="whitespace-pre-wrap"><span className="font-semibold text-[var(--app-text)]">Prise en charge&nbsp;: </span>{c.treatment}</p>
-                                        )}
-                                        {c.discussion && (
-                                          <p className="whitespace-pre-wrap"><span className="font-semibold text-[var(--app-text)]">Discussion&nbsp;: </span>{c.discussion}</p>
-                                        )}
-                                      </>
-                                    )}
-                                  </div>
-                                </div>
+                          <div className="space-y-3">
+                                  {/* 1. Description du cas clinique */}
+                                  {c.description ? (
+                                    <div className="cas-section-item">
+                                      <p className="whitespace-pre-wrap text-[var(--app-muted)] leading-relaxed">{c.description}</p>
+                                    </div>
+                                  ) : (
+                                    <>
+                                      {c.patientHistory && (
+                                        <div className="cas-section-item">
+                                          <p className="cas-section-label">Histoire du patient</p>
+                                          <p className="whitespace-pre-wrap text-[var(--app-muted)] leading-relaxed mt-1">{c.patientHistory}</p>
+                                        </div>
+                                      )}
+                                      {c.clinicalExamination && (
+                                        <div className="cas-section-item">
+                                          <p className="cas-section-label">Examen clinique</p>
+                                          <p className="whitespace-pre-wrap text-[var(--app-muted)] leading-relaxed mt-1">{c.clinicalExamination}</p>
+                                        </div>
+                                      )}
+                                      {c.additionalTests && (
+                                        <div className="cas-section-item">
+                                          <p className="cas-section-label">Examens complémentaires</p>
+                                          <p className="whitespace-pre-wrap text-[var(--app-muted)] leading-relaxed mt-1">{c.additionalTests}</p>
+                                        </div>
+                                      )}
+                                      {c.diagnosis && (
+                                        <div className="cas-section-item cas-section-item--highlight">
+                                          <p className="cas-section-label">Diagnostic</p>
+                                          <p className="whitespace-pre-wrap text-[var(--app-muted)] leading-relaxed mt-1">{c.diagnosis}</p>
+                                        </div>
+                                      )}
+                                      {c.treatment && (
+                                        <div className="cas-section-item">
+                                          <p className="cas-section-label">Prise en charge</p>
+                                          <p className="whitespace-pre-wrap text-[var(--app-muted)] leading-relaxed mt-1">{c.treatment}</p>
+                                        </div>
+                                      )}
+                                      {c.discussion && (
+                                        <div className="cas-section-item">
+                                          <p className="cas-section-label">Discussion</p>
+                                          <p className="whitespace-pre-wrap text-[var(--app-muted)] leading-relaxed mt-1">{c.discussion}</p>
+                                        </div>
+                                      )}
+                                    </>
+                                  )}
 
                                 {/* 2. Figures du cas clinique */}
                                 {c.images && c.images.length > 0 && (
-                                  <div className="mt-6">
+                                  <div className="pt-2">
+                                    <p className="cas-section-label mb-3">Figures</p>
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                       {c.images.map((imgUrl: string, imgIndex: number) => (
                                         <div
@@ -763,7 +794,7 @@ export default function VideoPage() {
                                             className="object-cover transition-transform duration-500 group-hover:scale-110"
                                             referrerPolicy="no-referrer"
                                           />
-                                          <div className="absolute inset-x-0 bottom-0 bg-black/60 px-3 py-1 text-xs text-[var(--app-text)] flex items-center justify-between">
+                                          <div className="absolute inset-x-0 bottom-0 bg-black/60 px-3 py-1 text-xs text-white flex items-center justify-between">
                                             <span>Figure {String(imgIndex + 1).padStart(2, '0')}</span>
                                           </div>
                                           <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
@@ -777,15 +808,22 @@ export default function VideoPage() {
 
                                 {/* 3. Références */}
                                 {c.reference && (
-                                  <div className="mt-6">
-                                    <h4 className="text-sm font-semibold text-[var(--app-text)] mb-1">Référence</h4>
+                                  <div className="video-reference-panel rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-2)] px-4 py-3">
+                                    <h4 className="text-xs font-bold uppercase tracking-wide text-[var(--app-accent)] mb-1">Référence</h4>
                                     <p className="text-sm text-[var(--app-muted)] whitespace-pre-wrap">{c.reference}</p>
                                   </div>
                                 )}
 
                                 {/* 4. Questions pédagogiques du cas */}
                                 {Array.isArray(c.questions) && c.questions.length > 0 && (
-                                  <div className="mt-6">
+                                  <div className="pt-4 border-t border-[var(--app-border)]">
+                                    <div className="flex items-center gap-2 mb-4">
+                                      <ClipboardList className="w-4 h-4 text-[var(--app-accent)]" />
+                                      <h4 className="text-xs font-bold uppercase tracking-wide text-[var(--app-accent)]">Questions pédagogiques</h4>
+                                      <span className="ml-auto text-xs text-[var(--app-muted)] font-medium tabular-nums">
+                                        {c.questions.length} question{c.questions.length > 1 ? 's' : ''}
+                                      </span>
+                                    </div>
 
                                     {(() => {
                                       const totalQuestions = c.questions.length;
@@ -888,45 +926,47 @@ export default function VideoPage() {
 
                                       return (
                                         <>
-                                          <div className="video-question-card border border-[var(--app-border)] rounded-xl bg-[var(--app-surface-2)] p-4 space-y-3">
-                                            <div className="flex items-start justify-between gap-3">
-                                              <div>
-                                                <p className="text-xs uppercase tracking-wide text-[var(--app-muted)] mb-1">
-                                                  Question {String(activeQuestionIndex + 1).padStart(2, '0')} ·{' '}
-                                                  {kind === 'qcm'
-                                                    ? 'QCM (plusieurs réponses possibles)'
-                                                    : kind === 'select'
-                                                      ? 'Sélecteur (une seule réponse)'
-                                                      : 'Question ouverte'}
-                                                </p>
-                                                <p className="text-sm font-medium text-[var(--app-text)] whitespace-pre-wrap">
-                                                  {q.prompt}
-                                                </p>
-                                              </div>
-
+                                          <div className="cas-question-card rounded-xl border overflow-hidden">
+                                            {/* Question header bar */}
+                                            <div className="cas-question-header flex items-center gap-2 px-4 py-3 border-b border-[var(--app-border)]">
+                                              <span className="cas-q-number flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold">
+                                                {String(activeQuestionIndex + 1).padStart(2, '0')}
+                                              </span>
+                                              <span className="cas-q-type-badge px-2.5 py-0.5 rounded-full text-[10px] font-semibold">
+                                                {kind === 'qcm'
+                                                  ? 'QCM · Plusieurs réponses'
+                                                  : kind === 'select'
+                                                    ? 'Sélecteur · Une réponse'
+                                                    : 'Question ouverte'}
+                                              </span>
                                               {validated && (
-                                                <div className="flex items-center gap-1 text-xs font-semibold">
+                                                <div className="ml-auto flex items-center">
                                                   {isCorrect === true && (
-                                                    <span className="inline-flex items-center gap-1 text-emerald-400">
+                                                    <span className="inline-flex items-center gap-1 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded-full text-[10px] font-semibold">
                                                       <CheckCircle2 className="w-3 h-3" />
-                                                      Bonne réponse
+                                                      Correct
                                                     </span>
                                                   )}
                                                   {isCorrect === false && (
-                                                    <span className="inline-flex items-center gap-1 text-amber-400">
+                                                    <span className="inline-flex items-center gap-1 bg-amber-500/15 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-full text-[10px] font-semibold">
                                                       <AlertCircle className="w-3 h-3" />
                                                       À revoir
                                                     </span>
                                                   )}
                                                   {isCorrect === null && (
-                                                    <span className="inline-flex items-center gap-1 text-[var(--app-muted)]">
-                                                      <AlertCircle className="w-3 h-3" />
-                                                      Réponse enregistrée
+                                                    <span className="inline-flex items-center gap-1 bg-[var(--app-surface-alt)] text-[var(--app-muted)] px-2 py-0.5 rounded-full text-[10px] font-semibold">
+                                                      <CheckCircle2 className="w-3 h-3" />
+                                                      Enregistré
                                                     </span>
                                                   )}
                                                 </div>
                                               )}
                                             </div>
+                                            {/* Question body */}
+                                            <div className="p-4 space-y-3">
+                                            <p className="text-sm font-semibold text-[var(--app-text)] whitespace-pre-wrap leading-relaxed">
+                                              {q.prompt}
+                                            </p>
 
                                             {kind === 'qcm' && (
                                               <div className="space-y-2">
@@ -949,10 +989,10 @@ export default function VideoPage() {
                                                     }
                                                   } else if (isSelected) {
                                                     rowClass +=
-                                                      'bg-medical-500/20 border-medical-500 text-medical-100';
+                                                      'cas-option-selected';
                                                   } else {
                                                     rowClass +=
-                                                      'bg-[var(--app-surface-2)] border-[var(--app-border)] text-[var(--app-text)] hover:bg-[var(--app-surface-alt)] hover:border-medical-500/50';
+                                                      'bg-[var(--app-surface-2)] border-[var(--app-border)] text-[var(--app-text)] hover:bg-[var(--app-surface-alt)] hover:border-[var(--app-accent)]/40';
                                                   }
 
                                                   const handleClick = () => {
@@ -987,7 +1027,7 @@ export default function VideoPage() {
                                                             validated && isCorrectOption
                                                               ? 'bg-emerald-500 text-white border-emerald-300'
                                                               : isSelected
-                                                                ? 'bg-medical-600 text-white border-medical-400'
+                                                                ? 'cas-option-badge-selected'
                                                                 : 'bg-[var(--app-surface-alt)] border-[var(--app-border)]'
                                                           }`}
                                                         >
@@ -1008,7 +1048,7 @@ export default function VideoPage() {
                                                 </label>
                                                 {(() => {
                                                   let selectClass =
-                                                    'video-select-field w-full rounded-lg border bg-[var(--app-surface-alt)]/60 px-3 py-2 text-xs text-[var(--app-text)] focus:outline-none focus:ring-2 focus:ring-medical-500 ';
+                                                    'video-select-field w-full rounded-lg border bg-[var(--app-surface-alt)]/60 px-3 py-2 text-xs text-[var(--app-text)] focus:outline-none focus:ring-2 focus:ring-[var(--app-accent)] ';
                                                   if (validated) {
                                                     if (isCorrect === true) {
                                                       selectClass +=
@@ -1089,19 +1129,21 @@ export default function VideoPage() {
                                             )}
 
                                             {showExplanation && (q.explanation || q.answer) && (
-                                              <div className="mt-2 rounded-lg bg-[var(--app-surface-alt)]/60 border border-[var(--app-border)] px-3 py-2 text-[11px] text-[var(--app-text)] whitespace-pre-wrap">
-                                                <span className="font-semibold">
-                                                  {kind === 'open' ? 'Réponse : ' : 'Explication : '}
-                                                </span>
-                                                {kind === 'open' && q.answer ? q.answer : q.explanation}
+                                              <div className="cas-explanation-panel rounded-xl border px-4 py-3">
+                                                <div className="flex items-start gap-2">
+                                                  <Lightbulb className="w-4 h-4 text-[var(--app-accent)] flex-shrink-0 mt-0.5" />
+                                                  <div>
+                                                    <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--app-accent)] mb-1">{kind === 'open' ? 'Réponse' : 'Explication'}</p>
+                                                    <p className="text-sm text-[var(--app-text)] whitespace-pre-wrap leading-relaxed">{kind === 'open' && q.answer ? q.answer : q.explanation}</p>
+                                                  </div>
+                                                </div>
                                               </div>
                                             )}
-
                                             {/* Feedback utilisateur par question (optionnel) — affiché après interaction/réponse */}
                                             {caseQuestionAnswers[c.id]?.[questionId]?.showFeedback && (
                                               <div className="mt-3">
                                                 <p className="text-[11px] font-medium text-[var(--app-muted)]">Discussion / Feedback (optionnel)</p>
-                                                <div className="video-feedback-box relative mt-2 rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface-alt)]/60 focus-within:ring-1 focus-within:ring-medical-500">
+                                                <div className="video-feedback-box relative mt-2 rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface-alt)]/60 focus-within:ring-1 focus-within:ring-[var(--app-accent)]">
                                                   <textarea
                                                     rows={2}
                                                     value={feedbackText}
@@ -1118,7 +1160,7 @@ export default function VideoPage() {
                                                     type="button"
                                                     onClick={() => handleSendPedagogicalFeedback('caseQuestion', questionId, c.id)}
                                                     disabled={!feedbackText.trim()}
-                                                    className="absolute right-2 bottom-2 inline-flex h-8 w-8 items-center justify-center rounded-full border border-medical-400/40 bg-medical-600 text-white shadow-sm hover:bg-medical-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                                                    className="absolute right-2 bottom-2 inline-flex h-8 w-8 items-center justify-center rounded-full cas-validate-btn text-white shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
                                                     aria-label="Envoyer le feedback à l'administration"
                                                   >
                                                     <SendHorizontal className="w-4 h-4" />
@@ -1135,7 +1177,7 @@ export default function VideoPage() {
                                                       type="button"
                                                       onClick={handleValidate}
                                                       disabled={!hasSelection}
-                                                      className="px-3 py-1.5 rounded-lg bg-medical-600 text-white text-[11px] font-semibold hover:bg-medical-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                                                      className="px-3 py-1.5 rounded-lg cas-validate-btn text-white text-[11px] font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
                                                     >
                                                       Valider
                                                     </button>
@@ -1162,38 +1204,41 @@ export default function VideoPage() {
                                                       showFeedback: !current.showExplanation,
                                                     }))
                                                   }
-                                                  className="text-[11px] font-medium text-[var(--app-muted)] hover:text-medical-300"
+                                                  className="text-[11px] font-medium text-[var(--app-muted)] hover:text-[var(--app-accent)]"
                                                 >
                                                   {showExplanation ? 'Masquer la réponse' : 'Afficher la réponse'}
                                                 </button>
                                               )}
                                             </div>
 
-                                          <div className="flex items-center justify-between text-[11px] text-[var(--app-muted)]">
-                                            <span>
-                                              Question {String(activeQuestionIndex + 1).padStart(2, '0')} sur {String(totalQuestions).padStart(2, '0')}
-                                            </span>
-                                            <button
-                                              type="button"
-                                              onClick={() => gotoQuestion(Math.max(activeQuestionIndex - 1, 0))}
-                                              disabled={activeQuestionIndex === 0}
-                                              className="video-pager-btn px-3 py-1.5 rounded-lg border border-[var(--app-border)] text-[var(--app-text)] hover:bg-[var(--app-surface-alt)] disabled:opacity-40 disabled:cursor-not-allowed"
-                                            >
-                                              Précédent
-                                            </button>
-                                            <button
-                                              type="button"
-                                              onClick={() =>
-                                                gotoQuestion(
-                                                  Math.min(activeQuestionIndex + 1, totalQuestions - 1),
-                                                )
-                                              }
-                                              disabled={activeQuestionIndex >= totalQuestions - 1}
-                                              className="video-pager-btn video-pager-btn-accent px-3 py-1.5 rounded-lg border border-medical-500 text-medical-200 hover:bg-medical-600/20 disabled:opacity-40 disabled:cursor-not-allowed"
-                                            >
-                                              Suivant
-                                            </button>
-                                          </div>
+                                            <div className="cas-question-nav flex items-center justify-between gap-2 pt-2 border-t border-[var(--app-border)]">
+                                              <button
+                                                type="button"
+                                                onClick={() => gotoQuestion(Math.max(activeQuestionIndex - 1, 0))}
+                                                disabled={activeQuestionIndex === 0}
+                                                className="cas-nav-btn flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--app-border)] text-[var(--app-text)] text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+                                              >
+                                                <ChevronLeft className="w-3.5 h-3.5" />
+                                                Précédente
+                                              </button>
+                                              <span className="text-[11px] text-[var(--app-muted)] font-medium tabular-nums">
+                                                {String(activeQuestionIndex + 1).padStart(2, '0')} / {String(totalQuestions).padStart(2, '0')}
+                                              </span>
+                                              <button
+                                                type="button"
+                                                onClick={() =>
+                                                  gotoQuestion(
+                                                    Math.min(activeQuestionIndex + 1, totalQuestions - 1),
+                                                  )
+                                                }
+                                                disabled={activeQuestionIndex >= totalQuestions - 1}
+                                                className="cas-nav-btn cas-nav-btn--accent flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+                                              >
+                                                Suivante
+                                                <ChevronRight className="w-3.5 h-3.5" />
+                                              </button>
+                                            </div>
+                                            </div>
 
                                           </div>
                                         </>
@@ -1203,6 +1248,7 @@ export default function VideoPage() {
                                 )}
 
                                 {/* Global clinical-case discussion removed — per UX change */}
+                          </div>
                           </div>
                         </div>
                       );
