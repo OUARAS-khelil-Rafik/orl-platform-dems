@@ -1133,6 +1133,189 @@ html[data-theme='dark'] .from-slate-900\/60 {
   .animation-delay-4000 {
     animation-delay: 4s;
   }
+
+  /* ── Cas Cliniques QR redesign ─────────────────────────────── */
+
+  .cas-card-accent-bar {
+    height: 4px;
+    background: linear-gradient(
+      90deg,
+      var(--app-accent) 0%,
+      color-mix(in oklab, var(--app-accent) 55%, var(--app-surface) 45%) 70%,
+      transparent 100%
+    );
+  }
+
+  .cas-number-badge {
+    background: color-mix(in oklab, var(--app-accent) 14%, var(--app-surface-alt) 86%);
+    border: 1.5px solid color-mix(in oklab, var(--app-accent) 38%, var(--app-border) 62%);
+    color: var(--app-accent);
+    font-variant-numeric: tabular-nums;
+  }
+
+  html[data-theme='dark'] .cas-number-badge {
+    background: color-mix(in oklab, var(--app-accent) 18%, var(--app-deep-surface) 82%);
+    border-color: color-mix(in oklab, var(--app-accent) 46%, var(--app-border) 54%);
+  }
+
+  .cas-section-item {
+    border-left: 3px solid color-mix(in oklab, var(--app-accent) 55%, transparent);
+    padding-left: 0.875rem;
+  }
+
+  .cas-section-item--highlight {
+    border-left-color: color-mix(in oklab, var(--app-accent) 80%, transparent);
+    background: color-mix(in oklab, var(--app-accent) 6%, transparent);
+    border-radius: 0 0.5rem 0.5rem 0;
+    padding: 0.5rem 0.75rem 0.5rem 0.875rem;
+  }
+
+  html[data-theme='dark'] .cas-section-item--highlight {
+    background: color-mix(in oklab, var(--app-accent) 9%, transparent);
+  }
+
+  .cas-section-label {
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--app-accent);
+  }
+
+  html[data-theme='dark'] .cas-section-label {
+    color: color-mix(in oklab, var(--app-accent) 90%, white 10%);
+  }
+
+  .cas-question-card {
+    background: color-mix(in oklab, var(--app-surface) 94%, white 6%);
+    border-color: color-mix(in oklab, var(--app-accent) 22%, var(--app-border) 78%);
+  }
+
+  html[data-theme='dark'] .cas-question-card {
+    background: color-mix(in oklab, var(--app-deep-surface) 92%, black 8%);
+    border-color: color-mix(in oklab, var(--app-accent) 32%, var(--app-border) 68%);
+  }
+
+  .cas-question-header {
+    background: color-mix(in oklab, var(--app-accent) 8%, var(--app-surface-alt) 92%);
+  }
+
+  html[data-theme='dark'] .cas-question-header {
+    background: color-mix(in oklab, var(--app-accent) 12%, var(--app-deep-surface-2) 88%);
+  }
+
+  .cas-q-number {
+    background: color-mix(in oklab, var(--app-accent) 18%, var(--app-surface) 82%);
+    border: 1.5px solid color-mix(in oklab, var(--app-accent) 45%, var(--app-border) 55%);
+    color: var(--app-accent);
+    font-variant-numeric: tabular-nums;
+  }
+
+  html[data-theme='dark'] .cas-q-number {
+    background: color-mix(in oklab, var(--app-accent) 22%, var(--app-deep-surface) 78%);
+  }
+
+  .cas-q-type-badge {
+    background: color-mix(in oklab, var(--app-accent) 12%, var(--app-surface) 88%);
+    border: 1px solid color-mix(in oklab, var(--app-accent) 30%, var(--app-border) 70%);
+    color: var(--app-accent);
+  }
+
+  html[data-theme='dark'] .cas-q-type-badge {
+    background: color-mix(in oklab, var(--app-accent) 16%, var(--app-deep-surface) 84%);
+    border-color: color-mix(in oklab, var(--app-accent) 40%, var(--app-border) 60%);
+  }
+
+  .cas-option-selected {
+    background: color-mix(in oklab, var(--app-accent) 14%, var(--app-surface) 86%);
+    border-color: color-mix(in oklab, var(--app-accent) 60%, var(--app-border) 40%);
+    color: var(--app-text);
+  }
+
+  html[data-theme='dark'] .cas-option-selected {
+    background: color-mix(in oklab, var(--app-accent) 18%, var(--app-deep-surface) 82%);
+    border-color: color-mix(in oklab, var(--app-accent) 65%, var(--app-border) 35%);
+    color: var(--app-deep-text);
+  }
+
+  .cas-option-badge-selected {
+    background: var(--app-accent);
+    color: var(--app-accent-contrast);
+    border-color: color-mix(in oklab, var(--app-accent) 70%, white 30%);
+  }
+
+  .cas-explanation-panel {
+    background: color-mix(in oklab, var(--app-accent) 8%, var(--app-surface) 92%);
+    border-color: color-mix(in oklab, var(--app-accent) 28%, var(--app-border) 72%);
+  }
+
+  html[data-theme='dark'] .cas-explanation-panel {
+    background: color-mix(in oklab, var(--app-accent) 11%, var(--app-deep-surface) 89%);
+    border-color: color-mix(in oklab, var(--app-accent) 38%, var(--app-border) 62%);
+  }
+
+  .cas-question-nav {
+    margin-top: 0.25rem;
+  }
+
+  .cas-nav-btn {
+    background: color-mix(in oklab, var(--app-surface) 92%, white 8%);
+    color: var(--app-text);
+    transition: background 160ms ease, border-color 160ms ease, transform 120ms ease;
+  }
+
+  .cas-nav-btn:hover:not(:disabled) {
+    background: color-mix(in oklab, var(--app-accent) 10%, var(--app-surface) 90%);
+    border-color: color-mix(in oklab, var(--app-accent) 38%, var(--app-border) 62%);
+    transform: translateY(-1px);
+  }
+
+  html[data-theme='dark'] .cas-nav-btn {
+    background: color-mix(in oklab, var(--app-deep-surface) 88%, black 12%);
+    color: var(--app-deep-text);
+  }
+
+  html[data-theme='dark'] .cas-nav-btn:hover:not(:disabled) {
+    background: color-mix(in oklab, var(--app-accent) 14%, var(--app-deep-surface) 86%);
+  }
+
+  .cas-nav-btn--accent {
+    background: var(--app-accent);
+    border: 1px solid transparent;
+    color: var(--app-accent-contrast) !important;
+    box-shadow: 0 6px 18px -10px color-mix(in oklab, var(--app-accent) 80%, transparent);
+  }
+
+  .cas-nav-btn--accent:hover:not(:disabled) {
+    background: color-mix(in oklab, var(--app-accent) 85%, black 15%);
+    border-color: transparent;
+  }
+
+  html[data-theme='dark'] .cas-nav-btn--accent {
+    background: var(--app-accent);
+    color: var(--app-accent-contrast) !important;
+  }
+
+  html[data-theme='dark'] .cas-nav-btn--accent:hover:not(:disabled) {
+    background: color-mix(in oklab, var(--app-accent) 80%, white 20%);
+  }
+
+  .cas-validate-btn {
+    background: var(--app-accent);
+    border: 1px solid transparent;
+    box-shadow: 0 6px 16px -8px color-mix(in oklab, var(--app-accent) 75%, transparent);
+    transition: background 160ms ease, box-shadow 160ms ease;
+  }
+
+  .cas-validate-btn:hover:not(:disabled) {
+    background: color-mix(in oklab, var(--app-accent) 84%, black 16%);
+  }
+
+  html[data-theme='dark'] .cas-validate-btn:hover:not(:disabled) {
+    background: color-mix(in oklab, var(--app-accent) 80%, white 20%);
+  }
+
+  /* ── End Cas Cliniques QR redesign ─────────────────────────── */
 }
 
 @keyframes fade-up {
