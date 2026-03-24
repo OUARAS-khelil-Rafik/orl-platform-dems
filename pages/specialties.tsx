@@ -7,42 +7,44 @@ const specialties = [
     title: 'Otologie',
     description: "Oreille externe, moyenne et interne.",
     icon: Activity,
-    gradient: 'from-amber-600 to-orange-500',
+    gradient: 'from-orange-500 to-amber-500',
     badge: 'Axe oreille',
+    chipClass: 'specialty-glow-otology',
   },
   {
     slug: 'rhinologie',
     title: 'Rhinologie',
     description: 'Fosses nasales, sinus et pathologies associées.',
     icon: Brain,
-    gradient: 'from-amber-700 to-amber-500',
+    gradient: 'from-cyan-500 to-blue-500',
     badge: 'Axe nez/sinus',
+    chipClass: 'specialty-glow-rhinology',
   },
   {
     slug: 'laryngologie',
     title: 'Laryngologie',
     description: 'Larynx, pharynx, cou et pathologies cervico-faciales.',
     icon: Stethoscope,
-    gradient: 'from-orange-700 to-amber-600',
+    gradient: 'from-rose-500 to-pink-500',
     badge: 'Axe voix/cou',
+    chipClass: 'specialty-glow-laryngology',
   },
 ];
 
 export default function SpecialtiesIndexPage() {
   return (
-    <div className="flex-1 py-16" style={{ background: 'linear-gradient(180deg, color-mix(in oklab, var(--app-surface) 92%, white 8%) 0%, color-mix(in oklab, var(--app-surface-alt) 78%, var(--app-accent) 22%) 100%)' }}>
+    <div className="flex-1 py-16 story-grid" style={{ background: 'linear-gradient(180deg, color-mix(in oklab, var(--app-surface) 92%, white 8%) 0%, color-mix(in oklab, var(--app-surface-alt) 78%, var(--app-accent) 22%) 100%)' }}>
       <div className="container mx-auto px-4 max-w-5xl">
         <div
-          className="relative overflow-hidden rounded-3xl border p-8 md:p-10 mb-8 shadow-[0_28px_80px_-36px_rgba(0,0,0,0.55)]"
+          className="relative overflow-hidden rounded-3xl p-8 md:p-10 mb-8 shadow-[0_28px_80px_-36px_rgba(0,0,0,0.55)] premium-panel"
           style={{
             color: 'var(--hero-title)',
-            borderColor: 'color-mix(in oklab, var(--hero-chip-border) 72%, var(--app-border) 28%)',
             background: 'linear-gradient(140deg, var(--hero-bg-start) 0%, color-mix(in oklab, var(--hero-bg-end) 82%, var(--app-accent) 18%) 100%)',
           }}
         >
           <div className="absolute -top-12 -right-8 h-40 w-40 rounded-full blur-3xl" style={{ background: 'color-mix(in oklab, var(--app-accent) 45%, transparent)' }} />
           <div className="absolute -bottom-10 -left-10 h-44 w-44 rounded-full blur-3xl" style={{ background: 'color-mix(in oklab, var(--app-accent) 26%, transparent)' }} />
-          <h1 className="relative text-3xl md:text-4xl font-bold mb-3">Spécialités ORL</h1>
+          <h1 className="relative text-3xl md:text-5xl font-bold mb-3">Spécialités ORL</h1>
           <p className="relative max-w-3xl" style={{ color: 'var(--hero-body)' }}>
             Accédez à chaque spécialité pour consulter les vidéos, cas cliniques, QCM et schémas associés.
           </p>
@@ -56,13 +58,13 @@ export default function SpecialtiesIndexPage() {
             <Link
               key={item.slug}
               href={`/specialties/${item.slug}`}
-              className="group rounded-2xl border p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl"
+              className="group rounded-2xl border p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl interactive-card"
               style={{
                 borderColor: 'color-mix(in oklab, var(--app-accent) 20%, var(--app-border) 80%)',
                 background: 'linear-gradient(180deg, color-mix(in oklab, var(--app-surface) 94%, white 6%) 0%, color-mix(in oklab, var(--app-surface-alt) 72%, var(--app-accent) 28%) 100%)',
               }}
             >
-              <span className={`inline-flex items-center rounded-full bg-gradient-to-r ${item.gradient} text-white px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide mb-4`}>
+              <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide mb-4 ${item.chipClass}`}>
                 {item.badge}
               </span>
               <div

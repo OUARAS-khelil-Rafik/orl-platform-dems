@@ -17,7 +17,7 @@
   --color-accent-500: #0ea5e9;
   --color-accent-600: #0284c7;
 
-  --font-sans: var(--font-inter);
+  --font-sans: var(--font-body);
 }
 
 :root,
@@ -25,6 +25,7 @@ html[data-theme='light'] {
   --app-bg: #f3ede2;
   --app-surface: #fffaf2;
   --app-surface-2: #efe3d3;
+  --app-surface-alt: #f5ebdc;
   --app-text: #3f3326;
   --app-muted: #7a6a57;
   --app-border: #d7c4ab;
@@ -38,6 +39,13 @@ html[data-theme='light'] {
   --app-success: #5b7b58;
   --app-warning: #9f7442;
   --app-danger: #98554f;
+
+  --specialty-otology: #ce7f44;
+  --specialty-rhinology: #3f7ca1;
+  --specialty-laryngology: #a15f72;
+  --specialty-otology-bg: color-mix(in oklab, var(--specialty-otology) 18%, var(--app-surface) 82%);
+  --specialty-rhinology-bg: color-mix(in oklab, var(--specialty-rhinology) 18%, var(--app-surface) 82%);
+  --specialty-laryngology-bg: color-mix(in oklab, var(--specialty-laryngology) 18%, var(--app-surface) 82%);
 
   --hero-bg-start: rgba(255, 250, 242, 0.34);
   --hero-bg-end: rgba(176, 103, 62, 0.18);
@@ -60,12 +68,17 @@ html[data-theme='light'] {
   --footer-text: #4a3a2c;
   --footer-muted: #6a5848;
   --footer-link: #503f31;
+
+  --ring-focus: color-mix(in oklab, var(--app-accent) 42%, transparent);
+  --shadow-elevated: 0 18px 52px -26px color-mix(in srgb, #1f1710 38%, transparent);
+  --shadow-soft: 0 10px 26px -18px color-mix(in srgb, #1f1710 28%, transparent);
 }
 
 html[data-theme='dark'] {
   --app-bg: #1f1a14;
   --app-surface: #2c241b;
   --app-surface-2: #3a2f24;
+  --app-surface-alt: #352a20;
   --app-text: #efe3d1;
   --app-muted: #c8b79e;
   --app-border: #5e4d3a;
@@ -79,6 +92,13 @@ html[data-theme='dark'] {
   --app-success: #8db084;
   --app-warning: #d3a26b;
   --app-danger: #d18479;
+
+  --specialty-otology: #f1a86f;
+  --specialty-rhinology: #7dc4ee;
+  --specialty-laryngology: #de95ad;
+  --specialty-otology-bg: color-mix(in oklab, var(--specialty-otology) 20%, var(--app-surface) 80%);
+  --specialty-rhinology-bg: color-mix(in oklab, var(--specialty-rhinology) 18%, var(--app-surface) 82%);
+  --specialty-laryngology-bg: color-mix(in oklab, var(--specialty-laryngology) 18%, var(--app-surface) 82%);
 
   --hero-bg-start: #17120d;
   --hero-bg-end: #2d2017;
@@ -101,6 +121,10 @@ html[data-theme='dark'] {
   --footer-text: #f4e6d5;
   --footer-muted: #c9b39b;
   --footer-link: #f7e9d7;
+
+  --ring-focus: color-mix(in oklab, var(--app-accent) 52%, transparent);
+  --shadow-elevated: 0 22px 60px -28px rgba(0, 0, 0, 0.72);
+  --shadow-soft: 0 12px 28px -20px rgba(0, 0, 0, 0.6);
 }
 
 /* Global earth palette mapping for existing Tailwind slate/white utilities */
@@ -595,6 +619,15 @@ html[data-theme='dark'] .from-slate-900\/60 {
   body {
     @apply antialiased;
     transition: background-color 220ms ease, color 220ms ease;
+    font-feature-settings: 'ss01' on, 'cv02' on;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-display), var(--font-body), sans-serif;
+    letter-spacing: -0.015em;
   }
 
   a,
@@ -604,6 +637,16 @@ html[data-theme='dark'] .from-slate-900\/60 {
   textarea,
   [role='button'] {
     transition: background-color 180ms ease, color 180ms ease, border-color 180ms ease, box-shadow 180ms ease, opacity 180ms ease;
+  }
+
+  a:focus-visible,
+  button:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible,
+  [role='button']:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--ring-focus);
   }
 
   input,
@@ -631,11 +674,474 @@ html[data-theme='dark'] .from-slate-900\/60 {
 }
 
 @layer utilities {
+  .premium-panel {
+    border: 1px solid color-mix(in oklab, var(--app-accent) 18%, var(--app-border) 82%);
+    background: linear-gradient(
+      155deg,
+      color-mix(in oklab, var(--app-surface) 95%, white 5%) 0%,
+      color-mix(in oklab, var(--app-surface-alt) 78%, var(--app-accent) 22%) 100%
+    );
+    box-shadow: var(--shadow-soft);
+  }
+
+  .interactive-card {
+    transition: transform 240ms cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 220ms ease, border-color 220ms ease, background-color 220ms ease;
+  }
+
+  .interactive-card:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-elevated);
+    border-color: color-mix(in oklab, var(--app-accent) 34%, var(--app-border) 66%);
+  }
+
+  .interactive-card:active {
+    transform: translateY(-1px) scale(0.996);
+  }
+
+  .specialty-glow-otology {
+    background-color: var(--specialty-otology-bg);
+    color: var(--specialty-otology);
+  }
+
+  .specialty-glow-rhinology {
+    background-color: var(--specialty-rhinology-bg);
+    color: var(--specialty-rhinology);
+  }
+
+  .specialty-glow-laryngology {
+    background-color: var(--specialty-laryngology-bg);
+    color: var(--specialty-laryngology);
+  }
+
+  .story-grid {
+    position: relative;
+  }
+
+  .story-grid::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image: radial-gradient(circle at 16% 14%, color-mix(in oklab, var(--app-accent) 18%, transparent) 0%, transparent 40%),
+      radial-gradient(circle at 84% 82%, color-mix(in oklab, var(--app-accent) 14%, transparent) 0%, transparent 42%);
+    opacity: 0.9;
+  }
+
+  .nav-shell-bg {
+    background: linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--app-nav-bg) 94%, var(--app-surface) 6%) 0%,
+      color-mix(in oklab, var(--app-nav-bg) 86%, var(--app-bg) 14%) 100%
+    );
+  }
+
+  .nav-links-shell {
+    background-color: color-mix(in oklab, var(--app-surface) 78%, transparent);
+  }
+
+  .motion-fade-up {
+    animation: fade-up 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .video-experience-shell {
+    background: linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--app-surface) 90%, var(--app-bg) 10%) 0%,
+      color-mix(in oklab, var(--app-surface-alt) 76%, var(--app-accent) 24%) 100%
+    );
+  }
+
+  html[data-theme='dark'] .video-experience-shell {
+    background: linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--app-deep-surface) 88%, var(--app-bg) 12%) 0%,
+      color-mix(in oklab, var(--app-deep-surface-2) 82%, var(--app-accent) 18%) 100%
+    );
+  }
+
+  .video-player-shell {
+    background: linear-gradient(
+      160deg,
+      color-mix(in oklab, var(--app-deep-surface) 84%, #000 16%) 0%,
+      color-mix(in oklab, var(--app-deep-surface-2) 74%, var(--app-accent) 26%) 100%
+    );
+  }
+
+  .video-locked-shell {
+    color: var(--hero-title);
+    background: linear-gradient(
+      145deg,
+      var(--hero-bg-start) 0%,
+      color-mix(in oklab, var(--hero-bg-end) 82%, var(--app-accent) 18%) 100%
+    );
+  }
+
+  .video-locked-card {
+    border-color: var(--hero-panel-border);
+    background-color: var(--hero-panel-bg);
+    box-shadow: var(--shadow-soft);
+  }
+
+  .video-locked-title {
+    color: var(--hero-title);
+  }
+
+  .video-locked-body {
+    color: var(--hero-body);
+  }
+
+  .video-content-panel {
+    border: 1px solid color-mix(in oklab, var(--app-accent) 20%, var(--app-border) 80%);
+    background: color-mix(in oklab, var(--app-surface) 86%, rgba(255, 255, 255, 0.24));
+    box-shadow: var(--shadow-soft);
+  }
+
+  .video-learning-stage {
+    position: relative;
+    overflow: hidden;
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+  }
+
+  .video-learning-stage::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image: radial-gradient(circle at 10% 12%, color-mix(in oklab, var(--app-accent) 14%, transparent) 0%, transparent 36%);
+    opacity: 0.8;
+  }
+
+  html[data-theme='dark'] .video-content-panel {
+    background: color-mix(in oklab, var(--app-deep-surface-2) 82%, rgba(255, 255, 255, 0.06));
+  }
+
+  .video-tab-active {
+    background-color: color-mix(in oklab, var(--app-accent) 24%, transparent);
+    color: color-mix(in oklab, var(--app-accent) 70%, var(--app-text) 30%);
+    border-color: color-mix(in oklab, var(--app-accent) 46%, transparent);
+  }
+
+  html[data-theme='dark'] .video-tab-active {
+    color: color-mix(in oklab, var(--app-accent) 78%, white 22%);
+  }
+
+  .video-tab-inactive {
+    color: var(--app-muted);
+    border-color: color-mix(in oklab, var(--app-border) 62%, transparent);
+    background-color: color-mix(in oklab, var(--app-surface-alt) 72%, transparent);
+  }
+
+  html[data-theme='dark'] .video-tab-inactive {
+    color: color-mix(in oklab, var(--app-muted) 92%, white 8%);
+    background-color: color-mix(in oklab, var(--app-deep-surface) 46%, transparent);
+  }
+
+  .video-tab-inactive:hover {
+    color: var(--app-text);
+    border-color: color-mix(in oklab, var(--app-accent) 28%, transparent);
+    background-color: color-mix(in oklab, var(--app-accent) 14%, transparent);
+  }
+
+  html[data-theme='dark'] .video-tab-inactive:hover {
+    color: var(--app-deep-text);
+  }
+
+  .video-status-chip {
+    border: 1px solid color-mix(in oklab, var(--app-accent) 36%, var(--app-border) 64%);
+    background: color-mix(in oklab, var(--app-accent) 18%, var(--app-surface) 82%);
+    color: color-mix(in oklab, var(--app-accent) 70%, var(--app-text) 30%);
+  }
+
+  html[data-theme='dark'] .video-status-chip {
+    background: color-mix(in oklab, var(--app-accent) 22%, var(--app-deep-surface) 78%);
+    color: color-mix(in oklab, var(--app-accent) 78%, white 22%);
+  }
+
+  .video-learning-section {
+    color: var(--app-text);
+  }
+
+  .video-learning-card {
+    border-color: color-mix(in oklab, var(--app-accent) 18%, var(--app-border) 82%);
+    background: linear-gradient(
+      170deg,
+      color-mix(in oklab, var(--app-surface) 90%, white 10%) 0%,
+      color-mix(in oklab, var(--app-surface-alt) 92%, var(--app-accent) 8%) 100%
+    );
+    box-shadow: var(--shadow-soft);
+    transition: transform 200ms ease, box-shadow 220ms ease, border-color 220ms ease;
+  }
+
+  .video-learning-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-medium);
+    border-color: color-mix(in oklab, var(--app-accent) 34%, var(--app-border) 66%);
+  }
+
+  html[data-theme='dark'] .video-learning-card {
+    border-color: color-mix(in oklab, var(--app-accent) 26%, var(--app-border) 74%);
+    background: linear-gradient(
+      170deg,
+      color-mix(in oklab, var(--app-deep-surface) 90%, black 10%) 0%,
+      color-mix(in oklab, var(--app-deep-surface-2) 88%, var(--app-accent) 12%) 100%
+    );
+  }
+
+  .video-learning-section .text-white,
+  .video-learning-section .text-slate-100,
+  .video-learning-section .text-slate-200 {
+    color: var(--app-text);
+  }
+
+  html[data-theme='dark'] .video-learning-section .text-white,
+  html[data-theme='dark'] .video-learning-section .text-slate-100,
+  html[data-theme='dark'] .video-learning-section .text-slate-200 {
+    color: var(--app-deep-text);
+  }
+
+  .video-learning-section .text-slate-300,
+  .video-learning-section .text-slate-400,
+  .video-learning-section .text-slate-500 {
+    color: var(--app-muted);
+  }
+
+  .video-learning-section button,
+  .video-learning-section select,
+  .video-learning-section textarea {
+    transition: all 180ms ease;
+  }
+
+  .video-learning-section textarea,
+  .video-learning-section select {
+    color: var(--app-text);
+    background-color: color-mix(in oklab, var(--app-surface) 92%, white 8%);
+  }
+
+  .video-learning-section textarea::placeholder {
+    color: color-mix(in oklab, var(--app-muted) 88%, transparent);
+  }
+
+  .video-learning-section .rounded-full.border {
+    backdrop-filter: blur(4px);
+  }
+
+  .video-learning-section .group.relative.aspect-video {
+    border-color: color-mix(in oklab, var(--app-accent) 26%, var(--app-border) 74%);
+    box-shadow: 0 10px 30px -18px color-mix(in oklab, var(--app-accent) 35%, transparent);
+  }
+
+  .video-learning-section .group.relative.aspect-video:hover {
+    transform: translateY(-2px);
+  }
+
+  .video-learning-section .inline-flex.h-8.w-8.items-center.justify-center.rounded-full {
+    box-shadow: 0 8px 22px -14px color-mix(in oklab, var(--app-accent) 75%, transparent);
+  }
+
+  .video-section-intro {
+    font-size: 0.95rem;
+    line-height: 1.65;
+  }
+
+  .video-question-card {
+    border-color: color-mix(in oklab, var(--app-accent) 20%, var(--app-border) 80%);
+    background: linear-gradient(
+      175deg,
+      color-mix(in oklab, var(--app-surface) 88%, white 12%) 0%,
+      color-mix(in oklab, var(--app-surface-alt) 94%, var(--app-accent) 6%) 100%
+    );
+    box-shadow: inset 0 1px 0 color-mix(in oklab, white 40%, transparent);
+  }
+
+  .video-option-row {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .video-option-row::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 180ms ease;
+    background: linear-gradient(110deg, color-mix(in oklab, var(--app-accent) 12%, transparent) 0%, transparent 55%);
+  }
+
+  .video-option-row:hover::after {
+    opacity: 1;
+  }
+
+  .video-select-field {
+    min-height: 2.5rem;
+    border-color: color-mix(in oklab, var(--app-accent) 20%, var(--app-border) 80%);
+  }
+
+  .video-feedback-box {
+    border-color: color-mix(in oklab, var(--app-accent) 24%, var(--app-border) 76%);
+    background: color-mix(in oklab, var(--app-surface) 92%, white 8%);
+    box-shadow: inset 0 1px 0 color-mix(in oklab, white 38%, transparent);
+  }
+
+  .video-answer-panel,
+  .video-reference-panel {
+    box-shadow: var(--shadow-soft);
+  }
+
+  .video-pager {
+    border-top: 1px solid color-mix(in oklab, var(--app-accent) 16%, var(--app-border) 84%);
+    padding-top: 0.75rem;
+  }
+
+  .video-pager-btn {
+    transition: transform 160ms ease, border-color 180ms ease, background-color 180ms ease;
+  }
+
+  .video-pager-btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+    border-color: color-mix(in oklab, var(--app-accent) 34%, var(--app-border) 66%);
+  }
+
+  .video-pager-btn-accent {
+    box-shadow: 0 10px 24px -16px color-mix(in oklab, var(--app-accent) 70%, transparent);
+  }
+
+  .video-link-action {
+    color: var(--app-muted);
+  }
+
+  .video-link-action:hover {
+    color: var(--app-text);
+  }
+
+  .video-empty-state {
+    border-color: color-mix(in oklab, var(--app-accent) 22%, var(--app-border) 78%);
+    background: linear-gradient(
+      165deg,
+      color-mix(in oklab, var(--app-surface) 90%, white 10%) 0%,
+      color-mix(in oklab, var(--app-surface-alt) 94%, var(--app-accent) 6%) 100%
+    );
+  }
+
+  .video-figure-thumb {
+    transition: transform 200ms ease, box-shadow 220ms ease;
+  }
+
+  .video-figure-thumb:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 14px 28px -18px color-mix(in oklab, var(--app-accent) 64%, transparent);
+  }
+
+  html[data-theme='dark'] .video-learning-section .text-slate-300,
+  html[data-theme='dark'] .video-learning-section .text-slate-400,
+  html[data-theme='dark'] .video-learning-section .text-slate-500 {
+    color: color-mix(in oklab, var(--app-deep-text-muted) 88%, white 12%);
+  }
+
+  html[data-theme='dark'] .video-learning-section textarea,
+  html[data-theme='dark'] .video-learning-section select {
+    color: var(--app-deep-text);
+    background-color: color-mix(in oklab, var(--app-deep-surface) 86%, black 14%);
+  }
+
+  html[data-theme='dark'] .video-question-card {
+    border-color: color-mix(in oklab, var(--app-accent) 30%, var(--app-border) 70%);
+    background: linear-gradient(
+      175deg,
+      color-mix(in oklab, var(--app-deep-surface) 90%, black 10%) 0%,
+      color-mix(in oklab, var(--app-deep-surface-2) 90%, var(--app-accent) 10%) 100%
+    );
+    box-shadow: inset 0 1px 0 color-mix(in oklab, white 12%, transparent);
+  }
+
+  html[data-theme='dark'] .video-feedback-box {
+    border-color: color-mix(in oklab, var(--app-accent) 34%, var(--app-border) 66%);
+    background: color-mix(in oklab, var(--app-deep-surface) 88%, black 12%);
+  }
+
+  html[data-theme='dark'] .video-pager {
+    border-top-color: color-mix(in oklab, var(--app-accent) 24%, var(--app-border) 76%);
+  }
+
+  html[data-theme='dark'] .video-empty-state {
+    border-color: color-mix(in oklab, var(--app-accent) 28%, var(--app-border) 72%);
+    background: linear-gradient(
+      165deg,
+      color-mix(in oklab, var(--app-deep-surface) 90%, black 10%) 0%,
+      color-mix(in oklab, var(--app-deep-surface-2) 92%, var(--app-accent) 8%) 100%
+    );
+  }
+
+  @media (max-width: 767px) {
+    .video-learning-section {
+      font-size: 0.95rem;
+    }
+
+    .video-learning-card {
+      border-radius: 0.9rem;
+    }
+
+    .video-option-row {
+      padding-left: 0.75rem;
+      padding-right: 0.75rem;
+    }
+  }
+
+  .video-learning-section .border-slate-600,
+  .video-learning-section .border-slate-700,
+  .video-learning-section .border-slate-800 {
+    border-color: color-mix(in oklab, var(--app-border) 84%, var(--app-accent) 16%);
+  }
+
+  html[data-theme='dark'] .video-learning-section .border-slate-600,
+  html[data-theme='dark'] .video-learning-section .border-slate-700,
+  html[data-theme='dark'] .video-learning-section .border-slate-800 {
+    border-color: color-mix(in oklab, var(--app-border) 72%, var(--app-accent) 28%);
+  }
+
+  .video-learning-section .bg-slate-800,
+  .video-learning-section .bg-slate-900,
+  .video-learning-section .bg-slate-900\/40,
+  .video-learning-section .bg-slate-900\/50,
+  .video-learning-section .bg-slate-900\/60 {
+    background-color: color-mix(in oklab, var(--app-surface) 90%, white 10%);
+  }
+
+  html[data-theme='dark'] .video-learning-section .bg-slate-800,
+  html[data-theme='dark'] .video-learning-section .bg-slate-900,
+  html[data-theme='dark'] .video-learning-section .bg-slate-900\/40,
+  html[data-theme='dark'] .video-learning-section .bg-slate-900\/50,
+  html[data-theme='dark'] .video-learning-section .bg-slate-900\/60 {
+    background-color: color-mix(in oklab, var(--app-deep-surface) 86%, black 14%);
+  }
+
+  .video-learning-section .hover\:bg-slate-700:hover,
+  .video-learning-section .hover\:bg-slate-800:hover {
+    background-color: color-mix(in oklab, var(--app-accent) 14%, var(--app-surface) 86%);
+  }
+
+  html[data-theme='dark'] .video-learning-section .hover\:bg-slate-700:hover,
+  html[data-theme='dark'] .video-learning-section .hover\:bg-slate-800:hover {
+    background-color: color-mix(in oklab, var(--app-accent) 22%, var(--app-deep-surface) 78%);
+  }
+
   .animation-delay-2000 {
     animation-delay: 2s;
   }
   .animation-delay-4000 {
     animation-delay: 4s;
+  }
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 

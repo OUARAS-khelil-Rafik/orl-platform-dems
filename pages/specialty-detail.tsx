@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import { db, collection, query, where, getDocs } from '@/lib/local-data';
 import { motion } from 'motion/react';
@@ -109,9 +109,24 @@ const formatVideoDuration = (video: Video): string => {
 };
 
 const SPECIALTIES = {
-  otologie: { title: 'Otologie', desc: 'Anatomie et pathologie de l\'oreille', color: 'from-amber-700 to-orange-500' },
-  rhinologie: { title: 'Rhinologie & Sinusologie', desc: 'Fosses nasales et sinus', color: 'from-amber-800 to-amber-500' },
-  laryngologie: { title: 'Laryngologie & Cervicologie', desc: 'Larynx, pharynx et cou', color: 'from-orange-700 to-amber-600' },
+  otologie: {
+    title: 'Otologie',
+    desc: "Voie oreille: anatomie, exploration fonctionnelle et pathologies ciblées.",
+    color: 'from-orange-500 to-amber-500',
+    chipClass: 'specialty-glow-otology',
+  },
+  rhinologie: {
+    title: 'Rhinologie & Sinusologie',
+    desc: 'Voie naso-sinusienne: bases morphologiques, sémiologie et raisonnement.',
+    color: 'from-cyan-500 to-blue-500',
+    chipClass: 'specialty-glow-rhinology',
+  },
+  laryngologie: {
+    title: 'Laryngologie & Cervicologie',
+    desc: 'Voie laryngo-cervicale: voix, déglutition, oncologie et stratégie clinique.',
+    color: 'from-rose-500 to-pink-500',
+    chipClass: 'specialty-glow-laryngology',
+  },
 };
 
 const SECTION_OPTIONS: Array<{ value: SectionFilter; label: string }> = [
@@ -412,6 +427,9 @@ export default function SpecialtyPage() {
 
         <div className="container mx-auto px-4 relative z-10">
           <div>
+            <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] mb-4 ${specialtyInfo.chipClass}`}>
+              Parcours expert
+            </span>
             <motion.h1 
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -436,16 +454,16 @@ export default function SpecialtyPage() {
               className="mt-6 flex flex-wrap gap-2 text-xs font-semibold"
             >
               <span className="inline-flex items-center rounded-full border px-3 py-1" style={{ backgroundColor: 'var(--hero-chip-bg)', borderColor: 'var(--hero-chip-border)', color: 'var(--hero-chip-text)' }}>
-                {filteredVideos.length} videos ciblees
+                {filteredVideos.length} vidéos ciblées
               </span>
               <span className="inline-flex items-center rounded-full border px-3 py-1" style={{ backgroundColor: 'var(--hero-chip-bg)', borderColor: 'var(--hero-chip-border)', color: 'var(--hero-chip-text)' }}>
-                {filteredDemoCount} demos gratuites
+                {filteredDemoCount} démos gratuites
               </span>
               <span className="inline-flex items-center rounded-full border px-3 py-1" style={{ backgroundColor: 'var(--hero-chip-bg)', borderColor: 'var(--hero-chip-border)', color: 'var(--hero-chip-text)' }}>
                 {filteredUnlockedCount} accessibles
               </span>
               <span className="inline-flex items-center rounded-full border px-3 py-1" style={{ backgroundColor: 'var(--hero-chip-bg)', borderColor: 'var(--hero-chip-border)', color: 'var(--hero-chip-text)' }}>
-                {filteredViewedCount} deja vues
+                {filteredViewedCount} déjà vues
               </span>
             </motion.div>
           </div>
@@ -460,19 +478,19 @@ export default function SpecialtyPage() {
           </div>
         ) : (
           <div className="space-y-16">
-            <div className="rounded-3xl border p-5 md:p-6 shadow-md" style={{ borderColor: 'color-mix(in oklab, var(--app-accent) 24%, var(--app-border) 76%)', background: 'linear-gradient(140deg, color-mix(in oklab, var(--app-surface) 94%, white 6%) 0%, color-mix(in oklab, var(--app-surface-alt) 72%, var(--app-accent) 28%) 100%)' }}>
+            <div className="premium-panel rounded-3xl p-5 md:p-6 shadow-md">
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-end">
                 <div className="lg:col-span-8">
                   <label htmlFor="video-name-filter" className="text-sm font-semibold text-slate-700 mb-2 inline-flex items-center gap-2">
                     <Search className="h-4 w-4" />
-                    Filtre par nom vidéo
+                    Recherche intelligente
                   </label>
                   <input
                     id="video-name-filter"
                     type="text"
                     value={videoNameFilter}
                     onChange={(e) => setVideoNameFilter(e.target.value)}
-                    placeholder="Ex: Anatomie de l'oreille moyenne, Otite moyenne, Laryngite, ..."
+                    placeholder="Ex: anatomie de l'oreille moyenne, sinusite, laryngite..."
                     className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
                   />
                 </div>
@@ -480,7 +498,7 @@ export default function SpecialtyPage() {
                 <div className="lg:col-span-4">
                   <label htmlFor="section-filter" className="text-sm font-semibold text-slate-700 mb-2 inline-flex items-center gap-2">
                     <SlidersHorizontal className="h-4 w-4" />
-                    Filtre sous-specialite
+                    Filtre par section
                   </label>
                   <select
                     id="section-filter"
@@ -500,13 +518,13 @@ export default function SpecialtyPage() {
 
               <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold">
                 <span className="inline-flex items-center rounded-full bg-white border border-slate-200 px-3 py-1 text-slate-700">
-                  {filteredVideos.length} videos affichees
+                  {filteredVideos.length} vidéos affichées
                 </span>
                 <span className="inline-flex items-center rounded-full bg-emerald-50 border border-emerald-200 px-3 py-1 text-emerald-700">
-                  {filteredVideos.filter((video) => video.isFreeDemo).length} demos
+                  {filteredVideos.filter((video) => video.isFreeDemo).length} démos
                 </span>
                 <span className="inline-flex items-center rounded-full bg-blue-50 border border-blue-200 px-3 py-1 text-blue-700">
-                  {filteredVideos.filter((video) => viewedVideoIds.includes(video.id)).length} deja vues
+                  {filteredVideos.filter((video) => viewedVideoIds.includes(video.id)).length} déjà vues
                 </span>
                 <span className="inline-flex items-center rounded-full bg-medical-50 border border-medical-200 px-3 py-1 text-medical-700">
                   {filteredUnlockedCount} accessibles maintenant
@@ -574,6 +592,9 @@ function VideoCard({
   onUnlock: () => void;
   index: number;
 }) {
+  const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
+  const previewRef = useRef<HTMLVideoElement | null>(null);
+
   const statusLabel = video.isFreeDemo
     ? 'Démo Gratuite'
     : hasAccess
@@ -588,21 +609,67 @@ function VideoCard({
       ? 'bg-medical-500'
       : 'bg-slate-900/80';
 
+  const hasInlinePreview =
+    hasAccess &&
+    typeof video.url === 'string' &&
+    video.url.trim().length > 0 &&
+    !/youtube\.com|youtu\.be/i.test(video.url);
+
+  const handlePreviewStart = async () => {
+    if (!hasInlinePreview || !previewRef.current) return;
+    try {
+      await previewRef.current.play();
+      setIsPreviewPlaying(true);
+    } catch {
+      setIsPreviewPlaying(false);
+    }
+  };
+
+  const handlePreviewStop = () => {
+    if (!previewRef.current) return;
+    previewRef.current.pause();
+    previewRef.current.currentTime = 0;
+    setIsPreviewPlaying(false);
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.05 }}
-      className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition-all hover:-translate-y-0.5 group flex flex-col"
+      className="premium-panel rounded-2xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition-all hover:-translate-y-0.5 group flex flex-col interactive-card"
     >
-      <div className="aspect-video relative bg-slate-900 overflow-hidden">
+      <div
+        className="aspect-video relative bg-slate-900 overflow-hidden"
+        onMouseEnter={handlePreviewStart}
+        onMouseLeave={handlePreviewStop}
+        onFocus={handlePreviewStart}
+        onBlur={handlePreviewStop}
+      >
         <Image
-          src={`https://picsum.photos/seed/${video.id}/640/360`}
+          src={`https://picsum.photos/seed/thumbnail-${video.subspecialty}-${video.section}/640/360`}
           alt={video.title}
           fill
-          className="object-cover opacity-60 group-hover:opacity-80 transition-opacity"
+          className={`object-cover transition-opacity duration-300 ${
+            isPreviewPlaying ? 'opacity-0' : 'opacity-60 group-hover:opacity-80'
+          }`}
+          loading="lazy"
           referrerPolicy="no-referrer"
         />
+        {hasInlinePreview && (
+          <video
+            ref={previewRef}
+            src={video.url}
+            muted
+            loop
+            playsInline
+            preload="metadata"
+            className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-300 ${
+              isPreviewPlaying ? 'opacity-100' : 'opacity-0'
+            }`}
+          />
+        )}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-transparent" />
         <div className="absolute top-3 left-3 flex items-center gap-2">
           <span
             className={`text-[10px] sm:text-xs font-bold px-2 py-1 rounded-md uppercase tracking-wider backdrop-blur-sm border ${getSectionBadgeClass(video.section)}`}
@@ -692,7 +759,7 @@ function VideoCard({
             <button
               type="button"
               onClick={onUnlock}
-              className="px-4 py-2 rounded-xl text-sm font-medium transition-colors"
+              className="px-4 py-2 rounded-xl text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring-focus)]"
               style={{ background: 'linear-gradient(90deg, color-mix(in oklab, var(--app-accent) 76%, #51392a 24%), color-mix(in oklab, var(--app-accent) 90%, #35261c 10%))', color: 'var(--app-accent-contrast)' }}
             >
               {lockActionLabel}

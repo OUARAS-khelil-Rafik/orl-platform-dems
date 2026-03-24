@@ -15,6 +15,8 @@ interface SearchResult {
   videoId?: string;
 }
 
+type SearchCategory = 'all' | SearchResult['type'];
+
 const normalizeSearchText = (value: string) =>
   value
     .normalize('NFD')
@@ -29,6 +31,7 @@ const matchesQuery = (value: unknown, normalizedQuery: string) => {
 export function SearchModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
+  const [activeCategory, setActiveCategory] = useState<SearchCategory>('all');
   const [loading, setLoading] = useState(false);
   const [navigationError, setNavigationError] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
@@ -40,6 +43,7 @@ export function SearchModal({ isOpen, onClose }: { isOpen: boolean; onClose: () 
     } else {
       setQuery('');
       setResults([]);
+      setActiveCategory('all');
       setNavigationError('');
     }
   }, [isOpen]);
@@ -71,7 +75,7 @@ export function SearchModal({ isOpen, onClose }: { isOpen: boolean; onClose: () 
         videosSnap.forEach(doc => {
           const data = doc.data();
           if (matchesQuery(data.title, normalizedQuery) || matchesQuery(data.description, normalizedQuery)) {
-            searchResults.push({ id: doc.id, type: 'video', title: data.title, description: data.description });
+            searchResults.push({ id: doc.id, type: 'video', title: data.title, description: data.description, url: data.url });
           }
         });
 
@@ -113,7 +117,14 @@ export function SearchModal({ isOpen, onClose }: { isOpen: boolean; onClose: () 
           }
         });
 
-        setResults(searchResults);
+        const ranking = { video: 0, qcm: 1, case: 2, 'open-question': 3, diagram: 4 };
+        const rankedResults = searchResults.sort((a, b) => {
+          const rankGap = ranking[a.type] - ranking[b.type];
+          if (rankGap !== 0) return rankGap;
+          return a.title.localeCompare(b.title, 'fr');
+        });
+
+        setResults(rankedResults);
       } catch (error) {
         console.error('Search error:', error);
       } finally {
@@ -164,6 +175,34 @@ export function SearchModal({ isOpen, onClose }: { isOpen: boolean; onClose: () 
     }
   };
 
+  const categoryCounts = {
+    all: results.length,
+    video: results.filter((result) => result.type === 'video').length,
+    qcm: results.filter((result) => result.type === 'qcm').length,
+    case: results.filter((result) => result.type === 'case').length,
+    'open-question': results.filter((result) => result.type === 'open-question').length,
+    diagram: results.filter((result) => result.type === 'diagram').length,
+  };
+
+  const visibleResults =
+    activeCategory === 'all' ? results : results.filter((result) => result.type === activeCategory);
+
+  const quickLinks = [
+    { label: 'Otologie', href: '/specialties/otologie' },
+    { label: 'Rhinologie', href: '/specialties/rhinologie' },
+    { label: 'Laryngologie', href: '/specialties/laryngologie' },
+    { label: 'Catalogue vidéos', href: '/videos' },
+  ];
+
+  const categoryOptions: Array<{ value: SearchCategory; label: string }> = [
+    { value: 'all', label: 'Tout' },
+    { value: 'video', label: 'Vidéos' },
+    { value: 'qcm', label: 'QCM' },
+    { value: 'case', label: 'Cas' },
+    { value: 'open-question', label: 'Questions' },
+    { value: 'diagram', label: 'Schémas' },
+  ];
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -179,17 +218,17 @@ export function SearchModal({ isOpen, onClose }: { isOpen: boolean; onClose: () 
             initial={{ opacity: 0, scale: 0.95, y: -20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: -20 }}
-            className="fixed top-20 left-1/2 -translate-x-1/2 w-full max-w-2xl bg-white rounded-2xl shadow-2xl z-50 overflow-hidden border border-slate-200"
+            className="fixed top-20 left-1/2 -translate-x-1/2 w-full max-w-3xl premium-panel rounded-3xl z-50 overflow-hidden"
           >
-            <div className="p-4 border-b border-slate-100 flex items-center gap-3">
-              <Search className="w-5 h-5 text-slate-400" />
+            <div className="p-4 border-b border-slate-100/70 flex items-center gap-3">
+              <Search className="w-5 h-5 text-[var(--app-accent)]" />
               <input
                 ref={inputRef}
                 type="text"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Rechercher des vidéos, QCMs, cas cliniques, questions ouvertes..."
-                className="flex-1 bg-transparent border-none outline-none text-slate-900 placeholder:text-slate-400 text-lg"
+                className="flex-1 bg-transparent border-none outline-none text-slate-900 placeholder:text-slate-400 text-base sm:text-lg"
               />
               {loading && <Loader2 className="w-5 h-5 text-medical-500 animate-spin" />}
               <button
@@ -201,6 +240,44 @@ export function SearchModal({ isOpen, onClose }: { isOpen: boolean; onClose: () 
                 <X className="w-5 h-5" />
               </button>
             </div>
+
+            <div className="px-4 py-3 border-b border-slate-100/70 flex flex-wrap items-center gap-2">
+              {categoryOptions.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setActiveCategory(option.value)}
+                  className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                    activeCategory === option.value
+                      ? 'border-medical-600 bg-medical-600 text-white'
+                      : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  {option.label} · {categoryCounts[option.value]}
+                </button>
+              ))}
+            </div>
+
+            {query.length < 2 && (
+              <div className="px-4 pt-4 pb-2">
+                <p className="text-xs uppercase tracking-[0.14em] text-slate-500 mb-2">Accès rapide</p>
+                <div className="flex flex-wrap gap-2">
+                  {quickLinks.map((quickLink) => (
+                    <button
+                      key={quickLink.href}
+                      type="button"
+                      className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                      onClick={() => {
+                        onClose();
+                        router.push(quickLink.href);
+                      }}
+                    >
+                      {quickLink.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className="max-h-[60vh] overflow-y-auto">
               {navigationError && (
@@ -215,19 +292,19 @@ export function SearchModal({ isOpen, onClose }: { isOpen: boolean; onClose: () 
                 </div>
               )}
 
-              {query.length >= 2 && results.length === 0 && !loading && (
+              {query.length >= 2 && visibleResults.length === 0 && !loading && (
                 <div className="p-8 text-center text-slate-500">
                   Aucun résultat trouvé pour "{query}"
                 </div>
               )}
 
-              {results.length > 0 && (
+              {visibleResults.length > 0 && (
                 <div className="p-2">
-                  {results.map((result) => (
+                  {visibleResults.map((result, index) => (
                     <button
                       key={result.id}
                       onClick={() => handleResultClick(result)}
-                      className="w-full flex items-start gap-4 p-3 hover:bg-slate-50 rounded-xl transition-colors text-left"
+                      className="w-full flex items-start gap-4 p-3 hover:bg-slate-50 rounded-xl transition-colors text-left interactive-card"
                     >
                       <div className="mt-1 bg-white p-2 rounded-lg shadow-sm border border-slate-100">
                         {getIcon(result.type)}
@@ -237,6 +314,11 @@ export function SearchModal({ isOpen, onClose }: { isOpen: boolean; onClose: () 
                           <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
                             {getTypeLabel(result.type)}
                           </span>
+                          {index < 3 && (
+                            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full border border-medical-200 text-medical-700 bg-medical-50">
+                              Recommandé
+                            </span>
+                          )}
                           <h4 className="font-medium text-slate-900 truncate">{result.title}</h4>
                         </div>
                         {result.description && (

@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import React from 'react';
 import type { ImgHTMLAttributes, ReactNode } from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Navbar } from '@/components/layout/navbar';
 
 vi.mock('next/link', () => ({
@@ -16,6 +16,14 @@ vi.mock('next/image', () => ({
   default: (props: ImgHTMLAttributes<HTMLImageElement>) => React.createElement('img', {
     alt: '',
     ...props,
+  }),
+}));
+
+vi.mock('next/router', () => ({
+  useRouter: () => ({
+    pathname: '/',
+    asPath: '/',
+    push: vi.fn(),
   }),
 }));
 
@@ -41,6 +49,26 @@ vi.mock('@/components/providers/cart-provider', () => ({
 }));
 
 describe('Navbar user menu', () => {
+  beforeEach(() => {
+    const store = new Map<string, string>();
+
+    Object.defineProperty(window, 'localStorage', {
+      configurable: true,
+      value: {
+        getItem: vi.fn((key: string) => store.get(key) ?? null),
+        setItem: vi.fn((key: string, value: string) => {
+          store.set(key, value);
+        }),
+        removeItem: vi.fn((key: string) => {
+          store.delete(key);
+        }),
+        clear: vi.fn(() => {
+          store.clear();
+        }),
+      },
+    });
+  });
+
   it('opens then closes on outside click', async () => {
     render(<Navbar />);
 

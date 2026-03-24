@@ -1,5 +1,5 @@
 import type { AppProps } from 'next/app';
-import { Inter } from 'next/font/google';
+import { Plus_Jakarta_Sans, Sora } from 'next/font/google';
 import { motion, useScroll, useSpring } from 'motion/react';
 import '@/styles/globals.css';
 import { AuthProvider } from '@/components/providers/auth-provider';
@@ -7,9 +7,14 @@ import { CartProvider } from '@/components/providers/cart-provider';
 import { Navbar } from '@/components/layout/navbar';
 import { Footer } from '@/components/layout/footer';
 
-const inter = Inter({
+const plusJakarta = Plus_Jakarta_Sans({
   subsets: ['latin'],
-  variable: '--font-inter',
+  variable: '--font-body',
+});
+
+const sora = Sora({
+  subsets: ['latin'],
+  variable: '--font-display',
 });
 
 function GlobalScrollProgress() {
@@ -34,7 +39,7 @@ function GlobalScrollProgress() {
 
 export default function App({ Component, pageProps }: AppProps) {
   return (
-    <div className={`${inter.variable} scroll-smooth font-sans bg-[var(--app-bg)] text-[var(--app-text)] min-h-screen flex flex-col`}>
+    <div className={`${plusJakarta.variable} ${sora.variable} scroll-smooth font-sans bg-[var(--app-bg)] text-[var(--app-text)] min-h-screen flex flex-col`}>
       <AuthProvider>
         <CartProvider>
           <GlobalScrollProgress />

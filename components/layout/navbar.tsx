@@ -22,11 +22,13 @@ import {
   Trash2,
   Sun,
   Moon,
+  Search,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import Image from 'next/image';
 import { db, collection, getDocs, query, where } from '@/lib/local-data';
+import { SearchModal } from '@/components/search-modal';
 
 type NavbarNotification = {
   id: string;
@@ -61,6 +63,7 @@ export function Navbar() {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [showAllNotifications, setShowAllNotifications] = useState(false);
   const [isLoadingNotifications, setIsLoadingNotifications] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [themeMode, setThemeMode] = useState<'light' | 'dark'>('light');
   const [notifications, setNotifications] = useState<NavbarNotification[]>([]);
   const [notificationReadIds, setNotificationReadIds] = useState<string[]>([]);
@@ -88,6 +91,13 @@ export function Navbar() {
     { name: 'Tarifs', href: '/pricing' },
   ];
   const visibleNavLinks = isAdmin ? navLinks.filter((link) => link.name !== 'Tarifs') : navLinks;
+
+  const isRouteActive = (href: string) => {
+    if (href === '/') {
+      return router.pathname === '/';
+    }
+    return router.asPath.startsWith(href);
+  };
 
   const displayName = profile?.displayName?.trim() || '';
   const hasDoctorPrefix = /^dr\.?/i.test(displayName);
@@ -413,21 +423,41 @@ export function Navbar() {
     };
   }, [isUserMenuOpen, isNotificationsOpen]);
 
+  useEffect(() => {
+    const onShortcut = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        setIsSearchOpen(true);
+        setIsMobileMenuOpen(false);
+      }
+    };
+
+    window.addEventListener('keydown', onShortcut);
+    return () => window.removeEventListener('keydown', onShortcut);
+  }, []);
+
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-[var(--app-border)] bg-[var(--app-nav-bg)] text-[var(--app-text)] backdrop-blur-md">
-      <div className="container mx-auto px-4 h-16 flex items-center justify-between">
-        <Link href="/" className="flex items-center gap-2 text-[var(--app-accent)] hover:opacity-85 transition-opacity">
-          <Stethoscope className="h-6 w-6" />
+    <>
+      <header className="nav-shell-bg sticky top-0 z-50 w-full border-b border-[var(--app-border)] text-[var(--app-text)] backdrop-blur-xl">
+      <div className="container mx-auto px-4 h-[4.5rem] flex items-center justify-between">
+        <Link href="/" className="flex items-center gap-2 text-[var(--app-accent)] hover:opacity-85 transition-opacity group">
+          <div className="h-9 w-9 rounded-xl flex items-center justify-center border border-[color-mix(in_oklab,var(--app-accent)_45%,transparent)] bg-[color-mix(in_oklab,var(--app-accent)_16%,transparent)]">
+            <Stethoscope className="h-5 w-5 group-hover:rotate-6 transition-transform" />
+          </div>
           <span className="font-bold text-xl tracking-tight">DEMS ENT</span>
         </Link>
 
         {/* Desktop Nav */}
-        <nav className="hidden md:flex items-center gap-6">
+        <nav className="nav-links-shell hidden md:flex items-center gap-2 rounded-full border border-[var(--app-border)] px-2 py-1">
           {visibleNavLinks.map((link) => (
             <Link
               key={link.name}
               href={link.href}
-              className="text-sm font-medium text-[var(--app-muted)] hover:text-[var(--app-text)] transition-colors"
+              className={`relative text-sm font-medium px-3.5 py-2 rounded-full transition-all ${
+                isRouteActive(link.href)
+                  ? 'bg-medical-600 text-white shadow-[0_10px_22px_-14px_color-mix(in_srgb,var(--app-accent)_54%,transparent)]'
+                  : 'text-[var(--app-muted)] hover:text-[var(--app-text)]'
+              }`}
             >
               {link.name}
             </Link>
@@ -435,6 +465,18 @@ export function Navbar() {
         </nav>
 
         <div className="hidden md:flex items-center gap-4">
+          <button
+            type="button"
+            onClick={() => setIsSearchOpen(true)}
+            className="inline-flex items-center gap-2 rounded-full border border-[var(--app-border)] bg-[var(--app-surface)] px-3.5 py-2 text-sm text-[var(--app-muted)] hover:text-[var(--app-text)] hover:bg-[var(--app-surface-2)] transition-colors"
+            title="Ouvrir la recherche"
+            aria-label="Ouvrir la recherche"
+          >
+            <Search className="h-4 w-4" />
+            <span>Recherche</span>
+            <span className="rounded-md border border-[var(--app-border)] px-1.5 py-0.5 text-[10px] uppercase tracking-wide">Ctrl/⌘ K</span>
+          </button>
+
           <button
             type="button"
             onClick={toggleThemeMode}
@@ -690,6 +732,15 @@ export function Navbar() {
         <div className="md:hidden flex items-center gap-2">
           <button
             type="button"
+            onClick={() => setIsSearchOpen(true)}
+            className="p-2 rounded-full border border-[var(--app-border)] bg-[var(--app-surface)] text-[var(--app-muted)] hover:text-[var(--app-text)] hover:bg-[var(--app-surface-2)] transition-colors"
+            title="Rechercher"
+            aria-label="Rechercher"
+          >
+            <Search className="h-5 w-5" />
+          </button>
+          <button
+            type="button"
             onClick={toggleThemeMode}
             className="p-2 rounded-full border border-[var(--app-border)] bg-[var(--app-surface)] text-[var(--app-muted)] hover:text-[var(--app-text)] hover:bg-[var(--app-surface-2)] transition-colors"
             title={themeMode === 'dark' ? 'Passer en mode clair' : 'Passer en mode sombre'}
@@ -730,7 +781,7 @@ export function Navbar() {
             </Link>
           )}
           <button
-            className="p-2 text-[var(--app-muted)]"
+            className="p-2 rounded-full text-[var(--app-muted)] hover:bg-[var(--app-surface-2)]"
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
           >
             {isMobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
@@ -954,5 +1005,7 @@ export function Navbar() {
         </div>
       )}
     </header>
+    <SearchModal isOpen={isSearchOpen} onClose={() => setIsSearchOpen(false)} />
+    </>
   );
 }
