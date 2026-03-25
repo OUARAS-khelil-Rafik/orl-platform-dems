@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/components/providers/auth-provider';
 import {
   db,
@@ -32,6 +32,16 @@ import {
   MessageSquare,
   Eye,
   EyeOff,
+  User,
+  Mail,
+  Phone,
+  CalendarDays,
+  Shield,
+  Activity,
+  Clock3,
+  Settings,
+  ArrowUpDown,
+  Search,
 } from 'lucide-react';
 import { useRouter } from 'next/router';
 import { AdminContentManager } from '@/components/admin/content-manager';
@@ -88,7 +98,7 @@ type AdminClinicalCase = {
   questions?: AdminCaseQuestion[];
 };
 
-type UserStatus = 'active' | 'expired' | 'pending';
+type UserStatus = 'active' | 'expiring_soon' | 'expired' | 'pending';
 
 type PurchaseCard = {
   paymentId?: string;
@@ -144,6 +154,10 @@ export default function AdminDashboard() {
   const [isCreateUserModalOpen, setIsCreateUserModalOpen] = useState(false);
   const [videoToAddByUser, setVideoToAddByUser] = useState<Record<string, string>>({});
   const [isCreatingUser, setIsCreatingUser] = useState(false);
+  const [userSearchQuery, setUserSearchQuery] = useState('');
+  const [userRoleFilter, setUserRoleFilter] = useState<'all' | NonNullable<AdminUser['role']>>('all');
+  const [userStatusFilter, setUserStatusFilter] = useState<'all' | UserStatus>('all');
+  const [nameSortDirection, setNameSortDirection] = useState<'asc' | 'desc'>('asc');
   const [newUserForm, setNewUserForm] = useState({
     lastName: '',
     firstName: '',
@@ -356,12 +370,23 @@ export default function AdminDashboard() {
       return 'expired';
     }
 
+    const msRemaining = expiry.getTime() - now.getTime();
+    const isStillActive = msRemaining > 0;
+    const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+
+    if (isStillActive && msRemaining <= sevenDaysMs) {
+      return 'expiring_soon';
+    }
+
     return expiry > now ? 'active' : 'expired';
   };
 
   const getStatusBadgeClass = (status: UserStatus) => {
     if (status === 'active') {
       return 'bg-emerald-100 text-emerald-700';
+    }
+    if (status === 'expiring_soon') {
+      return 'bg-orange-100 text-orange-700';
     }
     if (status === 'pending') {
       return 'bg-amber-100 text-amber-700';
@@ -371,9 +396,46 @@ export default function AdminDashboard() {
 
   const getStatusLabel = (status: UserStatus) => {
     if (status === 'active') return 'Active';
+    if (status === 'expiring_soon') return 'Bientot expire';
     if (status === 'pending') return 'En attente';
     return 'Expire';
   };
+
+  const filteredAndSortedUsers = useMemo(() => {
+    const normalizedQuery = userSearchQuery.trim().toLowerCase();
+
+    const filtered = users.filter((user) => {
+      if (userRoleFilter !== 'all' && user.role !== userRoleFilter) {
+        return false;
+      }
+
+      const currentStatus = getUserStatus(user);
+      if (userStatusFilter !== 'all' && currentStatus !== userStatusFilter) {
+        return false;
+      }
+
+      if (!normalizedQuery) {
+        return true;
+      }
+
+      const splitName = splitFullName(user.displayName || '');
+      const fullName = (formatFullName(user.lastName || splitName.lastName, user.firstName || splitName.firstName) || user.displayName || '').toLowerCase();
+      const email = (user.email || '').toLowerCase();
+      const phone = (user.phoneNumber || '').toLowerCase();
+
+      return fullName.includes(normalizedQuery) || email.includes(normalizedQuery) || phone.includes(normalizedQuery);
+    });
+
+    return filtered.sort((a, b) => {
+      const aSplit = splitFullName(a.displayName || '');
+      const bSplit = splitFullName(b.displayName || '');
+      const aName = (formatFullName(a.lastName || aSplit.lastName, a.firstName || aSplit.firstName) || a.displayName || '').toLowerCase();
+      const bName = (formatFullName(b.lastName || bSplit.lastName, b.firstName || bSplit.firstName) || b.displayName || '').toLowerCase();
+
+      const compare = aName.localeCompare(bName, 'fr', { sensitivity: 'base' });
+      return nameSortDirection === 'asc' ? compare : -compare;
+    });
+  }, [users, userRoleFilter, userStatusFilter, userSearchQuery, nameSortDirection, now]);
 
   const getVideoTitle = (videoId: string) => {
     return videos.find((video) => video.id === videoId)?.title || `Video ${videoId}`;
@@ -483,6 +545,11 @@ export default function AdminDashboard() {
   ) => {
     try {
       await updateDoc(doc(db, 'payments', paymentId), { status: 'approved' });
+
+      const approvedAt = new Date();
+      const vipExpiryAt = new Date(approvedAt);
+      vipExpiryAt.setFullYear(vipExpiryAt.getFullYear() + 1);
+      const vipExpiryIso = vipExpiryAt.toISOString();
       
       const userRef = doc(db, 'users', userId);
       const userDoc = users.find(u => u.id === userId);
@@ -496,10 +563,17 @@ export default function AdminDashboard() {
         });
       } else if (type === 'pack' && targetId) {
         const currentPacks = userDoc?.purchasedPacks || [];
-        await updateDoc(userRef, {
-          role: userDoc?.role === 'user' ? 'vip' : userDoc?.role,
-          purchasedPacks: [...currentPacks, targetId]
-        });
+        const shouldPromoteFromDemo = userDoc?.role === 'user';
+        const userUpdates: Record<string, any> = {
+          role: shouldPromoteFromDemo ? 'vip' : userDoc?.role,
+          purchasedPacks: [...currentPacks, targetId],
+        };
+
+        if (shouldPromoteFromDemo) {
+          userUpdates.subscriptionEndDate = vipExpiryIso;
+        }
+
+        await updateDoc(userRef, userUpdates);
       } else if (type === 'cart' && items) {
         const currentPacks = userDoc?.purchasedPacks || [];
         const currentVideos = userDoc?.purchasedVideos || [];
@@ -508,9 +582,14 @@ export default function AdminDashboard() {
         const videoIds = items.filter(i => i.type === 'video').map(i => i.id);
         const packIds = items.filter(i => i.type === 'pack').map(i => i.id);
         
+        const shouldPromoteFromDemo = userDoc?.role === 'user';
         const updates: any = {
-          role: userDoc?.role === 'user' ? 'vip' : userDoc?.role
+          role: shouldPromoteFromDemo ? 'vip' : userDoc?.role
         };
+
+        if (shouldPromoteFromDemo) {
+          updates.subscriptionEndDate = vipExpiryIso;
+        }
         
         if (videoIds.length > 0) {
           updates.purchasedVideos = [...new Set([...currentVideos, ...videoIds])];
@@ -545,9 +624,11 @@ export default function AdminDashboard() {
 
           if (type === 'pack' && targetId) {
             const current = entry.purchasedPacks || [];
+            const shouldPromoteFromDemo = entry.role === 'user';
             return {
               ...entry,
-              role: entry.role === 'user' ? 'vip' : entry.role,
+              role: shouldPromoteFromDemo ? 'vip' : entry.role,
+              ...(shouldPromoteFromDemo ? { subscriptionEndDate: vipExpiryIso } : {}),
               purchasedPacks: [...new Set([...current, targetId])],
             };
           }
@@ -558,10 +639,12 @@ export default function AdminDashboard() {
             const currentVideoDates = entry.purchasedVideoDates || {};
             const videoIds = items.filter((i) => i.type === 'video').map((i) => i.id);
             const packIds = items.filter((i) => i.type === 'pack').map((i) => i.id);
+            const shouldPromoteFromDemo = entry.role === 'user';
 
             return {
               ...entry,
-              role: entry.role === 'user' ? 'vip' : entry.role,
+              role: shouldPromoteFromDemo ? 'vip' : entry.role,
+              ...(shouldPromoteFromDemo ? { subscriptionEndDate: vipExpiryIso } : {}),
               purchasedVideos: [...new Set([...currentVideos, ...videoIds])],
               purchasedVideoDates: {
                 ...currentVideoDates,
@@ -1053,6 +1136,18 @@ export default function AdminDashboard() {
 
   const unreadDiscussionCount = discussions.filter((entry) => !entry.isRead).length;
 
+  const adminTabs: Array<{
+    id: 'payments' | 'users' | 'discussions' | 'content';
+    label: string;
+    icon: typeof CreditCard;
+    count?: number;
+  }> = [
+    { id: 'payments', label: 'Paiements en attente', icon: CreditCard, count: payments.length },
+    { id: 'users', label: 'Utilisateurs', icon: Users },
+    { id: 'discussions', label: 'Gestion des Discussions', icon: MessageSquare, count: unreadDiscussionCount },
+    { id: 'content', label: 'Contenu Pedagogique', icon: FileText },
+  ];
+
   const videoTitleById = new Map(videos.map((video) => [video.id, video.title || video.id]));
 
   const buildPerVideoIndexMap = <T extends { id: string; videoId?: string }>(items: T[]) => {
@@ -1147,41 +1242,42 @@ export default function AdminDashboard() {
   if (profile?.role !== 'admin') return null;
 
   return (
-    <div className="flex-1 bg-gradient-to-br from-slate-100 via-stone-50 to-slate-100 flex flex-col md:flex-row">
-      {/* Sidebar */}
-      <aside className="w-full md:w-64 bg-slate-900/95 text-slate-300 flex-shrink-0 border-r border-slate-800 md:sticky md:top-0 md:h-[calc(100vh-4rem)] backdrop-blur-md">
-        <div className="p-6">
-          <h2 className="text-xl font-bold text-white mb-6">Administration</h2>
-          <nav className="space-y-2">
-            {[
-              { id: 'payments', label: 'Paiements en attente', icon: CreditCard, count: payments.length },
-              { id: 'users', label: 'Utilisateurs', icon: Users },
-              { id: 'discussions', label: 'Gestion des Discussions', icon: MessageSquare, count: unreadDiscussionCount },
-              { id: 'content', label: 'Contenu Pédagogique', icon: FileText },
-            ].map((item) => (
-              <button
-                key={item.id}
-                onClick={() => setActiveTab(item.id as any)}
-                className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-colors ${
-                  activeTab === item.id ? 'bg-medical-600 text-white' : 'hover:bg-slate-800 hover:text-white'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <item.icon className="h-5 w-5" />
-                  <span className="font-medium">{item.label}</span>
-                </div>
-                {item.count !== undefined && item.count > 0 && (
-                  <span className="bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-full">{item.count}</span>
-                )}
-              </button>
-            ))}
-          </nav>
-        </div>
-      </aside>
-
-      {/* Main Content */}
-      <main className="flex-1 p-6 md:p-10 overflow-y-auto">
+    <div className="flex-1 bg-gradient-to-br from-slate-100 via-stone-50 to-slate-100">
+      <main className="p-6 md:p-10 overflow-y-auto">
         <div className="max-w-6xl mx-auto">
+          <div className="mb-6">
+            <div className="min-w-0 rounded-full border border-[rgba(68,25,6,0.08)] bg-[rgba(68,25,6,0.04)] p-1">
+              <nav className="flex items-center justify-between gap-1.5 rounded-full">
+                  {adminTabs.map((item) => {
+                    const isActive = activeTab === item.id;
+
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => setActiveTab(item.id)}
+                        className={`inline-flex flex-1 items-center justify-center gap-2 px-4 py-2.5 rounded-full whitespace-nowrap text-sm font-semibold border transition-all ${
+                          isActive
+                            ? 'bg-white text-slate-900 border-white shadow-[0_0_0_1px_rgba(0,0,0,0.04),0_1px_1px_rgba(0,0,0,0.04),0_3px_3px_1px_rgba(0,0,0,0.04),0_12px_12px_-8px_rgba(0,0,0,0.08)]'
+                            : 'bg-transparent text-slate-500 border-transparent hover:text-slate-700'
+                        }`}
+                      >
+                        <item.icon className={`w-4 h-4 ${isActive ? 'text-blue-600' : 'text-slate-500'}`} />
+                        <span>{item.label}</span>
+                        {item.count !== undefined && item.count > 0 && (
+                          <span className={`inline-flex items-center justify-center min-w-5 h-5 px-1 rounded-full text-[11px] font-bold ${
+                            isActive ? 'bg-blue-50 text-blue-700' : 'bg-rose-100 text-rose-700'
+                          }`}>
+                            {item.count}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </nav>
+            </div>
+          </div>
+
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
             <h1 className="text-3xl font-bold text-slate-900">{activeTabLabel}</h1>
             <div className="flex items-center gap-2">
@@ -1285,37 +1381,130 @@ export default function AdminDashboard() {
           )}
 
           {activeTab === 'users' && (
-            <div className="bg-white rounded-2xl shadow-md border border-slate-200 overflow-hidden">
+            <div className="space-y-4">
+              <div className="bg-white rounded-2xl shadow-md border border-slate-200 p-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <label className="relative block">
+                    <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      value={userSearchQuery}
+                      onChange={(e) => setUserSearchQuery(e.target.value)}
+                      placeholder="Rechercher nom complet, email, telephone"
+                      className="w-full pl-9 pr-3 py-2 rounded-lg border border-slate-300 text-sm focus:ring-2 focus:ring-medical-500 outline-none"
+                    />
+                  </label>
+
+                  <select
+                    title="Filtrer par role"
+                    aria-label="Filtrer par role"
+                    value={userRoleFilter}
+                    onChange={(e) => setUserRoleFilter(e.target.value as 'all' | NonNullable<AdminUser['role']>)}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:ring-2 focus:ring-medical-500 outline-none"
+                  >
+                    <option value="all">Tous les roles</option>
+                    <option value="user">User (Demo)</option>
+                    <option value="vip">VIP (Achats)</option>
+                    <option value="vip_plus">VIP Plus (Abonne)</option>
+                    <option value="admin">Admin</option>
+                  </select>
+
+                  <select
+                    title="Filtrer par statut"
+                    aria-label="Filtrer par statut"
+                    value={userStatusFilter}
+                    onChange={(e) => setUserStatusFilter(e.target.value as 'all' | UserStatus)}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:ring-2 focus:ring-medical-500 outline-none"
+                  >
+                    <option value="all">Tous les statuts</option>
+                    <option value="active">Active</option>
+                    <option value="expiring_soon">Bientot expire</option>
+                    <option value="pending">En attente</option>
+                    <option value="expired">Expire</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-2xl shadow-md border border-slate-200 overflow-hidden">
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[1040px] text-left border-collapse text-xs md:text-sm">
+                <table className="w-full min-w-[1040px] text-center border-collapse text-xs md:text-sm">
                   <thead>
                     <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-medium text-sm">
-                      <th className="p-3">Nom</th>
-                      <th className="p-3">Email</th>
-                      <th className="p-3">Téléphone</th>
-                      <th className="p-3">Date creation</th>
-                      <th className="p-3">Rôle</th>
-                      <th className="p-3">Statut</th>
-                      <th className="p-3">Expiration</th>
-                      <th className="p-3 text-right">Actions</th>
+                      <th className="p-3 text-center whitespace-nowrap">
+                        <button
+                          type="button"
+                          onClick={() => setNameSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'))}
+                          className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap hover:text-slate-900 transition-colors"
+                          title={`Tri nom complet ${nameSortDirection === 'asc' ? 'A-Z' : 'Z-A'}`}
+                          aria-label={`Tri nom complet ${nameSortDirection === 'asc' ? 'A-Z' : 'Z-A'}`}
+                        >
+                          <User className="w-4 h-4" />
+                          Nom complet
+                          <ArrowUpDown className="w-4 h-4" />
+                          <span className="text-[11px] font-semibold uppercase">{nameSortDirection === 'asc' ? 'A-Z' : 'Z-A'}</span>
+                        </button>
+                      </th>
+                      <th className="p-3 text-center whitespace-nowrap">
+                        <span className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap">
+                          <Mail className="w-4 h-4" />
+                          Email
+                        </span>
+                      </th>
+                      <th className="p-3 text-center whitespace-nowrap">
+                        <span className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap">
+                          <Phone className="w-4 h-4" />
+                          Telephone
+                        </span>
+                      </th>
+                      <th className="p-3 text-center whitespace-nowrap">
+                        <span className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap">
+                          <CalendarDays className="w-4 h-4" />
+                          Date creation
+                        </span>
+                      </th>
+                      <th className="p-3 text-center whitespace-nowrap">
+                        <span className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap">
+                          <Shield className="w-4 h-4" />
+                          Role
+                        </span>
+                      </th>
+                      <th className="p-3 text-center whitespace-nowrap">
+                        <span className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap">
+                          <Activity className="w-4 h-4" />
+                          Statut
+                        </span>
+                      </th>
+                      <th className="p-3 text-center whitespace-nowrap">
+                        <span className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap">
+                          <Clock3 className="w-4 h-4" />
+                          Expiration
+                        </span>
+                      </th>
+                      <th className="p-3 text-center whitespace-nowrap">
+                        <span className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap">
+                          <Settings className="w-4 h-4" />
+                          Actions
+                        </span>
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200">
-                    {users.map((user) => {
+                    {filteredAndSortedUsers.map((user) => {
                       const status = getUserStatus(user);
                       const effectiveExpiry = getEffectiveExpiryDate(user);
                       const splitName = splitFullName(user.displayName || '');
                       const fullName = formatFullName(user.lastName || splitName.lastName, user.firstName || splitName.firstName) || user.displayName;
 
                       return (
-                        <tr key={user.id} className="hover:bg-slate-50 transition-colors align-top">
-                          <td className="p-3 font-medium text-slate-900">{fullName}</td>
-                          <td className="p-3 text-slate-600">{user.email}</td>
-                          <td className="p-3 text-slate-600">{user.phoneNumber || '-'}</td>
-                          <td className="p-3 text-slate-600">
+                        <tr key={user.id} className="hover:bg-slate-50 transition-colors align-middle">
+                          <td className="p-3 font-medium text-slate-900 text-center">{fullName}</td>
+                          <td className="p-3 text-slate-600 text-center">{user.email}</td>
+                          <td className="p-3 text-slate-600 text-center">{user.phoneNumber || '-'}</td>
+                          <td className="p-3 text-slate-600 text-center">
                             {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : '-'}
                           </td>
-                          <td className="p-3">
+                          <td className="p-3 text-center">
+                            <div className="flex justify-center">
                             <select
                               value={user.role}
                               title="Role utilisateur"
@@ -1323,6 +1512,33 @@ export default function AdminDashboard() {
                               onChange={async (e) => {
                                 try {
                                   const nextRole = e.target.value as AdminUser['role'];
+
+                                  const hasPurchasedFromProfile =
+                                    (user.purchasedVideos?.length || 0) > 0 ||
+                                    (user.purchasedPacks?.length || 0) > 0;
+
+                                  const hasApprovedProductPayment = allPayments.some((payment) => {
+                                    if (payment.userId !== user.id || payment.status !== 'approved') return false;
+                                    if (payment.type === 'pack') return true;
+                                    if (payment.type === 'cart') {
+                                      return Array.isArray(payment.items)
+                                        ? payment.items.some((item) => item.type === 'video' || item.type === 'pack')
+                                        : false;
+                                    }
+                                    return false;
+                                  });
+
+                                  const hasPurchasedProduct = hasPurchasedFromProfile || hasApprovedProductPayment;
+
+                                  if (
+                                    nextRole === 'user' &&
+                                    (user.role === 'vip' || user.role === 'vip_plus') &&
+                                    hasPurchasedProduct
+                                  ) {
+                                    alert('Impossible de transferer cet utilisateur vers Demo: il a deja achete un produit.');
+                                    return;
+                                  }
+
                                   const roleUpdate: Record<string, unknown> = { role: nextRole };
 
                                   if (nextRole !== 'vip_plus') {
@@ -1364,8 +1580,9 @@ export default function AdminDashboard() {
                               <option value="vip_plus">VIP Plus (Abonne)</option>
                               <option value="admin">Admin</option>
                             </select>
+                            </div>
                           </td>
-                          <td className="p-3 text-slate-700">
+                          <td className="p-3 text-slate-700 text-center">
                             <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-semibold ${getStatusBadgeClass(status)}`}>
                               {getStatusLabel(status)}
                             </span>
@@ -1373,10 +1590,11 @@ export default function AdminDashboard() {
                               <div className="mt-1 text-xs font-medium text-rose-600">Compte bloque</div>
                             )}
                           </td>
-                          <td className="p-3 text-slate-600 whitespace-nowrap">
+                          <td className="p-3 text-slate-600 whitespace-nowrap text-center">
                             {user.role === 'admin' ? (
                               <span className="text-emerald-700 font-medium">Illimite</span>
                             ) : (
+                              <div className="flex justify-center">
                               <input
                                 type="date"
                                 title="Date d expiration"
@@ -1386,10 +1604,11 @@ export default function AdminDashboard() {
                                 onChange={(e) => handleUpdateExpirationDate(user, e.target.value)}
                                 className="px-3 py-1.5 rounded-lg border border-slate-300 text-sm focus:ring-2 focus:ring-medical-500 outline-none"
                               />
+                              </div>
                             )}
                           </td>
-                          <td className="p-3 text-right">
-                            <div className="flex items-center justify-end flex-wrap gap-2">
+                          <td className="p-3 text-center whitespace-nowrap">
+                            <div className="flex items-center justify-center gap-2 whitespace-nowrap">
                               {user.role !== 'admin' && (
                                 <button
                                   type="button"
@@ -1443,6 +1662,7 @@ export default function AdminDashboard() {
                     })}
                   </tbody>
                 </table>
+              </div>
               </div>
 
               {purchaseModalUserId && (

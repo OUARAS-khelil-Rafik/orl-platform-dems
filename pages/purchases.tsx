@@ -14,7 +14,7 @@ export default function PurchasesPage() {
 
   const [themeMode, setThemeMode] = useState<'light' | 'dark'>('light');
   const [payments, setPayments] = useState<any[]>([]);
-  const [purchasedVideoTitlesById, setPurchasedVideoTitlesById] = useState<Record<string, string>>({});
+  const [purchasedVideosById, setPurchasedVideosById] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(true);
 
   const uniquePurchasedVideoIds = useMemo(() => {
@@ -121,9 +121,9 @@ export default function PurchasesPage() {
   }, [authLoading, user]);
 
   useEffect(() => {
-    const loadPurchasedVideoTitles = async () => {
+    const loadPurchasedVideoData = async () => {
       if (uniquePurchasedVideoIds.length === 0) {
-        setPurchasedVideoTitlesById({});
+        setPurchasedVideosById({});
         return;
       }
 
@@ -131,27 +131,71 @@ export default function PurchasesPage() {
         const entries = await Promise.all(
           uniquePurchasedVideoIds.map(async (videoId) => {
             const snap = await getDoc(doc(db, 'videos', videoId));
-            if (!snap.exists()) return [videoId, ''] as const;
+            if (!snap.exists()) return [videoId, null] as const;
 
             const data = snap.data() as Record<string, any>;
-            const title = typeof data.title === 'string' ? data.title.trim() : '';
-            return [videoId, title] as const;
+            return [videoId, data || null] as const;
           }),
         );
 
-        const nextMap = entries.reduce<Record<string, string>>((acc, [videoId, title]) => {
-          acc[videoId] = title;
+        const nextMap = entries.reduce<Record<string, any>>((acc, [videoId, data]) => {
+          if (data) acc[videoId] = data;
           return acc;
         }, {});
 
-        setPurchasedVideoTitlesById(nextMap);
+        setPurchasedVideosById(nextMap);
       } catch (error) {
-        console.error('Error loading purchased video titles:', error);
+        console.error('Error loading purchased video data:', error);
       }
     };
 
-    loadPurchasedVideoTitles();
+    loadPurchasedVideoData();
   }, [uniquePurchasedVideoIds]);
+
+  const formatVideoDuration = (video: Record<string, any>): string => {
+    const durationRaw = video?.duration ?? video?.durationMinutes ?? video?.durationSeconds;
+    const minutesToLabel = (totalMinutes: number) => {
+      const mins = Math.max(0, Math.floor(totalMinutes));
+      const hours = Math.floor(mins / 60);
+      const minutes = mins % 60;
+      if (hours > 0 && minutes > 0) return `${hours}h ${minutes} min`;
+      if (hours > 0 && minutes === 0) return `${hours}h`;
+      return `${minutes} min`;
+    };
+
+    if (typeof durationRaw === 'string') {
+      const s = durationRaw.trim();
+      if (s.length === 0) return '0 min';
+      if (s.includes(':')) {
+        const parts = s.split(':').map((p) => Number(p));
+        if (parts.every(Number.isFinite)) {
+          let totalSeconds = 0;
+          if (parts.length === 3) totalSeconds = parts[0] * 3600 + parts[1] * 60 + parts[2];
+          else if (parts.length === 2) totalSeconds = parts[0] * 60 + parts[1];
+          else totalSeconds = Math.floor(parts[0]);
+          return minutesToLabel(Math.floor(totalSeconds / 60));
+        }
+      }
+      const asNum = Number(s);
+      if (Number.isFinite(asNum)) return minutesToLabel(asNum);
+      return s;
+    }
+
+    if (typeof durationRaw === 'number' && Number.isFinite(durationRaw)) {
+      if (typeof video?.durationSeconds === 'number' && Number.isFinite(video.durationSeconds)) {
+        const totalMinutes = Math.floor(video.durationSeconds / 60);
+        return minutesToLabel(totalMinutes);
+      }
+      return minutesToLabel(durationRaw);
+    }
+
+    return '0 min';
+  };
+
+  const formatSubspecialtyLabel = (sub?: string) => {
+    if (!sub || typeof sub !== 'string') return '';
+    return sub.charAt(0).toUpperCase() + sub.slice(1);
+  };
 
   const paymentRequests = useMemo(() => {
     return [...payments]
@@ -253,27 +297,48 @@ export default function PurchasesPage() {
               <h2 className="text-lg font-bold mb-4" style={{ color: 'var(--app-text)' }}>Videos individuelles</h2>
               {uniquePurchasedVideoIds.length > 0 ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                  {uniquePurchasedVideoIds.map((videoId: string) => (
-                    <div key={videoId} className="border rounded-xl p-6 transition-transform duration-200 hover:-translate-y-1" style={tileStyle}>
-                      <div className="w-12 h-12 rounded-xl flex items-center justify-center mb-4" style={{ background: 'color-mix(in oklab, var(--app-info) 18%, var(--app-surface) 82%)', color: 'var(--app-text)' }}>
-                        <PlayCircle className="h-6 w-6" />
+                  {uniquePurchasedVideoIds.map((videoId: string) => {
+                    const v = purchasedVideosById[videoId] || {};
+                    const title = (v.title && String(v.title).trim()) || `Video ${videoId}`;
+                    const durationLabel = formatVideoDuration(v);
+                    const subspecialtyLabel = formatSubspecialtyLabel(v.subspecialty || v.subspeciality || v.subspecialtyName);
+
+                    return (
+                      <div key={videoId} className="border rounded-xl p-6 transition-transform duration-200 hover:-translate-y-1" style={tileStyle}>
+                        <div className="w-12 h-12 rounded-xl flex items-center justify-center mb-4" style={{ background: 'color-mix(in oklab, var(--app-info) 18%, var(--app-surface) 82%)', color: 'var(--app-text)' }}>
+                          <PlayCircle className="h-6 w-6" />
+                        </div>
+                        <h3 className="font-bold mb-2 truncate" style={{ color: 'var(--app-text)' }}>
+                          {title}
+                        </h3>
+
+                        <div className="flex items-center gap-2 mb-3">
+                          <span className="purchase-badge purchase-badge--duration inline-flex items-center gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" className="text-sm"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="10"/></svg>
+                            <span>{durationLabel}</span>
+                          </span>
+
+                          {subspecialtyLabel ? (
+                            <span className="purchase-badge purchase-badge--specialty inline-flex items-center gap-2">
+                              <span>{subspecialtyLabel}</span>
+                            </span>
+                          ) : null}
+                        </div>
+
+                        <Link
+                          href={`/videos/${videoId}`}
+                          className="inline-flex items-center gap-2 text-sm font-semibold px-3 py-2 rounded-lg shadow-sm transition-transform duration-150 hover:-translate-y-0.5"
+                          style={{
+                            background: 'var(--app-accent)',
+                            color: 'var(--app-accent-contrast)',
+                          }}
+                        >
+                          Regarder la video
+                          <span aria-hidden>→</span>
+                        </Link>
                       </div>
-                      <h3 className="font-bold mb-2 truncate" style={{ color: 'var(--app-text)' }}>
-                        {purchasedVideoTitlesById[videoId] || `Video ${videoId}`}
-                      </h3>
-                      <Link
-                        href={`/videos/${videoId}`}
-                        className="inline-flex items-center gap-2 text-sm font-semibold px-3 py-2 rounded-lg shadow-sm transition-transform duration-150 hover:-translate-y-0.5"
-                        style={{
-                          background: 'var(--app-accent)',
-                          color: 'var(--app-accent-contrast)',
-                        }}
-                      >
-                        Regarder la video
-                        <span aria-hidden>→</span>
-                      </Link>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
                 <p className="italic" style={{ color: subtleText }}>Aucune video individuelle achetee.</p>

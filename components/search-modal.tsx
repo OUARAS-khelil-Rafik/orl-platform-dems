@@ -175,6 +175,40 @@ export function SearchModal({ isOpen, onClose }: { isOpen: boolean; onClose: () 
     }
   };
 
+  const getTagClass = (type: string) => {
+    switch (type) {
+      case 'video':
+        return 'search-tag--video';
+      case 'qcm':
+        return 'search-tag--qcm';
+      case 'case':
+        return 'search-tag--case';
+      case 'open-question':
+        return 'search-tag--open';
+      case 'diagram':
+        return 'search-tag--diagram';
+      default:
+        return '';
+    }
+  };
+
+  const getColorClass = (type: string) => {
+    switch (type) {
+      case 'video':
+        return 'text-medical-500';
+      case 'qcm':
+        return 'text-accent-500';
+      case 'case':
+        return 'text-emerald-500';
+      case 'open-question':
+        return 'text-cyan-500';
+      case 'diagram':
+        return 'text-purple-500';
+      default:
+        return 'text-[var(--app-text)]';
+    }
+  };
+
   const categoryCounts = {
     all: results.length,
     video: results.filter((result) => result.type === 'video').length,
@@ -220,28 +254,30 @@ export function SearchModal({ isOpen, onClose }: { isOpen: boolean; onClose: () 
             exit={{ opacity: 0, scale: 0.95, y: -20 }}
             className="fixed top-20 left-1/2 -translate-x-1/2 w-full max-w-3xl premium-panel rounded-3xl z-50 overflow-hidden"
           >
-            <div className="p-4 border-b border-slate-100/70 flex items-center gap-3">
-              <Search className="w-5 h-5 text-[var(--app-accent)]" />
-              <input
-                ref={inputRef}
-                type="text"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Rechercher des vidéos, QCMs, cas cliniques, questions ouvertes..."
-                className="flex-1 bg-transparent border-none outline-none text-slate-900 placeholder:text-slate-400 text-base sm:text-lg"
-              />
-              {loading && <Loader2 className="w-5 h-5 text-medical-500 animate-spin" />}
-              <button
-                onClick={onClose}
-                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors"
-                title="Fermer la recherche"
-                aria-label="Fermer la recherche"
-              >
-                <X className="w-5 h-5" />
-              </button>
+            <div className="p-4 border-b border-[var(--app-border)] bg-transparent">
+              <div className="flex items-center gap-3 w-full bg-[var(--app-surface)]/60 rounded-2xl px-3 py-2 shadow-sm backdrop-blur-sm">
+                <Search className="w-5 h-5 text-[var(--app-accent)]" />
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Rechercher des vidéos, QCMs, cas cliniques, questions ouvertes..."
+                  className="flex-1 bg-transparent border-0 outline-none focus:ring-0 appearance-none text-[var(--app-text)] placeholder:text-[var(--app-muted)] text-base sm:text-lg"
+                />
+                {loading && <Loader2 className="w-5 h-5 text-[var(--app-accent)] animate-spin" />}
+                <button
+                  onClick={onClose}
+                  className="p-2 text-[var(--app-muted)] hover:text-[var(--app-text)] hover:bg-transparent rounded-full transition-colors"
+                  title="Fermer la recherche"
+                  aria-label="Fermer la recherche"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
-            <div className="px-4 py-3 border-b border-slate-100/70 flex flex-wrap items-center gap-2">
+            <div className="px-4 py-3 border-b border-[var(--app-border)] flex flex-wrap items-center gap-2 bg-transparent">
               {categoryOptions.map((option) => (
                 <button
                   key={option.value}
@@ -249,8 +285,8 @@ export function SearchModal({ isOpen, onClose }: { isOpen: boolean; onClose: () 
                   onClick={() => setActiveCategory(option.value)}
                   className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
                     activeCategory === option.value
-                      ? 'border-medical-600 bg-medical-600 text-white'
-                      : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                      ? 'border-[var(--app-accent)] text-[var(--app-accent)] bg-transparent'
+                      : 'border-[var(--app-border)] text-[var(--app-muted)] bg-transparent hover:bg-[var(--app-surface-alt)]'
                   }`}
                 >
                   {option.label} · {categoryCounts[option.value]}
@@ -259,14 +295,14 @@ export function SearchModal({ isOpen, onClose }: { isOpen: boolean; onClose: () 
             </div>
 
             {query.length < 2 && (
-              <div className="px-4 pt-4 pb-2">
-                <p className="text-xs uppercase tracking-[0.14em] text-slate-500 mb-2">Accès rapide</p>
+                <div className="px-4 pt-4 pb-2">
+                <p className="text-xs uppercase tracking-[0.14em] text-[var(--app-muted)] mb-2">Accès rapide</p>
                 <div className="flex flex-wrap gap-2">
                   {quickLinks.map((quickLink) => (
                     <button
                       key={quickLink.href}
                       type="button"
-                      className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                      className="rounded-full border border-[var(--app-border)] bg-transparent px-3 py-1.5 text-sm text-[var(--app-text)] hover:bg-[var(--app-surface-alt)] transition-colors"
                       onClick={() => {
                         onClose();
                         router.push(quickLink.href);
@@ -304,25 +340,23 @@ export function SearchModal({ isOpen, onClose }: { isOpen: boolean; onClose: () 
                     <button
                       key={result.id}
                       onClick={() => handleResultClick(result)}
-                      className="w-full flex items-start gap-4 p-3 hover:bg-slate-50 rounded-xl transition-colors text-left interactive-card"
+                      className="w-full flex items-start gap-4 p-3 hover:bg-[var(--app-surface-alt)] rounded-xl transition-colors text-left interactive-card"
                     >
-                      <div className="mt-1 bg-white p-2 rounded-lg shadow-sm border border-slate-100">
+                      <div className="mt-1 bg-[var(--app-surface)] p-2 rounded-lg shadow-sm border border-[var(--app-border)]">
                         {getIcon(result.type)}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
-                            {getTypeLabel(result.type)}
-                          </span>
+                        <div className="flex items-center gap-2 mb-1 flex-nowrap">
+                          <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${getTagClass(result.type)} ${getColorClass(result.type)} whitespace-nowrap`}>{getTypeLabel(result.type)}</span>
                           {index < 3 && (
-                            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full border border-medical-200 text-medical-700 bg-medical-50">
+                            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full border border-[var(--app-border)] text-[var(--app-accent)] bg-transparent whitespace-nowrap">
                               Recommandé
                             </span>
                           )}
-                          <h4 className="font-medium text-slate-900 truncate">{result.title}</h4>
+                          <h4 className="font-medium text-[var(--app-text)] truncate">{result.title}</h4>
                         </div>
                         {result.description && (
-                          <p className="text-sm text-slate-500 line-clamp-1">{result.description}</p>
+                          <p className="text-sm text-[var(--app-muted)] line-clamp-1">{result.description}</p>
                         )}
                       </div>
                     </button>

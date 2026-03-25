@@ -713,6 +713,176 @@ html[data-theme='dark'] .from-slate-900\/60 {
     color: var(--specialty-laryngology);
   }
 
+  /* Search result tag colors */
+  .search-tag--video {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+    background-color: color-mix(in oklab, var(--app-accent) 12%, var(--app-surface) 88%);
+  }
+
+  .search-tag--qcm {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+    background-color: color-mix(in oklab, var(--app-info) 12%, var(--app-surface) 88%);
+  }
+
+  .search-tag--case {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+    background-color: color-mix(in oklab, var(--app-success) 12%, var(--app-surface) 88%);
+  }
+
+  .search-tag--open {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+    background-color: color-mix(in oklab, var(--app-warning) 12%, var(--app-surface) 88%);
+  }
+
+  .search-tag--diagram {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+    background-color: color-mix(in oklab, var(--app-accent) 8%, var(--app-surface) 92%);
+  }
+
+  /* Dark mode adjustments for tags */
+  html[data-theme='dark'] .search-tag--video {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+    background-color: color-mix(in oklab, var(--app-accent) 12%, rgba(255,255,255,0.02));
+  }
+  html[data-theme='dark'] .search-tag--qcm {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+    background-color: color-mix(in oklab, var(--app-info) 10%, rgba(255,255,255,0.02));
+  }
+  html[data-theme='dark'] .search-tag--case {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+    background-color: color-mix(in oklab, var(--app-success) 10%, rgba(255,255,255,0.02));
+  }
+  html[data-theme='dark'] .search-tag--open {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+    background-color: color-mix(in oklab, var(--app-warning) 10%, rgba(255,255,255,0.02));
+  }
+  html[data-theme='dark'] .search-tag--diagram {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+    background-color: color-mix(in oklab, var(--app-accent) 8%, rgba(255,255,255,0.02));
+  }
+
+  /* Purchase badges: duration and specialty tags with light/dark variants */
+  .purchase-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.25rem 0.625rem;
+    border-radius: 0.375rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    line-height: 1;
+    border: 1px solid transparent;
+  }
+
+  .purchase-badge svg { color: inherit; stroke: currentColor; fill: none; }
+
+  .purchase-badge--duration {
+    background-color: color-mix(in oklab, var(--app-surface) 92%, transparent);
+    color: var(--app-muted);
+    border-color: color-mix(in oklab, var(--app-border) 84%, transparent);
+  }
+
+  .purchase-badge--specialty {
+    background-color: color-mix(in oklab, var(--app-accent) 12%, var(--app-surface) 88%);
+    color: var(--app-accent);
+    border-color: color-mix(in oklab, var(--app-accent) 36%, var(--app-border) 64%);
+  }
+
+  /* Dark-mode overrides */
+  html[data-theme='dark'] .purchase-badge--duration {
+    background-color: color-mix(in oklab, var(--app-deep-surface) 86%, rgba(255,255,255,0.02));
+    color: color-mix(in oklab, var(--app-deep-text) 88%, var(--app-muted) 12%);
+    border-color: color-mix(in oklab, var(--app-border) 72%, rgba(255,255,255,0.02));
+  }
+
+  html[data-theme='dark'] .purchase-badge--specialty {
+    background-color: color-mix(in oklab, var(--app-accent) 18%, var(--app-deep-surface) 82%);
+    color: color-mix(in oklab, var(--app-accent) 86%, white 14%);
+    border-color: color-mix(in oklab, var(--app-accent) 46%, var(--app-border) 54%);
+  }
+
+  /* Notification item / action styles (extracted from inline styles in navbar) */
+  .notification-item {
+    border-radius: 8px;
+  }
+
+  .notification-item.read {
+    background-color: color-mix(in oklab, var(--app-surface) 92%, var(--app-border) 8%);
+  }
+
+  .notification-item.unread {
+    background-color: color-mix(in oklab, var(--app-accent) 14%, var(--app-surface) 86%);
+  }
+
+  .notification-title {
+    color: var(--app-text);
+  }
+
+  .notification-desc {
+    color: color-mix(in oklab, var(--app-text) 72%, var(--app-muted) 28%);
+  }
+
+  .notification-action {
+    padding: 0.375rem;
+    border-radius: 6px;
+    transition: background-color 160ms ease, color 160ms ease;
+  }
+
+  .notification-action.mark-read.unread {
+    color: color-mix(in oklab, #0f766e 72%, var(--app-text) 28%);
+    background-color: color-mix(in oklab, #10b981 24%, var(--app-surface) 76%);
+  }
+
+  .notification-action.mark-read.read {
+    color: color-mix(in oklab, var(--app-warning) 78%, var(--app-text) 22%);
+    background-color: color-mix(in oklab, var(--app-warning) 26%, var(--app-surface) 74%);
+  }
+
+  .notification-action.delete {
+    color: color-mix(in oklab, var(--app-danger) 82%, var(--app-text) 18%);
+    background-color: color-mix(in oklab, var(--app-danger) 20%, var(--app-surface) 80%);
+  }
+
+  /* Dark mode notification adjustments */
+  html[data-theme='dark'] .notification-item.read {
+    background-color: color-mix(in oklab, var(--app-deep-surface) 86%, rgba(255,255,255,0.02));
+  }
+
+  html[data-theme='dark'] .notification-item.unread {
+    background-color: color-mix(in oklab, var(--app-accent) 12%, rgba(255,255,255,0.02));
+  }
+
+
   .story-grid {
     position: relative;
   }
@@ -737,6 +907,283 @@ html[data-theme='dark'] .from-slate-900\/60 {
 
   .nav-links-shell {
     background-color: color-mix(in oklab, var(--app-surface) 78%, transparent);
+  }
+
+  .fly-header-shell {
+    background: linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--app-nav-bg) 92%, var(--app-surface) 8%) 0%,
+      color-mix(in oklab, var(--app-nav-bg) 84%, var(--app-bg) 16%) 100%
+    );
+    border-bottom: 1px solid color-mix(in oklab, var(--app-border) 72%, transparent);
+  }
+
+  .fly-glass-pill {
+    background:
+      linear-gradient(120deg, color-mix(in oklab, var(--app-accent) 11%, transparent) 0%, transparent 42%),
+      color-mix(in oklab, var(--app-surface) 86%, rgba(255, 255, 255, 0.68));
+    border: 1px solid color-mix(in oklab, white 74%, var(--app-border) 26%);
+    box-shadow:
+      0 1px 0 color-mix(in oklab, white 66%, transparent),
+      0 14px 24px -20px color-mix(in oklab, #000 28%, transparent);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+  }
+
+  .fly-nav-link {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9999px;
+    transition: color 200ms ease;
+  }
+
+  .fly-nav-link::after {
+    content: '';
+    position: absolute;
+    left: 8px;
+    right: 8px;
+    bottom: -2px;
+    height: 1px;
+    border-radius: 9999px;
+    background: linear-gradient(90deg, transparent 0%, var(--app-accent) 50%, transparent 100%);
+    opacity: 0;
+    transform: scaleX(0.6);
+    transition: opacity 220ms ease, transform 220ms ease;
+  }
+
+  .fly-nav-link:hover::after,
+  .fly-nav-link.is-active::after {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+
+  .fly-drawer-shell {
+    background:
+      radial-gradient(circle at 16% 12%, color-mix(in oklab, var(--app-accent) 16%, transparent) 0%, transparent 34%),
+      color-mix(in oklab, var(--app-surface) 94%, var(--app-bg) 6%);
+  }
+
+  html[data-theme='dark'] .fly-glass-pill {
+    background:
+      linear-gradient(120deg, color-mix(in oklab, var(--app-accent) 16%, transparent) 0%, transparent 42%),
+      color-mix(in oklab, var(--app-deep-surface-2) 88%, rgba(255, 255, 255, 0.06));
+    border-color: color-mix(in oklab, var(--app-border) 72%, rgba(255, 255, 255, 0.22));
+    box-shadow:
+      0 1px 0 color-mix(in oklab, rgba(255, 255, 255, 0.2) 42%, transparent),
+      0 18px 30px -20px rgba(0, 0, 0, 0.62);
+  }
+
+  /* Tweak inner controls (icons / buttons) of the pill in dark mode for better contrast.
+     Exclude elements explicitly marked with `no-fly-style` (search, theme, notif, account icons).
+  */
+  /* Exclude navigation links ('.fly-nav-link') from the pill inner dark-mode overrides so
+     nav selectors keep their transparent background. Keep explicit exclusions with
+     `.no-fly-style` for other controls. */
+  html[data-theme='dark'] .fly-glass-pill :is(button,a):not(.no-fly-style):not(.fly-nav-link) {
+    background-color: color-mix(in oklab, var(--app-deep-surface-2) 72%, transparent) !important;
+    border-color: color-mix(in oklab, rgba(255, 255, 255, 0.06) 34%, var(--app-border) 66%) !important;
+    color: var(--app-deep-text) !important;
+  }
+
+  /* Navbar-specific dark-mode adjustments */
+  html[data-theme='dark'] .nav-shell-bg {
+    background: linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--app-deep-surface) 92%, var(--app-deep-surface-2) 8%) 0%,
+      color-mix(in oklab, var(--app-deep-surface-2) 86%, var(--app-bg) 14%) 100%
+    );
+  }
+
+  html[data-theme='dark'] .nav-links-shell {
+    background-color: color-mix(in oklab, var(--app-deep-surface) 84%, transparent);
+  }
+
+  html[data-theme='dark'] .fly-header-shell {
+    background: linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--app-deep-surface) 92%, var(--app-deep-surface-2) 8%) 0%,
+      color-mix(in oklab, var(--app-deep-surface-2) 86%, var(--app-bg) 14%) 100%
+    );
+    border-bottom-color: color-mix(in oklab, var(--app-border) 64%, rgba(255,255,255,0.04));
+  }
+
+  /* Nav link color defaults in dark mode: muted -> text on hover, accent for active */
+  html[data-theme='dark'] .fly-nav-link {
+    color: color-mix(in oklab, var(--app-muted) 86%, white 14%);
+  }
+
+  html[data-theme='dark'] .fly-nav-link:hover {
+    color: var(--app-text);
+  }
+
+  /* Ensure excluded controls (no-fly-style) keep transparent background and accent color */
+  html[data-theme='dark'] .fly-glass-pill .no-fly-style {
+    background-color: transparent !important;
+    color: var(--app-accent) !important;
+    border-color: transparent !important;
+  }
+
+  /* Generic admin-style rounded nav: adapt backgrounds and buttons for dark mode
+     Targets structures like: <div class="min-w-0 rounded-full border bg-[rgba(...)] p-1"><nav class="...rounded-full">...buttons...</nav></div>
+  */
+  html[data-theme='dark'] .min-w-0.rounded-full.border {
+    background-color: color-mix(in oklab, var(--app-deep-surface) 92%, rgba(255,255,255,0.02));
+    border-color: color-mix(in oklab, var(--app-border) 64%, rgba(255,255,255,0.04));
+  }
+
+  /* Base button appearance inside rounded nav */
+  html[data-theme='dark'] nav.rounded-full .inline-flex {
+    background-color: transparent !important;
+    color: color-mix(in oklab, var(--app-muted) 84%, white 16%);
+    border-color: transparent !important;
+    box-shadow: none !important;
+  }
+
+  /* First/primary button that used `bg-white text-slate-900` in light mode - adapt to accent tint in dark */
+  html[data-theme='dark'] nav.rounded-full .inline-flex.bg-white,
+  html[data-theme='dark'] nav.rounded-full .inline-flex[class*="bg-white"] {
+    background: color-mix(in oklab, var(--app-accent) 18%, rgba(255,255,255,0.02));
+    color: color-mix(in oklab, var(--app-deep-text) 84%, white 16%);
+    border-color: color-mix(in oklab, var(--app-accent) 28%, transparent) !important;
+    box-shadow: 0 6px 14px -8px rgba(0,0,0,0.6) !important;
+  }
+
+  /* Muted buttons (transparent in light) show subtle text and become full contrast on hover */
+  html[data-theme='dark'] nav.rounded-full .inline-flex.bg-transparent,
+  html[data-theme='dark'] nav.rounded-full .inline-flex[class*="bg-transparent"],
+  html[data-theme='dark'] nav.rounded-full .inline-flex:not(.bg-white) {
+    color: color-mix(in oklab, var(--app-muted) 86%, white 14%);
+  }
+
+  html[data-theme='dark'] nav.rounded-full .inline-flex:hover {
+    color: var(--app-text) !important;
+    background-color: color-mix(in oklab, var(--app-deep-surface-2) 84%, rgba(255,255,255,0.02)) !important;
+  }
+
+  /* Ensure SVG icons inherit the button text color */
+  html[data-theme='dark'] nav.rounded-full .inline-flex svg {
+    color: inherit;
+    fill: none;
+  }
+
+  /* Preserve whitespace/no-wrap and spacing while improving contrast */
+  html[data-theme='dark'] nav.rounded-full .inline-flex span {
+    color: inherit;
+  }
+
+  /* Color icons and selected states inside rounded navs */
+  html[data-theme='dark'] nav.rounded-full .inline-flex svg {
+    color: inherit;
+    stroke: currentColor;
+    fill: none;
+  }
+
+  /* Selected / active button visuals (support common markers) */
+  html[data-theme='dark'] nav.rounded-full .inline-flex.is-active,
+  html[data-theme='dark'] nav.rounded-full .inline-flex.selected,
+  html[data-theme='dark'] nav.rounded-full .inline-flex[aria-pressed='true'] {
+    background: linear-gradient(180deg, color-mix(in oklab, var(--app-accent) 28%, rgba(255,255,255,0.02)) 0%, color-mix(in oklab, var(--app-accent) 18%, rgba(255,255,255,0.02)) 100%);
+    color: color-mix(in oklab, white 92%, var(--app-accent) 8%);
+    border-color: color-mix(in oklab, var(--app-accent) 40%, transparent) !important;
+    box-shadow: 0 6px 18px -10px rgba(0,0,0,0.7) !important;
+  }
+
+  /* Make selected button icons use the same accent color */
+  html[data-theme='dark'] nav.rounded-full .inline-flex.is-active svg,
+  html[data-theme='dark'] nav.rounded-full .inline-flex.selected svg,
+  html[data-theme='dark'] nav.rounded-full .inline-flex[aria-pressed='true'] svg {
+    color: inherit;
+    stroke: currentColor;
+  }
+
+  /* Support explicit semantic icon color helpers (e.g., text-blue-600) in dark mode */
+  html[data-theme='dark'] nav.rounded-full svg.text-blue-600 { color: color-mix(in oklab, var(--app-info) 92%, white 8%); }
+  html[data-theme='dark'] nav.rounded-full svg.text-slate-500 { color: color-mix(in oklab, var(--app-muted) 86%, white 14%); }
+
+  /* Dark-mode appearance for active nav selectors inside the pill. Keep subtle
+     accent tint without lifting the pill look. */
+  html[data-theme='dark'] .fly-glass-pill .fly-nav-link.is-active {
+    background-color: transparent !important;
+    color: var(--app-accent) !important;
+  }
+
+  /* Slightly lift circular avatar/icon backgrounds inside the pill (avatars unaffected by exclusion since they don't carry no-fly-style) */
+  html[data-theme='dark'] .fly-glass-pill .w-8.h-8,
+  html[data-theme='dark'] .fly-glass-pill .inline-flex.h-8.w-8 {
+    background-color: color-mix(in oklab, var(--app-deep-surface-2) 78%, rgba(255,255,255,0.02)) !important;
+    box-shadow: inset 0 1px 0 color-mix(in oklab, rgba(255,255,255,0.04) 48%, transparent) !important;
+  }
+
+  /* Make other icon buttons slightly more distinct on hover inside the pill (still exclude no-fly-style) */
+  html[data-theme='dark'] .fly-glass-pill :is(button,a):not(.no-fly-style):hover {
+    background-color: color-mix(in oklab, var(--app-deep-surface-2) 84%, rgba(255,255,255,0.02)) !important;
+    border-color: color-mix(in oklab, var(--app-accent) 22%, var(--app-border) 78%) !important;
+    color: var(--app-deep-text) !important;
+  }
+
+  /* Dark-mode navbar button tweaks: ensure contrast, hover and focus states */
+  html[data-theme='dark'] .fly-glass-pill .no-fly-style {
+    background-color: transparent !important;
+    color: color-mix(in oklab, var(--app-text) 86%, var(--app-muted) 14%) !important;
+    border-color: transparent !important;
+  }
+
+  html[data-theme='dark'] .fly-glass-pill .no-fly-style:hover {
+    color: var(--app-text) !important;
+    background-color: color-mix(in oklab, var(--app-deep-surface-2) 78%, rgba(255,255,255,0.02)) !important;
+  }
+
+  html[data-theme='dark'] .fly-glass-pill .no-fly-style:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 4px color-mix(in oklab, var(--app-accent) 14%, transparent);
+  }
+
+  /* Ensure icon SVGs inherit the button color in dark mode */
+  html[data-theme='dark'] .fly-glass-pill .no-fly-style svg {
+    color: inherit;
+  }
+
+  /* Adapt sign-up button for dark mode: keep accent outline */
+  html[data-theme='dark'] a[href*="/sign-up"],
+  html[data-theme='dark'] .fly-drawer-shell a[href*="/sign-up"] {
+    background-color: transparent !important;
+    border-color: color-mix(in oklab, var(--app-accent) 22%, var(--app-border) 78%) !important;
+    color: var(--app-accent) !important;
+  }
+
+  /* Strong override for sign-up CTA when using inline gradient/styles — ensure high contrast in dark mode */
+  html[data-theme='dark'] a[href*="/sign-up"][style],
+  html[data-theme='dark'] a[href="/sign-up"] {
+    background: linear-gradient(135deg, color-mix(in oklab, var(--app-accent) 88%, #000 12%) 0%, var(--app-accent) 100%) !important;
+    color: white !important;
+    border: 1px solid color-mix(in oklab, var(--app-accent) 36%, rgba(255,255,255,0.06)) !important;
+    box-shadow: 0 8px 20px -12px rgba(0,0,0,0.72) !important;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  html[data-theme='dark'] a[href*="/sign-up"]:hover {
+    filter: brightness(1.05);
+    transform: translateY(-1px);
+  }
+
+  html[data-theme='dark'] a[href*="/sign-up"]:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 4px color-mix(in oklab, var(--app-accent) 16%, transparent) !important;
+  }
+
+  /* Keep sign-in primary strong in dark mode */
+  html[data-theme='dark'] a[href*="/sign-in"],
+  html[data-theme='dark'] .fly-drawer-shell a[href*="/sign-in"] {
+    background-color: color-mix(in oklab, var(--color-medical-600) 92%, black 8%) !important;
+    color: white !important;
+  }
+
+  /* Mobile drawer link color adjustments */
+  html[data-theme='dark'] .fly-drawer-shell a,
+  html[data-theme='dark'] .fly-drawer-shell button {
+    color: color-mix(in oklab, var(--app-text) 84%, var(--app-muted) 16%);
   }
 
   .motion-fade-up {
@@ -1669,5 +2116,12 @@ html[data-theme='dark'] .from-slate-900\/60 {
 
 .purchase-details-scroll::-webkit-scrollbar-thumb:hover {
   background: linear-gradient(180deg, var(--app-accent) 0%, color-mix(in srgb, var(--app-accent) 75%, #000000 25%) 100%);
+}
+
+/* Date input calendar icon contrast in dark mode */
+html[data-theme='dark'] input[type='date']::-webkit-calendar-picker-indicator {
+  filter: invert(1) brightness(1.15);
+  opacity: 0.95;
+  cursor: pointer;
 }
 

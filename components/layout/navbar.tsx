@@ -64,6 +64,8 @@ export function Navbar() {
   const [showAllNotifications, setShowAllNotifications] = useState(false);
   const [isLoadingNotifications, setIsLoadingNotifications] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isSearchHover, setIsSearchHover] = useState(false);
+  const [isAccountHover, setIsAccountHover] = useState(false);
   const [themeMode, setThemeMode] = useState<'light' | 'dark'>('light');
   const [notifications, setNotifications] = useState<NavbarNotification[]>([]);
   const [notificationReadIds, setNotificationReadIds] = useState<string[]>([]);
@@ -339,6 +341,23 @@ export function Navbar() {
     });
   };
 
+  const deleteAllNotifications = () => {
+    if (!user || notifications.length === 0) return;
+
+    const nextDeletedIds = Array.from(
+      new Set([...notificationDeletedIds, ...notifications.map((item) => item.id)]),
+    );
+
+    setNotificationDeletedIds(nextDeletedIds);
+    setNotifications([]);
+    setShowAllNotifications(false);
+
+    saveNotificationStorage(user.uid, {
+      readIds: notificationReadIds,
+      deletedIds: nextDeletedIds,
+    });
+  };
+
   const openNotification = (notification: NavbarNotification) => {
     if (!user) return;
 
@@ -438,373 +457,368 @@ export function Navbar() {
 
   return (
     <>
-      <header className="nav-shell-bg sticky top-0 z-50 w-full border-b border-[var(--app-border)] text-[var(--app-text)] backdrop-blur-xl">
-      <div className="container mx-auto px-4 h-[4.5rem] flex items-center justify-between">
-        <Link href="/" className="flex items-center gap-2 text-[var(--app-accent)] hover:opacity-85 transition-opacity group">
-          <div className="h-9 w-9 rounded-xl flex items-center justify-center border border-[color-mix(in_oklab,var(--app-accent)_45%,transparent)] bg-[color-mix(in_oklab,var(--app-accent)_16%,transparent)]">
-            <Stethoscope className="h-5 w-5 group-hover:rotate-6 transition-transform" />
-          </div>
-          <span className="font-bold text-xl tracking-tight">DEMS ENT</span>
-        </Link>
 
-        {/* Desktop Nav */}
-        <nav className="nav-links-shell hidden md:flex items-center gap-2 rounded-full border border-[var(--app-border)] px-2 py-1">
-          {visibleNavLinks.map((link) => (
-            <Link
-              key={link.name}
-              href={link.href}
-              className={`relative text-sm font-medium px-3.5 py-2 rounded-full transition-all ${
-                isRouteActive(link.href)
-                  ? 'bg-medical-600 text-white shadow-[0_10px_22px_-14px_color-mix(in_srgb,var(--app-accent)_54%,transparent)]'
-                  : 'text-[var(--app-muted)] hover:text-[var(--app-text)]'
-              }`}
-            >
-              {link.name}
+      <header className="fly-header-shell sticky top-0 z-50 w-full text-[var(--app-text)]">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8 h-24 flex items-center justify-between gap-2 relative">
+          {/* Logo à gauche */}
+          <div className="flex items-center min-w-[120px]">
+            <Link href="/" className="flex items-center gap-2 text-[var(--app-accent)] hover:opacity-85 transition-opacity group">
+              <div className="h-9 w-9 rounded-xl flex items-center justify-center border border-[color-mix(in_oklab,var(--app-accent)_45%,transparent)] bg-[color-mix(in_oklab,var(--app-accent)_16%,transparent)]">
+                <Stethoscope className="h-5 w-5 group-hover:rotate-6 transition-transform" />
+              </div>
+              <span className="font-bold text-xl tracking-tight">DEMS ENT</span>
             </Link>
-          ))}
-        </nav>
+          </div>
 
-        <div className="hidden md:flex items-center gap-4">
-          <button
-            type="button"
-            onClick={() => setIsSearchOpen(true)}
-            className="inline-flex items-center gap-2 rounded-full border border-[var(--app-border)] bg-[var(--app-surface)] px-3.5 py-2 text-sm text-[var(--app-muted)] hover:text-[var(--app-text)] hover:bg-[var(--app-surface-2)] transition-colors"
-            title="Ouvrir la recherche"
-            aria-label="Ouvrir la recherche"
-          >
-            <Search className="h-4 w-4" />
-            <span>Recherche</span>
-            <span className="rounded-md border border-[var(--app-border)] px-1.5 py-0.5 text-[10px] uppercase tracking-wide">Ctrl/⌘ K</span>
-          </button>
+          {/* Navigation centrée (XL+) */}
+          <div className="flex-1 flex justify-center">
+            <nav className="fly-glass-pill pointer-events-auto hidden xl:flex items-center rounded-full px-3 text-sm font-medium text-[var(--app-text)]">
+              {visibleNavLinks.map((link) => (
+                <Link
+                  key={link.name}
+                  href={link.href}
+                  className={`fly-nav-link px-3 py-2.5 ${
+                    isRouteActive(link.href)
+                      ? 'is-active text-[var(--app-accent)]'
+                      : 'text-[var(--app-muted)] hover:text-[var(--app-text)]'
+                  }`}
+                >
+                  {link.name}
+                </Link>
+              ))}
+            </nav>
+          </div>
 
-          <button
-            type="button"
-            onClick={toggleThemeMode}
-            className="p-2 rounded-full border border-[var(--app-border)] bg-[var(--app-surface)] text-[var(--app-muted)] hover:text-[var(--app-text)] hover:bg-[var(--app-surface-2)] transition-colors"
-            title={themeMode === 'dark' ? 'Passer en mode clair' : 'Passer en mode sombre'}
-            aria-label={themeMode === 'dark' ? 'Passer en mode clair' : 'Passer en mode sombre'}
-          >
-            {themeMode === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
-          </button>
-
-          {user && (
-            <div ref={notificationDesktopRef} className="relative">
+          {/* Actions à droite (desktop) */}
+          <div className="hidden lg:flex items-center gap-3 min-w-[220px] justify-end">
+            {/* Nav compact (lg-xl) */}
+            <div className="fly-glass-pill hidden lg:flex xl:hidden items-center rounded-full px-2 py-1">
+              {visibleNavLinks.map((link) => (
+                <Link
+                  key={`compact-${link.name}`}
+                  href={link.href}
+                  className={`fly-nav-link px-3 py-2 text-sm font-medium ${
+                    isRouteActive(link.href)
+                      ? 'is-active text-[var(--app-accent)]'
+                      : 'text-[var(--app-muted)] hover:text-[var(--app-text)]'
+                  }`}
+                >
+                  {link.name}
+                </Link>
+              ))}
+            </div>
+            {/* Actions utilisateur */}
+            <div className="fly-glass-pill flex items-center gap-2 rounded-full px-3 py-1">
+              <motion.button
+                type="button"
+                onClick={() => setIsSearchOpen(true)}
+                onMouseEnter={() => setIsSearchHover(true)}
+                onMouseLeave={() => setIsSearchHover(false)}
+                className="no-fly-style relative inline-flex items-center gap-2 rounded-full bg-white/75 px-3.5 py-2 text-sm text-[var(--app-muted)] hover:text-[var(--app-text)] hover:bg-white transition-colors"
+                title="Ouvrir la recherche"
+                aria-label="Ouvrir la recherche"
+              >
+                <Search className="h-4 w-4" />
+                <AnimatePresence>
+                  {(isSearchHover || isSearchOpen) && (
+                    <motion.div initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -6 }} className="flex items-center gap-2 whitespace-nowrap">
+                      <span>Recherche</span>
+                      <span className="rounded-md border border-[var(--app-border)] px-1.5 py-0.5 text-[10px] uppercase tracking-wide">Ctrl/⌘ K</span>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </motion.button>
               <button
                 type="button"
-                onClick={() => {
-                  setIsNotificationsOpen((v) => !v);
-                  setIsUserMenuOpen(false);
-                  setShowAllNotifications(false);
-                }}
-                className="relative p-2 text-[var(--app-muted)] hover:text-[var(--app-text)] hover:bg-[var(--app-surface-2)] rounded-full transition-colors"
-                title="Notifications"
-                aria-label="Notifications"
+                onClick={toggleThemeMode}
+                className="no-fly-style p-2 rounded-full bg-white/75 text-[var(--app-muted)] hover:text-[var(--app-text)] hover:bg-white transition-colors"
+                title={themeMode === 'dark' ? 'Passer en mode clair' : 'Passer en mode sombre'}
+                aria-label={themeMode === 'dark' ? 'Passer en mode clair' : 'Passer en mode sombre'}
               >
-                <Bell className="h-5 w-5" />
-                {unreadNotificationCount > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 bg-red-500 text-white text-[10px] font-bold flex items-center justify-center rounded-full">
-                    {unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}
-                  </span>
-                )}
+                {themeMode === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
               </button>
-
-              {isNotificationsOpen && (
-                <div className="absolute right-0 top-11 w-[360px] max-w-[calc(100vw-2rem)] rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] shadow-lg py-2 z-50">
-                  <div className="px-3 pb-2 border-b border-[var(--app-border)] flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-semibold text-[var(--app-text)]">Notifications</p>
-                      <span className="text-xs text-[var(--app-muted)]">{unreadNotificationCount} non lue(s)</span>
-                    </div>
-                    {notifications.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={markAllNotificationsRead}
-                        disabled={unreadNotificationCount === 0}
-                        className="text-xs font-medium text-[var(--app-accent)] hover:opacity-85 disabled:opacity-40 disabled:cursor-not-allowed"
-                      >
-                        Marquer tout lu
-                      </button>
-                    )}
-                  </div>
-
-                  <div className="max-h-80 overflow-y-auto">
-                    {isLoadingNotifications ? (
-                      <p className="px-3 py-4 text-sm text-[var(--app-muted)]">Chargement...</p>
-                    ) : visibleNotifications.length === 0 ? (
-                      <p className="px-3 py-4 text-sm text-[var(--app-muted)]">Aucune notification.</p>
-                    ) : (
-                      <ul className="divide-y divide-[var(--app-border)]">
-                        {visibleNotifications.map((notification) => {
-                          const isRead = notificationReadIds.includes(notification.id);
-                          return (
-                            <li
-                              key={notification.id}
-                              className="px-3 py-2"
-                              style={{
-                                backgroundColor: isRead
-                                  ? 'color-mix(in oklab, var(--app-surface) 92%, var(--app-border) 8%)'
-                                  : 'color-mix(in oklab, var(--app-accent) 14%, var(--app-surface) 86%)',
-                              }}
-                            >
-                              <div className="flex items-start justify-between gap-3">
-                                <button
-                                  type="button"
-                                  onClick={() => openNotification(notification)}
-                                  className="min-w-0 flex-1 text-left rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--app-accent)]"
-                                  title="Ouvrir la notification"
-                                  aria-label="Ouvrir la notification"
-                                >
-                                  <p className="text-sm font-medium truncate" style={{ color: 'var(--app-text)' }}>
-                                    {notification.title}
-                                  </p>
-                                  <p className="text-xs line-clamp-2" style={{ color: 'color-mix(in oklab, var(--app-text) 72%, var(--app-muted) 28%)' }}>
-                                    {notification.description}
-                                  </p>
-                                </button>
-                                <div className="flex items-center gap-1 shrink-0">
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      toggleNotificationRead(notification.id);
-                                    }}
-                                    className="p-1.5 rounded-md transition-colors"
-                                    style={{
-                                      color: isRead
-                                        ? 'color-mix(in oklab, var(--app-warning) 78%, var(--app-text) 22%)'
-                                        : 'color-mix(in oklab, #0f766e 72%, var(--app-text) 28%)',
-                                      backgroundColor: isRead
-                                        ? 'color-mix(in oklab, var(--app-warning) 26%, var(--app-surface) 74%)'
-                                        : 'color-mix(in oklab, #10b981 24%, var(--app-surface) 76%)',
-                                    }}
-                                    title={isRead ? 'Marquer non lue' : 'Marquer lue'}
-                                    aria-label={isRead ? 'Marquer non lue' : 'Marquer lue'}
-                                  >
-                                    {isRead ? <MailOpen className="h-4 w-4" /> : <Mail className="h-4 w-4" />}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      deleteNotification(notification.id);
-                                    }}
-                                    className="p-1.5 rounded-md transition-colors"
-                                    style={{
-                                      color: 'color-mix(in oklab, var(--app-danger) 82%, var(--app-text) 18%)',
-                                      backgroundColor: 'color-mix(in oklab, var(--app-danger) 20%, var(--app-surface) 80%)',
-                                    }}
-                                    title="Supprimer"
-                                    aria-label="Supprimer"
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </button>
-                                </div>
-                              </div>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    )}
-                  </div>
-
-                  {notifications.length > 5 && (
-                    <div className="px-3 pt-2 border-t border-[var(--app-border)]">
-                      <button
-                        type="button"
-                        onClick={() => setShowAllNotifications((v) => !v)}
-                        className="text-xs font-medium text-[var(--app-accent)] hover:opacity-85"
-                      >
-                        {showAllNotifications ? 'Voir moins' : 'Voir toutes les notifications'}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          {user && !isAdmin && (
-            <Link href="/checkout" className="relative p-2 text-[var(--app-muted)] hover:text-[var(--app-text)] hover:bg-[var(--app-surface-2)] rounded-full transition-colors">
-              <ShoppingCart className="h-5 w-5" />
-              {itemCount > 0 && (
-                <span className="absolute top-0 right-0 w-4 h-4 bg-red-500 text-white text-[10px] font-bold flex items-center justify-center rounded-full">
-                  {itemCount}
-                </span>
-              )}
-            </Link>
-          )}
-
-          {!loading && (
-            <>
-              {user && profile ? (
-                <div ref={userMenuRef} className="relative flex items-center gap-2">
+              {user && (
+                <div ref={notificationDesktopRef} className="relative">
                   <button
                     type="button"
-                    onClick={() => setIsUserMenuOpen((v) => !v)}
-                    className="flex items-center gap-2 rounded-full border border-[var(--app-border)] bg-[var(--app-surface)] px-2 py-1.5 hover:bg-[var(--app-surface-2)] transition-colors"
+                    onClick={() => {
+                      setIsNotificationsOpen((v) => !v);
+                      setIsUserMenuOpen(false);
+                      setShowAllNotifications(false);
+                    }}
+                    className="no-fly-style relative p-2 text-[var(--app-muted)] hover:text-[var(--app-text)] rounded-full transition-colors focus:bg-transparent active:bg-transparent"
+                    title="Notifications"
+                    aria-label="Notifications"
                   >
-                    <div className="w-8 h-8 rounded-full bg-[var(--app-surface-2)] overflow-hidden flex items-center justify-center">
-                      {profile.photoURL ? (
-                        <Image
-                          src={profile.photoURL}
-                          alt={profile.displayName}
-                          width={32}
-                          height={32}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <User className="h-5 w-5 text-[var(--app-muted)]" />
-                      )}
-                    </div>
-                    <span className="text-sm font-medium text-[var(--app-text)] max-w-[160px] truncate">
-                      {doctorName || profile.email}
-                    </span>
-                    <ChevronDown className="h-4 w-4 text-[var(--app-muted)]" />
+                    <Bell className="h-5 w-5" />
+                    {unreadNotificationCount > 0 && (
+                      <span className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 bg-red-500 text-white text-[10px] font-bold flex items-center justify-center rounded-full">
+                        {unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}
+                      </span>
+                    )}
                   </button>
 
-                  {isUserMenuOpen && (
-                    <div className="absolute right-0 top-11 w-56 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] shadow-lg py-2 z-50">
-                      {profile.role === 'admin' && (
-                        <Link
-                          href="/admin"
-                          onClick={() => setIsUserMenuOpen(false)}
-                          className="flex items-center gap-2 px-3 py-2 text-sm text-[var(--app-text)] hover:bg-[var(--app-surface-2)]"
-                        >
-                          <LayoutDashboard className="h-4 w-4 text-[var(--app-muted)]" />
-                          <span>Dashboard</span>
-                        </Link>
+                  {isNotificationsOpen && (
+                    <div className="absolute right-0 top-11 w-[360px] max-w-[calc(100vw-2rem)] rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] shadow-lg py-2 z-50">
+                      <div className="px-3 pb-2 border-b border-[var(--app-border)] flex flex-wrap items-start justify-between gap-2">
+                        <div>
+                          <p className="text-sm font-semibold text-[var(--app-text)]">Notifications</p>
+                          <span className="text-xs text-[var(--app-muted)]">{unreadNotificationCount} non lue(s)</span>
+                        </div>
+                        {notifications.length > 0 && (
+                          <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={markAllNotificationsRead}
+                              disabled={unreadNotificationCount === 0}
+                              className="text-xs font-medium text-[var(--app-accent)] hover:opacity-85 disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                              Marquer tout lu
+                            </button>
+                            <button
+                              type="button"
+                              onClick={deleteAllNotifications}
+                              className="text-xs font-medium text-[var(--app-danger)] hover:opacity-85"
+                            >
+                              Supprimer tous
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="max-h-80 overflow-y-auto">
+                        {isLoadingNotifications ? (
+                          <p className="px-3 py-4 text-sm text-[var(--app-muted)]">Chargement...</p>
+                        ) : visibleNotifications.length === 0 ? (
+                          <p className="px-3 py-4 text-sm text-[var(--app-muted)]">Aucune notification.</p>
+                        ) : (
+                          <ul className="divide-y divide-[var(--app-border)]">
+                            {visibleNotifications.map((notification) => {
+                              const isRead = notificationReadIds.includes(notification.id);
+                              return (
+                                <li key={notification.id} className={`px-3 py-2 notification-item ${isRead ? 'read' : 'unread'}`}>
+                                  <div className="flex items-start justify-between gap-3">
+                                    <button
+                                      type="button"
+                                      onClick={() => openNotification(notification)}
+                                      className="min-w-0 flex-1 text-left rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--app-accent)]"
+                                      title="Ouvrir la notification"
+                                      aria-label="Ouvrir la notification"
+                                    >
+                                      <p className="text-sm font-medium truncate notification-title">{notification.title}</p>
+                                      <p className="text-xs line-clamp-2 notification-desc">{notification.description}</p>
+                                    </button>
+                                    <div className="flex items-center gap-1 shrink-0">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          toggleNotificationRead(notification.id);
+                                        }}
+                                        className={`notification-action mark-read ${isRead ? 'read' : 'unread'}`}
+                                        title={isRead ? 'Marquer non lue' : 'Marquer lue'}
+                                        aria-label={isRead ? 'Marquer non lue' : 'Marquer lue'}
+                                      >
+                                        {isRead ? <MailOpen className="h-4 w-4" /> : <Mail className="h-4 w-4" />}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          deleteNotification(notification.id);
+                                        }}
+                                        className="notification-action delete"
+                                        title="Supprimer"
+                                        aria-label="Supprimer"
+                                      >
+                                        <Trash2 className="h-4 w-4" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        )}
+                      </div>
+
+                      {notifications.length > 5 && (
+                        <div className="px-3 pt-2 border-t border-[var(--app-border)]">
+                          <button
+                            type="button"
+                            onClick={() => setShowAllNotifications((v) => !v)}
+                            className="text-xs font-medium text-[var(--app-accent)] hover:opacity-85"
+                          >
+                            {showAllNotifications ? 'Voir moins' : 'Voir toutes les notifications'}
+                          </button>
+                        </div>
                       )}
-
-                      {(profile.role === 'vip' || profile.role === 'vip_plus') && (
-                          <Link
-                            href="/purchases"
-                          onClick={() => setIsUserMenuOpen(false)}
-                          className="flex items-center gap-2 px-3 py-2 text-sm text-[var(--app-text)] hover:bg-[var(--app-surface-2)]"
-                        >
-                          <ShoppingBag className="h-4 w-4 text-[var(--app-muted)]" />
-                          <span>Mes Achats</span>
-                        </Link>
-                      )}
-
-                      <Link
-                        href="/dashboard?tab=profile"
-                        onClick={() => setIsUserMenuOpen(false)}
-                        className="flex items-center gap-2 px-3 py-2 text-sm text-[var(--app-text)] hover:bg-[var(--app-surface-2)]"
-                      >
-                        <Settings className="h-4 w-4 text-[var(--app-muted)]" />
-                        <span>Paramètres</span>
-                      </Link>
-
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          setIsUserMenuOpen(false);
-                          await handleSignOut();
-                        }}
-                        className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50"
-                      >
-                        <LogOut className="h-4 w-4" />
-                        <span>Déconnexion</span>
-                      </button>
                     </div>
                   )}
                 </div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <Link
-                    href="/sign-up"
-                    className="px-4 py-2 rounded-full text-sm font-medium text-medical-700 border border-medical-200 hover:bg-medical-50 transition-colors"
-                  >
-                    Inscription
-                  </Link>
-                  <Link
-                    href="/sign-in"
-                    className="flex items-center gap-2 bg-medical-600 text-white px-4 py-2 rounded-full text-sm font-medium hover:bg-medical-700 transition-colors shadow-sm"
-                  >
-                    <LogIn className="h-4 w-4" />
-                    <span>Connexion</span>
-                  </Link>
-                </div>
               )}
-            </>
-          )}
-        </div>
+              {user && !isAdmin && (
+                <Link href="/checkout" className="relative p-2 no-fly-style text-[var(--app-muted)] hover:text-[var(--app-text)] rounded-full transition-colors">
+                  <ShoppingCart className="h-5 w-5" />
+                  {itemCount > 0 && (
+                    <span className="absolute top-0 right-0 w-4 h-4 bg-red-500 text-white text-[10px] font-bold flex items-center justify-center rounded-full">
+                      {itemCount}
+                    </span>
+                  )}
+                </Link>
+              )}
+              {!loading && (
+                <>
+                  {user && profile ? (
+                    <div ref={userMenuRef} className="relative flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setIsUserMenuOpen((v) => !v)}
+                        onMouseEnter={() => setIsAccountHover(true)}
+                        onMouseLeave={() => setIsAccountHover(false)}
+                        className="no-fly-style flex items-center gap-2 rounded-full bg-white/75 px-2 py-1.5 hover:bg-white transition-colors"
+                        title={doctorName || profile.email}
+                        aria-label={doctorName || profile.email}
+                      >
+                        <div className="w-8 h-8 rounded-full bg-[var(--app-surface-2)] overflow-hidden flex items-center justify-center">
+                          {profile.photoURL ? (
+                            <Image
+                              src={profile.photoURL}
+                              alt={profile.displayName}
+                              width={32}
+                              height={32}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <User className="h-5 w-5 text-[var(--app-muted)]" />
+                          )}
+                        </div>
 
-        {/* Mobile Menu Toggle */}
-        <div className="md:hidden flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setIsSearchOpen(true)}
-            className="p-2 rounded-full border border-[var(--app-border)] bg-[var(--app-surface)] text-[var(--app-muted)] hover:text-[var(--app-text)] hover:bg-[var(--app-surface-2)] transition-colors"
-            title="Rechercher"
-            aria-label="Rechercher"
-          >
-            <Search className="h-5 w-5" />
-          </button>
-          <button
-            type="button"
-            onClick={toggleThemeMode}
-            className="p-2 rounded-full border border-[var(--app-border)] bg-[var(--app-surface)] text-[var(--app-muted)] hover:text-[var(--app-text)] hover:bg-[var(--app-surface-2)] transition-colors"
-            title={themeMode === 'dark' ? 'Passer en mode clair' : 'Passer en mode sombre'}
-            aria-label={themeMode === 'dark' ? 'Passer en mode clair' : 'Passer en mode sombre'}
-          >
-            {themeMode === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
-          </button>
+                        <AnimatePresence>
+                          {(isAccountHover || isUserMenuOpen) && (
+                            <motion.div initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -6 }} className="flex items-center gap-2 whitespace-nowrap">
+                              <span className="text-sm font-medium text-[var(--app-text)] max-w-[160px] truncate">
+                                {doctorName || profile.email}
+                              </span>
+                              <ChevronDown className="h-4 w-4 text-[var(--app-muted)]" />
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </button>
 
-          {user && (
-            <button
-              type="button"
-              onClick={() => {
-                setIsNotificationsOpen((v) => !v);
-                setIsUserMenuOpen(false);
-                setIsMobileMenuOpen(false);
-                setShowAllNotifications(false);
-              }}
-              className="relative p-2 text-[var(--app-muted)] hover:text-[var(--app-text)] hover:bg-[var(--app-surface-2)] rounded-full transition-colors"
-              title="Notifications"
-              aria-label="Notifications"
+                      {isUserMenuOpen && (
+                        <div className="absolute right-0 top-11 w-56 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] shadow-lg py-2 z-50">
+                          {profile.role === 'admin' && (
+                            <Link
+                              href="/admin"
+                              onClick={() => setIsUserMenuOpen(false)}
+                              className="flex items-center gap-2 px-3 py-2 text-sm text-[var(--app-text)] hover:bg-[var(--app-surface-2)]"
+                            >
+                              <LayoutDashboard className="h-4 w-4 text-[var(--app-muted)]" />
+                              <span>Dashboard</span>
+                            </Link>
+                          )}
+
+                          {(profile.role === 'vip' || profile.role === 'vip_plus') && (
+                            <Link
+                              href="/purchases"
+                              onClick={() => setIsUserMenuOpen(false)}
+                              className="flex items-center gap-2 px-3 py-2 text-sm text-[var(--app-text)] hover:bg-[var(--app-surface-2)]"
+                            >
+                              <ShoppingBag className="h-4 w-4 text-[var(--app-muted)]" />
+                              <span>Mes Achats</span>
+                            </Link>
+                          )}
+
+                          <Link
+                            href="/dashboard?tab=profile"
+                            onClick={() => setIsUserMenuOpen(false)}
+                            className="flex items-center gap-2 px-3 py-2 text-sm text-[var(--app-text)] hover:bg-[var(--app-surface-2)]"
+                          >
+                            <Settings className="h-4 w-4 text-[var(--app-muted)]" />
+                            <span>Paramètres</span>
+                          </Link>
+
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              setIsUserMenuOpen(false);
+                              await handleSignOut();
+                            }}
+                            className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50"
+                          >
+                            <LogOut className="h-4 w-4" />
+                            <span>Déconnexion</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <Link
+                        href="/sign-up"
+                        className="px-4 py-2 rounded-full text-sm font-medium text-[var(--app-accent)] border border-white/70 bg-white/75 hover:bg-white transition-colors"
+                      >
+                        Inscription
+                      </Link>
+                      <Link
+                        href="/sign-in"
+                        className="flex items-center gap-2 bg-medical-600 text-white px-4 py-2 rounded-full text-sm font-medium hover:bg-medical-700 transition-colors shadow-sm"
+                      >
+                        <LogIn className="h-4 w-4" />
+                        <span>Connexion</span>
+                      </Link>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+
+        {/* Mobile Nav Drawer */}
+        <AnimatePresence>
+          {isMobileMenuOpen && (
+            <>
+              <motion.button
+                type="button"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsMobileMenuOpen(false)}
+              className="lg:hidden fixed inset-0 bg-black/25 backdrop-blur-sm z-40"
+              aria-label="Fermer le menu"
+            />
+            <motion.div
+              initial={{ x: '-100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '-100%' }}
+              transition={{ type: 'spring', damping: 28, stiffness: 280 }}
+              className="fly-drawer-shell lg:hidden fixed top-0 left-0 bottom-0 z-50 w-full max-w-sm border-r border-[var(--app-border)] shadow-2xl"
             >
-              <Bell className="h-5 w-5" />
-              {unreadNotificationCount > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 bg-red-500 text-white text-[10px] font-bold flex items-center justify-center rounded-full">
-                  {unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}
-                </span>
-              )}
-            </button>
-          )}
-          {user && !isAdmin && (
-            <Link href="/checkout" className="relative p-2 text-[var(--app-muted)] hover:text-[var(--app-text)] hover:bg-[var(--app-surface-2)] rounded-full transition-colors">
-              <ShoppingCart className="h-5 w-5" />
-              {itemCount > 0 && (
-                <span className="absolute top-0 right-0 w-4 h-4 bg-red-500 text-white text-[10px] font-bold flex items-center justify-center rounded-full">
-                  {itemCount}
-                </span>
-              )}
-            </Link>
-          )}
-          <button
-            className="p-2 rounded-full text-[var(--app-muted)] hover:bg-[var(--app-surface-2)]"
-            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-          >
-            {isMobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
-          </button>
-        </div>
-      </div>
+            <div className="flex items-center justify-between px-4 py-5 border-b border-[var(--app-border)]">
+              <div className="flex items-center gap-2 text-[var(--app-accent)]">
+                <Stethoscope className="h-5 w-5" />
+                <span className="font-semibold">Navigation</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="p-2 rounded-full hover:bg-[var(--app-surface-2)]"
+                aria-label="Fermer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
 
-      {/* Mobile Nav */}
-      <AnimatePresence>
-        {isMobileMenuOpen && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            className="md:hidden bg-[var(--app-surface)] border-b border-[var(--app-border)] overflow-hidden"
-          >
-            <div className="flex flex-col px-4 py-4 gap-4">
+            <div className="flex flex-col px-4 py-4 gap-4 overflow-y-auto h-[calc(100%-68px)]">
               {visibleNavLinks.map((link) => (
                 <Link
                   key={link.name}
                   href={link.href}
                   onClick={() => setIsMobileMenuOpen(false)}
-                  className="text-base font-medium text-[var(--app-text)] hover:text-[var(--app-accent)]"
+                  className={`fly-nav-link justify-start px-3 py-2.5 text-base font-medium ${
+                    isRouteActive(link.href)
+                      ? 'is-active text-[var(--app-accent)] bg-[color-mix(in_oklab,var(--app-accent)_12%,transparent)]'
+                      : 'text-[var(--app-text)] hover:text-[var(--app-accent)]'
+                  }`}
                 >
                   {link.name}
                 </Link>
@@ -876,7 +890,7 @@ export function Navbar() {
                     <Link
                       href="/sign-up"
                       onClick={() => setIsMobileMenuOpen(false)}
-                      className="flex items-center justify-center gap-2 bg-white text-medical-700 border border-medical-200 px-4 py-3 rounded-xl text-base font-medium"
+                      className="flex items-center justify-center gap-2 bg-white/80 text-medical-700 border border-medical-200 px-4 py-3 rounded-xl text-base font-medium"
                     >
                       Inscription
                     </Link>
@@ -892,118 +906,17 @@ export function Navbar() {
                 )
               )}
             </div>
-          </motion.div>
+            </motion.div>
+          </>
         )}
-      </AnimatePresence>
+        </AnimatePresence>
 
-      {user && isNotificationsOpen && (
-        <div ref={notificationMobileRef} className="md:hidden absolute top-16 right-4 left-4 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] shadow-lg py-2 z-50">
-          <div className="px-3 pb-2 border-b border-[var(--app-border)] flex items-center justify-between">
-            <div>
-              <p className="text-sm font-semibold text-[var(--app-text)]">Notifications</p>
-              <span className="text-xs text-[var(--app-muted)]">{unreadNotificationCount} non lue(s)</span>
-            </div>
-            {notifications.length > 0 && (
-              <button
-                type="button"
-                onClick={markAllNotificationsRead}
-                disabled={unreadNotificationCount === 0}
-                className="text-xs font-medium text-[var(--app-accent)] hover:opacity-85 disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                Marquer tout lu
-              </button>
-            )}
+        {user && isNotificationsOpen && (
+          <div ref={notificationMobileRef} className="lg:hidden absolute top-16 right-4 left-4 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] shadow-lg py-2 z-50">
+            {/* ...existing code... (notifications mobile) */}
           </div>
-
-          <div className="max-h-80 overflow-y-auto">
-            {isLoadingNotifications ? (
-              <p className="px-3 py-4 text-sm text-[var(--app-muted)]">Chargement...</p>
-            ) : visibleNotifications.length === 0 ? (
-              <p className="px-3 py-4 text-sm text-[var(--app-muted)]">Aucune notification.</p>
-            ) : (
-              <ul className="divide-y divide-[var(--app-border)]">
-                {visibleNotifications.map((notification) => {
-                  const isRead = notificationReadIds.includes(notification.id);
-                  return (
-                    <li
-                      key={notification.id}
-                      className="px-3 py-2"
-                      style={{
-                        backgroundColor: isRead
-                          ? 'color-mix(in oklab, var(--app-surface) 92%, var(--app-border) 8%)'
-                          : 'color-mix(in oklab, var(--app-accent) 14%, var(--app-surface) 86%)',
-                      }}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <button
-                          type="button"
-                          onClick={() => openNotification(notification)}
-                          className="min-w-0 flex-1 text-left rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--app-accent)]"
-                          title="Ouvrir la notification"
-                          aria-label="Ouvrir la notification"
-                        >
-                          <p className="text-sm font-medium text-[var(--app-text)] truncate">{notification.title}</p>
-                          <p className="text-xs line-clamp-2" style={{ color: 'color-mix(in oklab, var(--app-text) 72%, var(--app-muted) 28%)' }}>
-                            {notification.description}
-                          </p>
-                        </button>
-                        <div className="flex items-center gap-1 shrink-0">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              toggleNotificationRead(notification.id);
-                            }}
-                            className="p-1.5 rounded-md transition-colors"
-                            style={{
-                              color: isRead
-                                ? 'color-mix(in oklab, var(--app-warning) 78%, var(--app-text) 22%)'
-                                : 'color-mix(in oklab, #0f766e 72%, var(--app-text) 28%)',
-                              backgroundColor: isRead
-                                ? 'color-mix(in oklab, var(--app-warning) 26%, var(--app-surface) 74%)'
-                                : 'color-mix(in oklab, #10b981 24%, var(--app-surface) 76%)',
-                            }}
-                            title={isRead ? 'Marquer non lue' : 'Marquer lue'}
-                            aria-label={isRead ? 'Marquer non lue' : 'Marquer lue'}
-                          >
-                            {isRead ? <MailOpen className="h-4 w-4" /> : <Mail className="h-4 w-4" />}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              deleteNotification(notification.id);
-                            }}
-                            className="p-1.5 rounded-md transition-colors"
-                            style={{
-                              color: 'color-mix(in oklab, var(--app-danger) 82%, var(--app-text) 18%)',
-                              backgroundColor: 'color-mix(in oklab, var(--app-danger) 20%, var(--app-surface) 80%)',
-                            }}
-                            title="Supprimer"
-                            aria-label="Supprimer"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </div>
-
-          {notifications.length > 5 && (
-            <div className="px-3 pt-2 border-t border-[var(--app-border)]">
-              <button
-                type="button"
-                onClick={() => setShowAllNotifications((v) => !v)}
-                className="text-xs font-medium text-[var(--app-accent)] hover:opacity-85"
-              >
-                {showAllNotifications ? 'Voir moins' : 'Voir toutes les notifications'}
-              </button>
-            </div>
-          )}
-        </div>
-      )}
+        )}
+      </div>
     </header>
     <SearchModal isOpen={isSearchOpen} onClose={() => setIsSearchOpen(false)} />
     </>
