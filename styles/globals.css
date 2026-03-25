@@ -879,6 +879,87 @@ html[data-theme='dark'] .from-slate-900\/60 {
     border-color: color-mix(in oklab, var(--app-accent) 34%, var(--app-border) 66%);
   }
 
+  .video-module-card {
+    position: relative;
+  }
+
+  .video-module-accent-bar {
+    height: 4px;
+    background: linear-gradient(
+      90deg,
+      var(--app-accent) 0%,
+      color-mix(in oklab, var(--app-accent) 55%, var(--app-surface) 45%) 68%,
+      transparent 100%
+    );
+  }
+
+  .video-module-number-badge {
+    background: color-mix(in oklab, var(--app-accent) 14%, var(--app-surface-alt) 86%);
+    border: 1.5px solid color-mix(in oklab, var(--app-accent) 38%, var(--app-border) 62%);
+    color: var(--app-accent);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .video-module-label {
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--app-accent);
+  }
+
+  .video-inline-alert {
+    background: color-mix(in oklab, var(--app-surface-alt) 92%, white 8%);
+    border-color: color-mix(in oklab, var(--app-border) 82%, var(--app-accent) 18%);
+    color: var(--app-text);
+  }
+
+  .video-inline-alert--warn {
+    background: color-mix(in oklab, #f59e0b 12%, var(--app-surface) 88%);
+    border-color: color-mix(in oklab, #f59e0b 40%, var(--app-border) 60%);
+    color: color-mix(in oklab, #b45309 78%, var(--app-text) 22%);
+  }
+
+  .video-inline-alert--error {
+    background: color-mix(in oklab, #ef4444 11%, var(--app-surface) 89%);
+    border-color: color-mix(in oklab, #ef4444 42%, var(--app-border) 58%);
+    color: color-mix(in oklab, #b91c1c 76%, var(--app-text) 24%);
+  }
+
+  .video-option-row--correct {
+    background: color-mix(in oklab, #10b981 14%, var(--app-surface) 86%);
+    border-color: color-mix(in oklab, #10b981 46%, var(--app-border) 54%);
+    color: color-mix(in oklab, #047857 74%, var(--app-text) 26%);
+  }
+
+  .video-option-row--wrong {
+    background: color-mix(in oklab, #ef4444 11%, var(--app-surface) 89%);
+    border-color: color-mix(in oklab, #ef4444 44%, var(--app-border) 56%);
+    color: color-mix(in oklab, #b91c1c 76%, var(--app-text) 24%);
+  }
+
+  .video-option-badge--correct {
+    background: color-mix(in oklab, #10b981 84%, black 16%);
+    color: white;
+    border-color: color-mix(in oklab, #10b981 76%, white 24%);
+  }
+
+  .video-option-badge--wrong {
+    background: color-mix(in oklab, #ef4444 82%, black 18%);
+    color: white;
+    border-color: color-mix(in oklab, #ef4444 76%, white 24%);
+  }
+
+  .video-schema-figure {
+    box-shadow: inset 0 1px 0 color-mix(in oklab, white 34%, transparent);
+  }
+
+  .video-marker-badge {
+    background: color-mix(in oklab, var(--app-accent) 16%, var(--app-surface-alt) 84%);
+    border: 1px solid color-mix(in oklab, var(--app-accent) 40%, var(--app-border) 60%);
+    color: var(--app-accent);
+  }
+
   html[data-theme='dark'] .video-learning-card {
     border-color: color-mix(in oklab, var(--app-accent) 26%, var(--app-border) 74%);
     background: linear-gradient(
@@ -979,6 +1060,18 @@ html[data-theme='dark'] .from-slate-900\/60 {
     border-color: color-mix(in oklab, var(--app-accent) 20%, var(--app-border) 80%);
   }
 
+  .video-select-field--correct {
+    border-color: color-mix(in oklab, #10b981 46%, var(--app-border) 54%);
+    background: color-mix(in oklab, #10b981 12%, var(--app-surface) 88%);
+    color: color-mix(in oklab, #047857 74%, var(--app-text) 26%);
+  }
+
+  .video-select-field--wrong {
+    border-color: color-mix(in oklab, #ef4444 44%, var(--app-border) 56%);
+    background: color-mix(in oklab, #ef4444 10%, var(--app-surface) 90%);
+    color: color-mix(in oklab, #b91c1c 76%, var(--app-text) 24%);
+  }
+
   .video-feedback-box {
     border-color: color-mix(in oklab, var(--app-accent) 24%, var(--app-border) 76%);
     background: color-mix(in oklab, var(--app-surface) 92%, white 8%);
@@ -1034,16 +1127,143 @@ html[data-theme='dark'] .from-slate-900\/60 {
     box-shadow: 0 14px 28px -18px color-mix(in oklab, var(--app-accent) 64%, transparent);
   }
 
+  .video-figure-caption {
+    background: linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--app-surface) 8%, transparent) 0%,
+      color-mix(in oklab, var(--app-deep-surface) 66%, black 34%) 100%
+    );
+    color: var(--app-deep-text);
+    border-top: 1px solid color-mix(in oklab, var(--app-border) 46%, transparent);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.32);
+  }
+
+  .video-figure-caption--compact {
+    letter-spacing: 0.01em;
+  }
+
+  .cas-figure-frame {
+    background:
+      radial-gradient(circle at 20% 18%, color-mix(in oklab, var(--app-accent) 16%, transparent) 0%, transparent 42%),
+      linear-gradient(160deg, color-mix(in oklab, var(--app-surface-2) 86%, var(--app-border) 14%) 0%, color-mix(in oklab, var(--app-surface-alt) 75%, var(--app-border) 25%) 100%);
+  }
+
+  .video-lightbox-overlay {
+    background:
+      radial-gradient(circle at 18% 14%, color-mix(in oklab, var(--app-accent) 18%, transparent) 0%, transparent 45%),
+      color-mix(in oklab, var(--app-surface) 86%, rgba(34, 24, 14, 0.7) 14%);
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+  }
+
+  .video-lightbox-top-title {
+    color: color-mix(in oklab, var(--app-text) 78%, var(--app-muted) 22%);
+  }
+
+  .video-lightbox-close {
+    background: color-mix(in oklab, var(--app-surface) 70%, var(--app-border) 30%);
+    color: var(--app-text);
+    border: 1px solid color-mix(in oklab, var(--app-accent) 28%, var(--app-border) 72%);
+    box-shadow: 0 12px 30px -20px color-mix(in oklab, var(--app-accent) 60%, transparent);
+  }
+
+  .video-lightbox-close:hover {
+    background: color-mix(in oklab, var(--app-surface-2) 84%, var(--app-accent) 16%);
+  }
+
+  .video-lightbox-frame {
+    border-radius: 1rem;
+    border: 1px solid color-mix(in oklab, var(--app-accent) 26%, var(--app-border) 74%);
+    background:
+      radial-gradient(circle at 16% 12%, color-mix(in oklab, var(--app-accent) 14%, transparent) 0%, transparent 46%),
+      linear-gradient(160deg, color-mix(in oklab, var(--app-surface-2) 92%, white 8%) 0%, color-mix(in oklab, var(--app-surface-alt) 82%, var(--app-border) 18%) 100%);
+    box-shadow: 0 30px 80px -40px color-mix(in oklab, var(--app-accent) 52%, transparent);
+    overflow: hidden;
+  }
+
+  .video-lightbox-title {
+    color: var(--app-text);
+  }
+
+  .video-lightbox-hint {
+    color: var(--app-muted);
+  }
+
   html[data-theme='dark'] .video-learning-section .text-slate-300,
   html[data-theme='dark'] .video-learning-section .text-slate-400,
   html[data-theme='dark'] .video-learning-section .text-slate-500 {
     color: color-mix(in oklab, var(--app-deep-text-muted) 88%, white 12%);
   }
 
+  html[data-theme='dark'] .cas-figure-frame {
+    background:
+      radial-gradient(circle at 20% 18%, color-mix(in oklab, var(--app-accent) 22%, transparent) 0%, transparent 40%),
+      linear-gradient(160deg, color-mix(in oklab, var(--app-deep-surface) 90%, black 10%) 0%, color-mix(in oklab, var(--app-deep-surface-2) 90%, var(--app-accent) 10%) 100%);
+  }
+
+  html[data-theme='dark'] .video-figure-caption {
+    background: linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--app-deep-surface) 6%, transparent) 0%,
+      color-mix(in oklab, black 72%, var(--app-deep-surface) 28%) 100%
+    );
+    color: var(--app-deep-text);
+    border-top-color: color-mix(in oklab, var(--app-border) 58%, transparent);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  }
+
+  html[data-theme='dark'] .video-lightbox-overlay {
+    background:
+      radial-gradient(circle at 18% 14%, color-mix(in oklab, var(--app-accent) 24%, transparent) 0%, transparent 45%),
+      color-mix(in oklab, var(--app-deep-surface) 78%, rgba(0, 0, 0, 0.88) 22%);
+  }
+
+  html[data-theme='dark'] .video-lightbox-top-title {
+    color: color-mix(in oklab, var(--app-deep-text) 82%, var(--app-muted) 18%);
+  }
+
+  html[data-theme='dark'] .video-lightbox-close {
+    background: color-mix(in oklab, var(--app-deep-surface-2) 80%, black 20%);
+    color: var(--app-deep-text);
+    border-color: color-mix(in oklab, var(--app-accent) 36%, var(--app-border) 64%);
+  }
+
+  html[data-theme='dark'] .video-lightbox-close:hover {
+    background: color-mix(in oklab, var(--app-deep-surface-2) 65%, var(--app-accent) 35%);
+  }
+
+  html[data-theme='dark'] .video-lightbox-frame {
+    border-color: color-mix(in oklab, var(--app-accent) 34%, var(--app-border) 66%);
+    background:
+      radial-gradient(circle at 16% 12%, color-mix(in oklab, var(--app-accent) 20%, transparent) 0%, transparent 46%),
+      linear-gradient(160deg, color-mix(in oklab, var(--app-deep-surface) 92%, black 8%) 0%, color-mix(in oklab, var(--app-deep-surface-2) 90%, var(--app-accent) 10%) 100%);
+    box-shadow: 0 30px 90px -38px rgba(0, 0, 0, 0.72);
+  }
+
+  html[data-theme='dark'] .video-lightbox-title {
+    color: var(--app-deep-text);
+  }
+
+  html[data-theme='dark'] .video-lightbox-hint {
+    color: color-mix(in oklab, var(--app-deep-text) 64%, var(--app-muted) 36%);
+  }
+
   html[data-theme='dark'] .video-learning-section textarea,
   html[data-theme='dark'] .video-learning-section select {
     color: var(--app-deep-text);
     background-color: color-mix(in oklab, var(--app-deep-surface) 86%, black 14%);
+  }
+
+  html[data-theme='dark'] .video-select-field--correct {
+    border-color: color-mix(in oklab, #10b981 52%, var(--app-border) 48%);
+    background: color-mix(in oklab, #10b981 18%, var(--app-deep-surface) 82%);
+    color: color-mix(in oklab, #34d399 72%, white 28%);
+  }
+
+  html[data-theme='dark'] .video-select-field--wrong {
+    border-color: color-mix(in oklab, #ef4444 50%, var(--app-border) 50%);
+    background: color-mix(in oklab, #ef4444 15%, var(--app-deep-surface) 85%);
+    color: color-mix(in oklab, #fca5a5 72%, white 28%);
   }
 
   html[data-theme='dark'] .video-question-card {
@@ -1059,6 +1279,56 @@ html[data-theme='dark'] .from-slate-900\/60 {
   html[data-theme='dark'] .video-feedback-box {
     border-color: color-mix(in oklab, var(--app-accent) 34%, var(--app-border) 66%);
     background: color-mix(in oklab, var(--app-deep-surface) 88%, black 12%);
+  }
+
+  html[data-theme='dark'] .video-module-number-badge {
+    background: color-mix(in oklab, var(--app-accent) 20%, var(--app-deep-surface) 80%);
+    border-color: color-mix(in oklab, var(--app-accent) 48%, var(--app-border) 52%);
+    color: color-mix(in oklab, var(--app-accent) 82%, white 18%);
+  }
+
+  html[data-theme='dark'] .video-module-label {
+    color: color-mix(in oklab, var(--app-accent) 88%, white 12%);
+  }
+
+  html[data-theme='dark'] .video-inline-alert {
+    background: color-mix(in oklab, var(--app-deep-surface) 92%, black 8%);
+    border-color: color-mix(in oklab, var(--app-accent) 26%, var(--app-border) 74%);
+    color: var(--app-deep-text);
+  }
+
+  html[data-theme='dark'] .video-inline-alert--warn {
+    background: color-mix(in oklab, #f59e0b 16%, var(--app-deep-surface) 84%);
+    border-color: color-mix(in oklab, #f59e0b 44%, var(--app-border) 56%);
+    color: color-mix(in oklab, #fbbf24 78%, white 22%);
+  }
+
+  html[data-theme='dark'] .video-inline-alert--error {
+    background: color-mix(in oklab, #ef4444 14%, var(--app-deep-surface) 86%);
+    border-color: color-mix(in oklab, #ef4444 46%, var(--app-border) 54%);
+    color: color-mix(in oklab, #f87171 76%, white 24%);
+  }
+
+  html[data-theme='dark'] .video-option-row--correct {
+    background: color-mix(in oklab, #10b981 20%, var(--app-deep-surface) 80%);
+    border-color: color-mix(in oklab, #10b981 52%, var(--app-border) 48%);
+    color: color-mix(in oklab, #34d399 74%, white 26%);
+  }
+
+  html[data-theme='dark'] .video-option-row--wrong {
+    background: color-mix(in oklab, #ef4444 17%, var(--app-deep-surface) 83%);
+    border-color: color-mix(in oklab, #ef4444 48%, var(--app-border) 52%);
+    color: color-mix(in oklab, #fca5a5 74%, white 26%);
+  }
+
+  html[data-theme='dark'] .video-schema-figure {
+    box-shadow: inset 0 1px 0 color-mix(in oklab, white 12%, transparent);
+  }
+
+  html[data-theme='dark'] .video-marker-badge {
+    background: color-mix(in oklab, var(--app-accent) 22%, var(--app-deep-surface) 78%);
+    border-color: color-mix(in oklab, var(--app-accent) 52%, var(--app-border) 48%);
+    color: color-mix(in oklab, var(--app-accent) 84%, white 16%);
   }
 
   html[data-theme='dark'] .video-pager {

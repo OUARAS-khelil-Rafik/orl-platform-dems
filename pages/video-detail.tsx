@@ -19,6 +19,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   FileText, BookOpen, 
   CheckCircle2, 
+  CircleCheck,
   MessageSquare,
   Image as ImageIcon, 
   Lock, 
@@ -75,7 +76,7 @@ export default function VideoPage() {
   
   const [video, setVideo] = useState<VideoModel | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<VideoTab>('cas');
+  const [activeTab, setActiveTab] = useState<VideoTab | null>(null);
   const [hasAccess, setHasAccess] = useState(false);
   const [lockedVideoPaymentStatus, setLockedVideoPaymentStatus] = useState<LockedVideoPaymentStatus | null>(null);
   const [loadedTabs, setLoadedTabs] = useState<Record<VideoTab, boolean>>({
@@ -104,7 +105,7 @@ export default function VideoPage() {
   const [qcmValidationErrors, setQcmValidationErrors] = useState<Record<string, string>>({});
 
   // Navigation states for multiple items
-  const [activeCaseIndex, setActiveCaseIndex] = useState(0);
+  const [activeCaseIndex, setActiveCaseIndex] = useState<number | null>(null);
   const [activeOpenQuestionIndex, setActiveOpenQuestionIndex] = useState(0);
   const [activeQcmIndex, setActiveQcmIndex] = useState(0);
   const [activeDiagramIndex, setActiveDiagramIndex] = useState(0);
@@ -234,7 +235,7 @@ export default function VideoPage() {
   );
 
   useEffect(() => {
-    if (!hasAccess || !id) return;
+    if (!hasAccess || !id || !activeTab) return;
     fetchTabContent(activeTab);
   }, [activeTab, fetchTabContent, hasAccess, id]);
 
@@ -655,7 +656,7 @@ export default function VideoPage() {
             {tabDefinitions.map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => setActiveTab((prev) => (prev === tab.id ? null : tab.id))}
                 className={`text-left rounded-2xl border px-4 py-4 transition-all interactive-card ${
                   activeTab === tab.id ? 'video-tab-active' : 'video-tab-inactive'
                 }`}
@@ -676,7 +677,7 @@ export default function VideoPage() {
         </div>
 
         {/* Tab Content */}
-          {loadingTabs[activeTab] && (
+          {activeTab && loadingTabs[activeTab] && (
             <div className="mb-5 flex items-center gap-3 text-sm text-[var(--app-muted)]" aria-live="polite">
               <div className="w-5 h-5 border-2 border-[var(--app-border)] border-t-medical-500 rounded-full animate-spin" />
               Chargement du contenu...
@@ -692,31 +693,34 @@ export default function VideoPage() {
                 className="space-y-6 video-learning-section"
               >
                 {clinicalCases.length > 0 ? (
-                  <>
-                    {clinicalCases.length > 1 && (
-                      <div className="mb-2 flex gap-2 overflow-x-auto no-scrollbar">
-                        {clinicalCases.map((_, caseIndex) => (
-                          <button
-                            key={`case-nav-${caseIndex}`}
-                            type="button"
-                            onClick={() => setActiveCaseIndex(caseIndex)}
-                            className={`px-3 py-1.5 rounded-full text-xs font-semibold border whitespace-nowrap transition-colors ${
-                              activeCaseIndex === caseIndex
-                                ? 'video-tab-active'
-                                : 'video-tab-inactive'
-                            }`}
-                          >
-                            Cas {String(caseIndex + 1).padStart(2, '0')}
-                          </button>
-                        ))}
-                      </div>
-                    )}
+                    <div className="space-y-3">
+                      {clinicalCases.map((c, index) => {
+                        const isActive = activeCaseIndex === index;
+                        return (
+                          <div key={c.id} className="space-y-2">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setActiveCaseIndex((prev) => (prev === index ? null : index))
+                              }
+                              className={`w-full px-5 py-3 rounded-2xl text-base font-semibold border flex items-center justify-between transition-all duration-200 ${
+                                isActive ? 'video-tab-active shadow-md' : 'video-tab-inactive hover:-translate-y-0.5'
+                              }`}
+                            >
+                              <span>Cas Clinique {String(index + 1).padStart(2, '0')}</span>
+                              <ChevronRight className={`w-4 h-4 transition-transform duration-300 ${isActive ? 'rotate-90' : ''}`} />
+                            </button>
 
-                    {(() => {
-                      const c = clinicalCases[Math.min(activeCaseIndex, clinicalCases.length - 1)];
-                      const index = Math.min(activeCaseIndex, clinicalCases.length - 1);
-                      return (
-                        <div key={c.id} className="video-learning-card rounded-2xl border overflow-hidden">
+                            <AnimatePresence initial={false}>
+                              {isActive && (
+                                <motion.div
+                                  initial={{ opacity: 0, height: 0, y: -6 }}
+                                  animate={{ opacity: 1, height: 'auto', y: 0 }}
+                                  exit={{ opacity: 0, height: 0, y: -6 }}
+                                  transition={{ duration: 0.28, ease: 'easeOut' }}
+                                  className="overflow-hidden"
+                                >
+                                  <div className="video-learning-card rounded-2xl border overflow-hidden">
                           <div className="cas-card-accent-bar" />
                           <div className="p-6 space-y-6">
                           <div className="flex items-center gap-3 pb-4 border-b border-[var(--app-border)]">
@@ -784,7 +788,7 @@ export default function VideoPage() {
                                       {c.images.map((imgUrl: string, imgIndex: number) => (
                                         <div
                                           key={imgIndex}
-                                          className="group relative aspect-video rounded-xl overflow-hidden border border-[var(--app-border)] bg-[var(--app-surface-alt)] cursor-pointer"
+                                          className="group relative aspect-video rounded-xl overflow-hidden border border-[var(--app-border)] cas-figure-frame cursor-pointer"
                                           onClick={() => setSelectedImage({ url: imgUrl, title: `Cas Clinique #${String(index + 1).padStart(2, '0')} - Figure ${String(imgIndex + 1).padStart(2, '0')}` })}
                                         >
                                           <Image
@@ -794,7 +798,7 @@ export default function VideoPage() {
                                             className="object-cover transition-transform duration-500 group-hover:scale-110"
                                             referrerPolicy="no-referrer"
                                           />
-                                          <div className="absolute inset-x-0 bottom-0 bg-black/60 px-3 py-1 text-xs text-white flex items-center justify-between">
+                                          <div className="video-figure-caption absolute inset-x-0 bottom-0 px-3 py-1 text-xs flex items-center justify-between">
                                             <span>Figure {String(imgIndex + 1).padStart(2, '0')}</span>
                                           </div>
                                           <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
@@ -809,7 +813,10 @@ export default function VideoPage() {
                                 {/* 3. Références */}
                                 {c.reference && (
                                   <div className="video-reference-panel rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-2)] px-4 py-3">
-                                    <h4 className="text-xs font-bold uppercase tracking-wide text-[var(--app-accent)] mb-1">Référence</h4>
+                                    <h4 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-[var(--app-accent)] mb-1">
+                                      <BookOpen className="w-3.5 h-3.5" />
+                                      Référence
+                                    </h4>
                                     <p className="text-sm text-[var(--app-muted)] whitespace-pre-wrap">{c.reference}</p>
                                   </div>
                                 )}
@@ -964,9 +971,14 @@ export default function VideoPage() {
                                             </div>
                                             {/* Question body */}
                                             <div className="p-4 space-y-3">
-                                            <p className="text-sm font-semibold text-[var(--app-text)] whitespace-pre-wrap leading-relaxed">
-                                              {q.prompt}
-                                            </p>
+                                            <div className="flex items-start gap-2">
+                                              {kind === 'open' && (
+                                                <MessageSquare className="w-4 h-4 text-[var(--app-accent)] flex-shrink-0 mt-1" />
+                                              )}
+                                              <p className="text-lg font-semibold text-[var(--app-text)] whitespace-pre-wrap leading-relaxed">
+                                                {q.prompt}
+                                              </p>
+                                            </div>
 
                                             {kind === 'qcm' && (
                                               <div className="space-y-2">
@@ -975,14 +987,14 @@ export default function VideoPage() {
                                                   const isCorrectOption = correctIndexes.includes(optIndex);
 
                                                   let rowClass =
-                                                    'video-option-row w-full text-left px-3 py-2 rounded-lg border text-xs flex items-center justify-between transition-all ';
+                                                    'video-option-row w-full text-left px-3 py-2 rounded-lg border text-base flex items-center justify-between transition-all ';
 
                                                   if (validated) {
                                                     if (isCorrectOption) {
                                                       rowClass +=
-                                                        'bg-emerald-500/15 border-emerald-500 text-emerald-200';
+                                                        'video-option-row--correct';
                                                     } else if (selectedIndexes.includes(optIndex)) {
-                                                      rowClass += 'bg-red-500/10 border-red-500 text-red-200';
+                                                      rowClass += 'video-option-row--wrong';
                                                     } else {
                                                       rowClass +=
                                                         'bg-[var(--app-surface-2)] border-[var(--app-border)] text-[var(--app-muted)] opacity-70';
@@ -1025,7 +1037,9 @@ export default function VideoPage() {
                                                         <span
                                                           className={`w-6 h-6 rounded-lg flex items-center justify-center text-[11px] font-bold border transition-colors ${
                                                             validated && isCorrectOption
-                                                              ? 'bg-emerald-500 text-white border-emerald-300'
+                                                              ? 'video-option-badge--correct'
+                                                              : validated && selectedIndexes.includes(optIndex)
+                                                                ? 'video-option-badge--wrong'
                                                               : isSelected
                                                                 ? 'cas-option-badge-selected'
                                                                 : 'bg-[var(--app-surface-alt)] border-[var(--app-border)]'
@@ -1048,13 +1062,13 @@ export default function VideoPage() {
                                                 </label>
                                                 {(() => {
                                                   let selectClass =
-                                                    'video-select-field w-full rounded-lg border bg-[var(--app-surface-alt)]/60 px-3 py-2 text-xs text-[var(--app-text)] focus:outline-none focus:ring-2 focus:ring-[var(--app-accent)] ';
+                                                    'video-select-field w-full rounded-lg border bg-[var(--app-surface-alt)]/60 px-3 py-2 text-base text-[var(--app-text)] focus:outline-none focus:ring-2 focus:ring-[var(--app-accent)] ';
                                                   if (validated) {
                                                     if (isCorrect === true) {
                                                       selectClass +=
-                                                        'border-emerald-500 bg-emerald-500/10 text-emerald-100';
+                                                        'video-select-field--correct';
                                                     } else if (isCorrect === false) {
-                                                      selectClass += 'border-red-500 bg-red-500/10 text-red-100';
+                                                      selectClass += 'video-select-field--wrong';
                                                     } else {
                                                       selectClass += 'border-[var(--app-border)]';
                                                     }
@@ -1114,7 +1128,7 @@ export default function VideoPage() {
                                                         className="object-cover transition-transform duration-500 group-hover:scale-110"
                                                         referrerPolicy="no-referrer"
                                                       />
-                                                      <div className="absolute inset-x-0 bottom-0 bg-black/60 px-2 py-1 text-[10px] text-[var(--app-text)] flex items-center justify-between">
+                                                      <div className="video-figure-caption video-figure-caption--compact absolute inset-x-0 bottom-0 px-2 py-1 text-[10px] flex items-center justify-between">
                                                         <span>
                                                           Fig. {String(imgIndex + 1).padStart(2, '0')}
                                                         </span>
@@ -1131,12 +1145,21 @@ export default function VideoPage() {
                                             {showExplanation && (q.explanation || q.answer) && (
                                               <div className="cas-explanation-panel rounded-xl border px-4 py-3">
                                                 <div className="flex items-start gap-2">
-                                                  <Lightbulb className="w-4 h-4 text-[var(--app-accent)] flex-shrink-0 mt-0.5" />
+                                                  <Lightbulb className="lucide lucide-lightbulb w-4 h-4 text-[var(--app-accent)] flex-shrink-0 mt-0.5" />
                                                   <div>
                                                     <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--app-accent)] mb-1">{kind === 'open' ? 'Réponse' : 'Explication'}</p>
-                                                    <p className="text-sm text-[var(--app-text)] whitespace-pre-wrap leading-relaxed">{kind === 'open' && q.answer ? q.answer : q.explanation}</p>
+                                                    <p className="text-lg text-[var(--app-text)] whitespace-pre-wrap leading-relaxed">{kind === 'open' && q.answer ? q.answer : q.explanation}</p>
                                                   </div>
                                                 </div>
+                                              </div>
+                                            )}
+                                            {(kind === 'qcm' || kind === 'select' || kind === 'open') && showExplanation && c.reference && (
+                                              <div className="video-reference-panel rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-2)] px-4 py-3">
+                                                <h4 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-[var(--app-accent)] mb-1">
+                                                  <BookOpen className="w-3.5 h-3.5" />
+                                                  Référence
+                                                </h4>
+                                                <p className="text-sm text-[var(--app-muted)] whitespace-pre-wrap">{c.reference}</p>
                                               </div>
                                             )}
                                             {/* Feedback utilisateur par question (optionnel) — affiché après interaction/réponse */}
@@ -1176,39 +1199,43 @@ export default function VideoPage() {
                                                     <button
                                                       type="button"
                                                       onClick={handleValidate}
-                                                      disabled={!hasSelection}
+                                                      disabled={!hasSelection || validated}
                                                       className="px-3 py-1.5 rounded-lg cas-validate-btn text-white text-[11px] font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
                                                     >
                                                       Valider
                                                     </button>
-                                                    {validated && (
-                                                      <button
-                                                        type="button"
-                                                        onClick={handleReset}
-                                                        className="px-3 py-1.5 rounded-lg border border-[var(--app-border)] text-[11px] font-semibold text-[var(--app-text)] hover:bg-[var(--app-surface-alt)]"
-                                                      >
-                                                        Réinitialiser
-                                                      </button>
-                                                    )}
                                                   </>
                                                 )}
                                               </div>
 
-                                              {kind === 'open' && (q.explanation || q.answer) && (
-                                                <button
-                                                  type="button"
-                                                  onClick={() =>
-                                                    updateCaseQuestionState(c.id, questionId, (current) => ({
-                                                      ...current,
-                                                      showExplanation: !current.showExplanation,
-                                                      showFeedback: !current.showExplanation,
-                                                    }))
-                                                  }
-                                                  className="text-[11px] font-medium text-[var(--app-muted)] hover:text-[var(--app-accent)]"
-                                                >
-                                                  {showExplanation ? 'Masquer la réponse' : 'Afficher la réponse'}
-                                                </button>
-                                              )}
+                                              <div className="flex items-center gap-2">
+                                                {kind !== 'open' && validated && (
+                                                  <button
+                                                    type="button"
+                                                    onClick={handleReset}
+                                                    className="video-link-action flex items-center gap-2 transition-colors text-sm font-medium"
+                                                  >
+                                                    <RotateCcw className="w-4 h-4" />
+                                                    Recommencer
+                                                  </button>
+                                                )}
+
+                                                {kind === 'open' && (q.explanation || q.answer) && (
+                                                  <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                      updateCaseQuestionState(c.id, questionId, (current) => ({
+                                                        ...current,
+                                                        showExplanation: !current.showExplanation,
+                                                        showFeedback: !current.showExplanation,
+                                                      }))
+                                                    }
+                                                    className="text-[11px] font-medium text-[var(--app-muted)] hover:text-[var(--app-accent)]"
+                                                  >
+                                                    {showExplanation ? 'Masquer la réponse' : 'Afficher la réponse'}
+                                                  </button>
+                                                )}
+                                              </div>
                                             </div>
 
                                             <div className="cas-question-nav flex items-center justify-between gap-2 pt-2 border-t border-[var(--app-border)]">
@@ -1248,12 +1275,16 @@ export default function VideoPage() {
                                 )}
 
                                 {/* Global clinical-case discussion removed — per UX change */}
+                                  </div>
+                                  </div>
+                                </div>
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
                           </div>
-                          </div>
-                        </div>
-                      );
-                    })()}
-                  </>
+                        );
+                      })}
+                    </div>
                 ) : (
                   <div className="video-empty-state bg-[var(--app-surface-alt)] rounded-xl p-6 border border-[var(--app-border)] text-center">
                     <p className="text-[var(--app-muted)] py-10">Aucun cas clinique disponible pour cette vidéo.</p>
@@ -1272,24 +1303,6 @@ export default function VideoPage() {
               >
                 {qcms.length > 0 ? (
                   <div className="space-y-8">
-                    {qcms.length > 1 && (
-                      <div className="mb-2 flex gap-2 overflow-x-auto no-scrollbar">
-                        {qcms.map((_, qcmIndex) => (
-                          <button
-                            key={`qcm-nav-${qcmIndex}`}
-                            type="button"
-                            onClick={() => setActiveQcmIndex(qcmIndex)}
-                            className={`px-3 py-1.5 rounded-full text-xs font-semibold border whitespace-nowrap transition-colors ${
-                              activeQcmIndex === qcmIndex
-                                ? 'video-tab-active'
-                                : 'video-tab-inactive'
-                            }`}
-                          >
-                            QCM {qcmIndex + 1}
-                          </button>
-                        ))}
-                      </div>
-                    )}
 
                     {(() => {
                       const index = Math.min(activeQcmIndex, qcms.length - 1);
@@ -1348,138 +1361,150 @@ export default function VideoPage() {
 
                       return (
                         <>
-                          <div key={q.id} className="video-learning-card rounded-2xl p-6 md:p-8 border shadow-xl">
-                            <div className="flex items-start gap-4 mb-6">
-                              <span className="flex-shrink-0 w-10 h-10 bg-medical-500/20 text-medical-400 rounded-xl flex items-center justify-center font-bold border border-medical-500/30">
-                                {index + 1}
+                          <div key={q.id} className="cas-question-card rounded-xl border overflow-hidden">
+                            <div className="cas-question-header flex items-center gap-2 px-4 py-3 border-b border-[var(--app-border)]">
+                              <span className="cas-q-number flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold">
+                                {String(index + 1).padStart(2, '0')}
                               </span>
-                              <div>
-                                <p className="font-medium text-[var(--app-text)] text-xl leading-relaxed">{q.question}</p>
-
-                                {q.reference && (
-                                  <div className="mt-3 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-2)] p-3">
-                                    <h4 className="text-sm font-semibold text-[var(--app-text)] mb-1">Référence</h4>
-                                    <p className="text-sm text-[var(--app-muted)] whitespace-pre-wrap">{q.reference}</p>
-                                  </div>
-                                )}
-                              </div>
+                              <span className="cas-q-type-badge px-2.5 py-0.5 rounded-full text-[10px] font-semibold">
+                                {q.mode === 'single' ? 'QCM · Une réponse' : 'QCM · Plusieurs réponses'}
+                              </span>
+                              {result && (
+                                <div className="ml-auto flex items-center">
+                                  {result.isCorrect ? (
+                                    <span className="inline-flex items-center gap-1 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded-full text-[10px] font-semibold">
+                                      <CircleCheck className="w-3 h-3" />
+                                      Correct
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 bg-amber-500/15 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-full text-[10px] font-semibold">
+                                      <AlertCircle className="w-3 h-3" />
+                                      A revoir
+                                    </span>
+                                  )}
+                                </div>
+                              )}
                             </div>
 
-                            {qcmConfigError && (
-                              <div className="mb-4 rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-200">
-                                {qcmConfigError}
+                            <div className="p-4 space-y-3">
+                              <div className="flex items-start gap-2">
+                                <MessageSquare className="w-4 h-4 text-[var(--app-accent)] flex-shrink-0 mt-1" />
+                                <p className="text-lg font-semibold text-[var(--app-text)] whitespace-pre-wrap leading-relaxed">{q.question}</p>
                               </div>
-                            )}
 
-                            {validationError && (
-                              <div className="mb-4 rounded-xl border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-200">
-                                {validationError}
-                              </div>
-                            )}
-
-                            {safeOptions.length > 0 ? (
-                              <div className="grid gap-3 mb-6">
-                              {safeOptions.map((opt: string, optIndex: number) => {
-                                const isSelected = selectedIndices.includes(optIndex);
-                                const isCorrectOption = correctIndexes.includes(optIndex);
-                                let rowClass = "video-option-row w-full text-left p-5 rounded-xl border transition-all flex items-center justify-between group ";
-
-                                if (result) {
-                                  if (isCorrectOption) {
-                                    rowClass += "bg-emerald-500/20 border-emerald-500/50 text-emerald-400";
-                                  } else if (result.selected.includes(optIndex) && !result.isCorrect) {
-                                    rowClass += "bg-red-500/20 border-red-500/50 text-red-400";
-                                  } else {
-                                    rowClass += "bg-[var(--app-surface-alt)]/30 border-[var(--app-border)] text-slate-500 opacity-60";
-                                  }
-                                } else if (isSelected) {
-                                  rowClass += "bg-medical-500/20 border-medical-500/60 text-medical-100";
-                                } else {
-                                  rowClass += "bg-[var(--app-surface-alt)]/50 border-[var(--app-border)] text-[var(--app-muted)] hover:bg-slate-700 hover:border-medical-500/50";
-                                }
-
-                                return (
-                                  <button
-                                    key={optIndex}
-                                    type="button"
-                                    className={rowClass}
-                                    onClick={() => toggleSelection(optIndex)}
-                                  >
-                                    <span className="flex items-center gap-4 text-left">
-                                      <span
-                                        className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold border transition-colors ${
-                                          result && isCorrectOption
-                                            ? 'bg-emerald-500 text-white border-emerald-400'
-                                            : result && result.selected.includes(optIndex) && !result.isCorrect
-                                              ? 'bg-red-500 text-white border-red-400'
-                                              : isSelected
-                                                ? 'bg-medical-600 text-white border-medical-400'
-                                                : 'bg-[var(--app-surface-alt)] border-[var(--app-border)] group-hover:border-medical-500/50'
-                                        }`}
-                                      >
-                                        {String.fromCharCode(65 + optIndex)}
-                                      </span>
-                                      <span className="flex-1">{opt}</span>
-                                    </span>
-                                  </button>
-                                );
-                              })}
-                              </div>
-                            ) : (
-                              <div className="mb-6 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-2)] p-4 text-sm text-[var(--app-muted)]">
-                                Les options de ce QCM sont indisponibles.
-                              </div>
-                            )}
-
-                            <div className="flex items-center justify-between gap-4 flex-wrap">
-                              <button
-                                type="button"
-                                onClick={validateAnswer}
-                                disabled={!!result || !!qcmConfigError || !(qcmSelections[q.id]?.length)}
-                                className="px-4 py-2 rounded-lg bg-medical-600 text-white text-sm font-medium hover:bg-medical-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                              >
-                                Valider
-                              </button>
-
-                              {result && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setQcmResults(prev => {
-                                      const next = { ...prev };
-                                      delete next[q.id];
-                                      return next;
-                                    });
-                                    setShowQcmExplanations(prev => ({ ...prev, [q.id]: false }));
-                                    setQcmSelections(prev => ({ ...prev, [q.id]: [] }));
-                                    setQcmFeedbackVisible((prev) => ({ ...prev, [q.id]: false }));
-                                    setQcmValidationErrors((prev) => {
-                                      const next = { ...prev };
-                                      delete next[q.id];
-                                      return next;
-                                    });
-                                  }}
-                                  className="video-link-action flex items-center gap-2 text-[var(--app-muted)] hover:text-white transition-colors text-sm font-medium"
-                                >
-                                  <RotateCcw className="w-4 h-4" />
-                                  Recommencer
-                                </button>
+                              {qcmConfigError && (
+                                <div className="video-inline-alert video-inline-alert--warn rounded-xl border p-4 text-sm">
+                                  {qcmConfigError}
+                                </div>
                               )}
+
+                              {validationError && (
+                                <div className="video-inline-alert video-inline-alert--error rounded-xl border p-4 text-sm">
+                                  {validationError}
+                                </div>
+                              )}
+
+                              {safeOptions.length > 0 ? (
+                                <div className="space-y-2">
+                                  {safeOptions.map((opt: string, optIndex: number) => {
+                                    const isSelected = selectedIndices.includes(optIndex);
+                                    const isCorrectOption = correctIndexes.includes(optIndex);
+                                    let rowClass =
+                                      'video-option-row w-full text-left px-3 py-2 rounded-lg border text-base flex items-center justify-between transition-all ';
+
+                                    if (result) {
+                                      if (isCorrectOption) {
+                                        rowClass += 'video-option-row--correct';
+                                      } else if (result.selected.includes(optIndex) && !result.isCorrect) {
+                                        rowClass += 'video-option-row--wrong';
+                                      } else {
+                                        rowClass +=
+                                          'bg-[var(--app-surface-2)] border-[var(--app-border)] text-[var(--app-muted)] opacity-70';
+                                      }
+                                    } else if (isSelected) {
+                                      rowClass += 'cas-option-selected';
+                                    } else {
+                                      rowClass +=
+                                        'bg-[var(--app-surface-2)] border-[var(--app-border)] text-[var(--app-text)] hover:bg-[var(--app-surface-alt)] hover:border-[var(--app-accent)]/40';
+                                    }
+
+                                    return (
+                                      <button
+                                        key={optIndex}
+                                        type="button"
+                                        className={rowClass}
+                                        onClick={() => toggleSelection(optIndex)}
+                                      >
+                                        <span className="flex items-center gap-3">
+                                          <span
+                                            className={`w-6 h-6 rounded-lg flex items-center justify-center text-[11px] font-bold border transition-colors ${
+                                              result && isCorrectOption
+                                                ? 'video-option-badge--correct'
+                                                : result && result.selected.includes(optIndex) && !result.isCorrect
+                                                  ? 'video-option-badge--wrong'
+                                                  : isSelected
+                                                    ? 'cas-option-badge-selected'
+                                                    : 'bg-[var(--app-surface-alt)] border-[var(--app-border)]'
+                                            }`}
+                                          >
+                                            {String.fromCharCode(65 + optIndex)}
+                                          </span>
+                                          <span className="flex-1 whitespace-pre-wrap">{opt}</span>
+                                        </span>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              ) : (
+                                <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-2)] p-4 text-sm text-[var(--app-muted)]">
+                                  Les options de ce QCM sont indisponibles.
+                                </div>
+                              )}
+
+                              <AnimatePresence>
+                                {showExplanation && q.explanation && (
+                                  <motion.div
+                                    initial={{ opacity: 0, height: 0 }}
+                                    animate={{ opacity: 1, height: 'auto' }}
+                                    className="cas-explanation-panel rounded-xl border px-4 py-3"
+                                  >
+                                    <div className="flex items-start gap-2">
+                                      <Lightbulb className="lucide lucide-lightbulb w-4 h-4 text-[var(--app-accent)] flex-shrink-0 mt-0.5" />
+                                      <div>
+                                        <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--app-accent)] mb-1">Explication</p>
+                                        <p className="text-lg text-[var(--app-text)] whitespace-pre-wrap leading-relaxed">{q.explanation}</p>
+                                      </div>
+                                    </div>
+                                  </motion.div>
+                                )}
+                              </AnimatePresence>
+
+                              {showExplanation && q.reference && (
+                                <div className="video-reference-panel rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-2)] px-4 py-3">
+                                  <h4 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-[var(--app-accent)] mb-1">
+                                    <BookOpen className="w-3.5 h-3.5" />
+                                    Référence
+                                  </h4>
+                                  <p className="text-sm text-[var(--app-muted)] whitespace-pre-wrap">{q.reference}</p>
+                                </div>
+                              )}
+
                               {qcmFeedbackVisible[q.id] && (
-                                <div className="w-full mt-3">
-                                  <div className="video-feedback-box relative rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface-alt)]/60 focus-within:ring-1 focus-within:ring-medical-500">
+                                <div className="mt-3">
+                                  <p className="text-[11px] font-medium text-[var(--app-muted)]">Discussion / Feedback (optionnel)</p>
+                                  <div className="video-feedback-box relative mt-2 rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface-alt)]/60 focus-within:ring-1 focus-within:ring-[var(--app-accent)]">
                                     <textarea
-                                      rows={3}
+                                      rows={2}
                                       value={qcmFeedbackDrafts[q.id] ?? ''}
                                       onChange={(e) => setQcmFeedbackDrafts((prev) => ({ ...prev, [q.id]: e.target.value }))}
-                                      className="w-full rounded-2xl bg-transparent px-3 pr-12 py-2.5 text-sm leading-relaxed text-[var(--app-text)] placeholder:text-slate-500 focus:outline-none resize-none overflow-y-auto"
-                                      placeholder="Saisir une discussion / feedback (optionnel)..."
+                                      className="w-full rounded-2xl bg-transparent px-3 pr-12 py-2.5 text-[11px] leading-relaxed text-[var(--app-text)] placeholder:text-slate-500 focus:outline-none resize-none overflow-y-auto"
+                                      placeholder="Saisir une discussion / feedback..."
                                     />
                                     <button
                                       type="button"
                                       onClick={() => handleSendPedagogicalFeedback('qcm', q.id)}
                                       disabled={!(qcmFeedbackDrafts[q.id] || '').trim()}
-                                      className="absolute right-2 bottom-2 inline-flex h-8 w-8 items-center justify-center rounded-full border border-medical-400/40 bg-medical-600 text-white shadow-sm hover:bg-medical-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                                      className="absolute right-2 bottom-2 inline-flex h-8 w-8 items-center justify-center rounded-full cas-validate-btn text-white shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
                                       aria-label="Envoyer le feedback à l'administration"
                                     >
                                       <SendHorizontal className="w-4 h-4" />
@@ -1487,25 +1512,73 @@ export default function VideoPage() {
                                   </div>
                                 </div>
                               )}
-                            </div>
 
-                            <AnimatePresence>
-                              {showExplanation && q.explanation && (
-                                <motion.div
-                                  initial={{ opacity: 0, height: 0 }}
-                                  animate={{ opacity: 1, height: 'auto' }}
-                                  className="video-answer-panel bg-medical-500/10 border border-medical-500/30 rounded-xl p-5 mt-6"
-                                >
-                                  <div className="flex items-start gap-3">
-                                    <AlertCircle className="w-5 h-5 text-medical-400 mt-0.5" />
-                                    <div>
-                                      <h4 className="font-bold text-medical-400 mb-1">Explication</h4>
-                                      <p className="text-[var(--app-muted)] text-sm leading-relaxed">{q.explanation}</p>
-                                    </div>
-                                  </div>
-                                </motion.div>
+                              <div className="flex items-center justify-between gap-2 pt-1">
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={validateAnswer}
+                                    disabled={!!result || !!qcmConfigError || !(qcmSelections[q.id]?.length)}
+                                    className="px-3 py-1.5 rounded-lg cas-validate-btn text-white text-[11px] font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
+                                  >
+                                    Valider
+                                  </button>
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                  {result && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setQcmResults((prev) => {
+                                          const next = { ...prev };
+                                          delete next[q.id];
+                                          return next;
+                                        });
+                                        setShowQcmExplanations((prev) => ({ ...prev, [q.id]: false }));
+                                        setQcmSelections((prev) => ({ ...prev, [q.id]: [] }));
+                                        setQcmFeedbackVisible((prev) => ({ ...prev, [q.id]: false }));
+                                        setQcmValidationErrors((prev) => {
+                                          const next = { ...prev };
+                                          delete next[q.id];
+                                          return next;
+                                        });
+                                      }}
+                                      className="video-link-action flex items-center gap-2 transition-colors text-sm font-medium"
+                                    >
+                                      <RotateCcw className="w-4 h-4" />
+                                      Recommencer
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+
+                              {qcms.length > 0 && (
+                                <div className="cas-question-nav flex items-center justify-between gap-2 pt-2 border-t border-[var(--app-border)]">
+                                  <button
+                                    type="button"
+                                    onClick={() => setActiveQcmIndex((prev) => Math.max(prev - 1, 0))}
+                                    disabled={index === 0}
+                                    className="cas-nav-btn flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--app-border)] text-[var(--app-text)] text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+                                  >
+                                    <ChevronLeft className="w-3.5 h-3.5" />
+                                    Précédent
+                                  </button>
+                                  <span className="text-[11px] text-[var(--app-muted)] font-medium tabular-nums">
+                                    {String(index + 1).padStart(2, '0')} / {String(qcms.length).padStart(2, '0')}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setActiveQcmIndex((prev) => Math.min(prev + 1, qcms.length - 1))}
+                                    disabled={index >= qcms.length - 1}
+                                    className="cas-nav-btn cas-nav-btn--accent flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+                                  >
+                                    Suivant
+                                    <ChevronRight className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
                               )}
-                            </AnimatePresence>
+                            </div>
                           </div>
                         </>
                       );
@@ -1529,25 +1602,6 @@ export default function VideoPage() {
               >
                 {openQuestions.length > 0 ? (
                   <>
-                    {openQuestions.length > 1 && (
-                      <div className="mb-2 flex gap-2 overflow-x-auto no-scrollbar">
-                        {openQuestions.map((_, openIndex) => (
-                          <button
-                            key={`open-nav-${openIndex}`}
-                            type="button"
-                            onClick={() => setActiveOpenQuestionIndex(openIndex)}
-                            className={`px-3 py-1.5 rounded-full text-xs font-semibold border whitespace-nowrap transition-colors ${
-                              activeOpenQuestionIndex === openIndex
-                                ? 'video-tab-active'
-                                : 'video-tab-inactive'
-                            }`}
-                          >
-                            QO {openIndex + 1}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-
                     {(() => {
                       const index = Math.min(activeOpenQuestionIndex, openQuestions.length - 1);
                       const item = openQuestions[index];
@@ -1555,71 +1609,111 @@ export default function VideoPage() {
 
                       return (
                         <>
-                          <div key={item.id} className="video-learning-card rounded-2xl p-6 md:p-8 border shadow-xl space-y-5">
-                            <div className="flex items-start gap-4">
-                              <span className="flex-shrink-0 w-10 h-10 bg-medical-500/20 text-medical-400 rounded-xl flex items-center justify-center font-bold border border-medical-500/30">
-                                {index + 1}
+                          <div key={item.id} className="cas-question-card rounded-xl border overflow-hidden">
+                            <div className="cas-question-header flex items-center gap-2 px-4 py-3 border-b border-[var(--app-border)]">
+                              <span className="cas-q-number flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold">
+                                {String(index + 1).padStart(2, '0')}
                               </span>
-                              <div className="space-y-2">
-                                <p className="text-[11px] uppercase tracking-wide text-[var(--app-muted)]">Question ouverte</p>
-                                <p className="font-medium text-[var(--app-text)] text-xl leading-relaxed whitespace-pre-wrap">{item.question}</p>
-                              </div>
+                              <span className="cas-q-type-badge px-2.5 py-0.5 rounded-full text-[10px] font-semibold">
+                                Question ouverte
+                              </span>
                             </div>
+
+                            <div className="p-4 space-y-3">
+                              <div className="flex items-start gap-2">
+                                <MessageSquare className="w-4 h-4 text-[var(--app-accent)] flex-shrink-0 mt-1" />
+                                <p className="text-lg font-semibold text-[var(--app-text)] whitespace-pre-wrap leading-relaxed">{item.question}</p>
+                              </div>
 
                               <div className="flex justify-end">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const nextVisible = !isAnswerVisible;
-                                  setOpenQuestionAnswersVisible((prev) => ({
-                                    ...prev,
-                                    [item.id]: nextVisible,
-                                  }));
-                                  setOpenQuestionFeedbackVisible((prev) => ({ ...prev, [item.id]: nextVisible }));
-                                }}
-                                className="px-4 py-2 rounded-lg border border-[var(--app-border)] text-[var(--app-text)] hover:bg-slate-700 text-xs font-medium"
-                              >
-                                {isAnswerVisible ? 'Masquer la réponse' : 'Afficher la réponse'}
-                              </button>
-                            </div>
-
-                            {isAnswerVisible && item.answer && (
-                              <div className="video-answer-panel rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4">
-                                <h3 className="text-sm font-semibold text-emerald-300 mb-2">Réponse</h3>
-                                <p className="text-sm text-[var(--app-text)] whitespace-pre-wrap">{item.answer}</p>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const nextVisible = !isAnswerVisible;
+                                    setOpenQuestionAnswersVisible((prev) => ({
+                                      ...prev,
+                                      [item.id]: nextVisible,
+                                    }));
+                                    setOpenQuestionFeedbackVisible((prev) => ({ ...prev, [item.id]: nextVisible }));
+                                  }}
+                                  className="text-[11px] font-medium text-[var(--app-muted)] hover:text-[var(--app-accent)]"
+                                >
+                                  {isAnswerVisible ? 'Masquer la réponse' : 'Afficher la réponse'}
+                                </button>
                               </div>
-                            )}
 
-                            {item.reference && (
-                              <div className="video-reference-panel rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-2)] p-4">
-                                <h3 className="text-sm font-semibold text-[var(--app-text)] mb-2">Références</h3>
-                                <p className="text-sm text-[var(--app-muted)] whitespace-pre-wrap">{item.reference}</p>
-                              </div>
-                            )}
+                              {isAnswerVisible && item.answer && (
+                                <div className="video-answer-panel cas-explanation-panel rounded-xl border p-4">
+                                  <h3 className="flex items-center gap-2 text-sm font-semibold text-[var(--app-accent)] mb-2">
+                                    <Lightbulb className="lucide lucide-lightbulb w-4 h-4 text-[var(--app-accent)] flex-shrink-0 mt-0.5" />
+                                    Réponse
+                                  </h3>
+                                  <p className="text-lg text-[var(--app-text)] whitespace-pre-wrap">{item.answer}</p>
+                                </div>
+                              )}
 
-                            {openQuestionFeedbackVisible[item.id] && (
-                              <div className="mt-3 border-t border-[var(--app-border)] pt-3">
-                                <p className="text-[11px] font-medium text-[var(--app-muted)]">Discussion / Feedback (optionnel)</p>
-                                <div className="video-feedback-box relative mt-2 rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface-alt)]/60 focus-within:ring-1 focus-within:ring-medical-500">
-                                  <textarea
-                                    rows={3}
-                                    value={openQuestionFeedbackDrafts[item.id] ?? ''}
-                                    onChange={(e) => setOpenQuestionFeedbackDrafts((prev) => ({ ...prev, [item.id]: e.target.value }))}
-                                    className="w-full rounded-2xl bg-transparent px-3 pr-12 py-2.5 text-[11px] leading-relaxed text-[var(--app-text)] placeholder:text-slate-500 focus:outline-none resize-none overflow-y-auto"
-                                    placeholder="Saisir une discussion / feedback (optionnel)..."
-                                  />
+                              {isAnswerVisible && item.reference && (
+                                <div className="video-reference-panel rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-2)] p-4">
+                                  <h3 className="flex items-center gap-2 text-sm font-semibold text-[var(--app-text)] mb-2">
+                                    <BookOpen className="w-4 h-4 text-[var(--app-accent)]" />
+                                    Références
+                                  </h3>
+                                  <p className="text-sm text-[var(--app-muted)] whitespace-pre-wrap">{item.reference}</p>
+                                </div>
+                              )}
+
+                              {openQuestionFeedbackVisible[item.id] && (
+                                <div className="mt-3">
+                                  <p className="text-[11px] font-medium text-[var(--app-muted)]">Discussion / Feedback (optionnel)</p>
+                                  <div className="video-feedback-box relative mt-2 rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface-alt)]/60 focus-within:ring-1 focus-within:ring-medical-500">
+                                    <textarea
+                                      rows={3}
+                                      value={openQuestionFeedbackDrafts[item.id] ?? ''}
+                                      onChange={(e) => setOpenQuestionFeedbackDrafts((prev) => ({ ...prev, [item.id]: e.target.value }))}
+                                      className="w-full rounded-2xl bg-transparent px-3 pr-12 py-2.5 text-[11px] leading-relaxed text-[var(--app-text)] placeholder:text-slate-500 focus:outline-none resize-none overflow-y-auto"
+                                      placeholder="Saisir une discussion / feedback (optionnel)..."
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSendPedagogicalFeedback('openQuestion', item.id)}
+                                      disabled={!(openQuestionFeedbackDrafts[item.id] || '').trim()}
+                                      className="absolute right-2 bottom-2 inline-flex h-8 w-8 items-center justify-center rounded-full cas-validate-btn text-white shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
+                                      aria-label="Envoyer le feedback à l'administration"
+                                    >
+                                      <SendHorizontal className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+
+                              {openQuestions.length > 0 && (
+                                <div className="cas-question-nav flex items-center justify-between gap-2 pt-2 border-t border-[var(--app-border)]">
                                   <button
                                     type="button"
-                                    onClick={() => handleSendPedagogicalFeedback('openQuestion', item.id)}
-                                    disabled={!(openQuestionFeedbackDrafts[item.id] || '').trim()}
-                                    className="absolute right-2 bottom-2 inline-flex h-8 w-8 items-center justify-center rounded-full border border-medical-400/40 bg-medical-600 text-white shadow-sm hover:bg-medical-700 disabled:opacity-40 disabled:cursor-not-allowed"
-                                    aria-label="Envoyer le feedback à l'administration"
+                                    onClick={() => setActiveOpenQuestionIndex((prev) => Math.max(prev - 1, 0))}
+                                    disabled={index === 0}
+                                    className="cas-nav-btn flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--app-border)] text-[var(--app-text)] text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed"
                                   >
-                                    <SendHorizontal className="w-4 h-4" />
+                                    <ChevronLeft className="w-3.5 h-3.5" />
+                                    Précédent
+                                  </button>
+                                  <span className="text-[11px] text-[var(--app-muted)] font-medium tabular-nums">
+                                    {String(index + 1).padStart(2, '0')} / {String(openQuestions.length).padStart(2, '0')}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setActiveOpenQuestionIndex((prev) => Math.min(prev + 1, openQuestions.length - 1))
+                                    }
+                                    disabled={index >= openQuestions.length - 1}
+                                    className="cas-nav-btn cas-nav-btn--accent flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+                                  >
+                                    Suivant
+                                    <ChevronRight className="w-3.5 h-3.5" />
                                   </button>
                                 </div>
-                              </div>
-                            )}
+                              )}
+                            </div>
                           </div>
                         </>
                       );
@@ -1643,25 +1737,6 @@ export default function VideoPage() {
               >
                 {diagrams.length > 0 ? (
                   <>
-                    {diagrams.length > 1 && (
-                      <div className="mb-2 flex gap-2 overflow-x-auto no-scrollbar">
-                        {diagrams.map((_, diagramIndex) => (
-                          <button
-                            key={`diagram-nav-${diagramIndex}`}
-                            type="button"
-                            onClick={() => setActiveDiagramIndex(diagramIndex)}
-                            className={`px-3 py-1.5 rounded-full text-xs font-semibold border whitespace-nowrap transition-colors ${
-                              activeDiagramIndex === diagramIndex
-                                ? 'video-tab-active'
-                                : 'video-tab-inactive'
-                            }`}
-                          >
-                            Figure {diagramIndex + 1}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-
                     {(() => {
                       const index = Math.min(activeDiagramIndex, diagrams.length - 1);
                       const d = diagrams[index];
@@ -1669,19 +1744,32 @@ export default function VideoPage() {
 
                       return (
                         <>
-                          <div key={d.id} className="video-learning-card rounded-xl overflow-hidden border">
-                            <div className="relative aspect-video w-full bg-[var(--app-surface-alt)]">
-                              <p className="video-section-intro text-[var(--app-muted)] mb-2">
-                                Mettez un titre et légendez la figure suivante :
-                              </p>
-                              <Image src={d.imageUrl} alt={d.title} fill className="object-contain" referrerPolicy="no-referrer" />
-                              {/* plus de calque SVG sur l'image : les marqueurs sont uniquement listés en dessous */}
+                          <div key={d.id} className="video-learning-card video-module-card rounded-2xl overflow-hidden border shadow-xl">
+                            <div className="cas-question-header flex items-center gap-2 px-4 py-3 border-b border-[var(--app-border)]">
+                              <span className="cas-q-number flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold">
+                                {String(index + 1).padStart(2, '0')}
+                              </span>
+                              <span className="cas-q-type-badge px-2.5 py-0.5 rounded-full text-[10px] font-semibold">
+                                Schéma interactif
+                              </span>
+                              <h3 className="ml-auto text-sm md:text-base font-semibold text-[var(--app-text)]">
+                                Figure {String(index + 1).padStart(2, '0')}
+                              </h3>
                             </div>
-                            <div className="p-6 space-y-4">
-                              <div className="flex items-center justify-between gap-4 flex-wrap">
-                                <h3 className="text-xl font-semibold text-[var(--app-text)]">
-                                  Figure {index + 1}
-                                </h3>
+                            <div className="p-6 md:p-8 space-y-5">
+                              <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-2)] px-4 py-3">
+                                <p className="video-section-intro text-sm md:text-base text-[var(--app-muted)] flex items-center gap-2">
+                                  <FileText className="w-4 h-4 text-[var(--app-accent)] flex-shrink-0" />
+                                  <span>Mettez un titre et légendez la figure suivante :</span>
+                                </p>
+                              </div>
+
+                              <div className="video-schema-figure relative aspect-video w-full rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-alt)] overflow-hidden">
+                                <Image src={d.imageUrl} alt={d.title} fill className="object-contain" referrerPolicy="no-referrer" />
+                                {/* plus de calque SVG sur l'image : les marqueurs sont uniquement listés en dessous */}
+                              </div>
+
+                              <div className="flex justify-center">
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -1696,7 +1784,7 @@ export default function VideoPage() {
                                       setDiagramFeedbackVisible((prev) => ({ ...prev, [d.id]: false }));
                                     }
                                   }}
-                                  className="px-4 py-2 rounded-lg border border-[var(--app-border)] text-[var(--app-text)] hover:bg-slate-700 text-xs font-medium"
+                                  className="px-4 py-2 rounded-lg cas-nav-btn border text-xs font-medium"
                                 >
                                   {showAnswers ? 'Masquer les réponses' : 'Afficher les réponses'}
                                 </button>
@@ -1704,22 +1792,31 @@ export default function VideoPage() {
 
                               {showAnswers && (
                                 <>
-                                  <p className="text-[var(--app-muted)] font-medium">{d.title}</p>
-                                  {d.description && <p className="text-[var(--app-muted)] mb-2">{d.description}</p>}
+                                  <div className="space-y-2 mt-4">
+                                    <h4 className="flex items-center gap-2 font-medium text-[var(--app-accent)] border-b border-[var(--app-border)] pb-2">
+                                      <FileText className="w-4 h-4" />
+                                      Titre
+                                    </h4>
+                                    <p className="text-lg text-[var(--app-text)] font-medium">{d.title}</p>
+                                    {d.description && <p className="text-lg text-[var(--app-muted)]">{d.description}</p>}
+                                  </div>
 
                                   {d.markers && d.markers.length > 0 && (
                                     <div className="space-y-3 mt-4">
-                                      <h4 className="font-medium text-medical-300 border-b border-[var(--app-border)] pb-2">Légendes</h4>
+                                      <h4 className="flex items-center gap-2 font-medium text-[var(--app-accent)] border-b border-[var(--app-border)] pb-2">
+                                        <ClipboardList className="w-4 h-4" />
+                                        Légendes
+                                      </h4>
                                       <ul className="space-y-3">
                                         {d.markers.map((marker, markerIndex: number) => (
                                           <li key={markerIndex} className="flex gap-3 text-[var(--app-muted)]">
-                                            <span className="flex-shrink-0 w-6 h-6 bg-slate-700 text-white rounded-full flex items-center justify-center text-xs font-bold">
+                                            <span className="video-marker-badge flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold">
                                               {marker.number}
                                             </span>
                                             <div>
-                                              <span className="font-medium text-white">{marker.label}</span>
+                                              <span className="text-lg font-medium text-[var(--app-text)]">{marker.label}</span>
                                               {marker.description && (
-                                                <p className="text-sm text-[var(--app-muted)] mt-1">{marker.description}</p>
+                                                <p className="text-lg text-[var(--app-muted)] mt-1">{marker.description}</p>
                                               )}
                                             </div>
                                           </li>
@@ -1730,12 +1827,15 @@ export default function VideoPage() {
 
                                   {d.reference && (
                                     <div className="video-reference-panel mt-4 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-2)] p-3">
-                                      <h4 className="text-sm font-semibold text-[var(--app-text)] mb-1">Référence</h4>
+                                      <h4 className="flex items-center gap-2 text-sm font-semibold text-[var(--app-text)] mb-1">
+                                        <BookOpen className="w-4 h-4 text-[var(--app-accent)]" />
+                                        Référence
+                                      </h4>
                                       <p className="text-sm text-[var(--app-muted)] whitespace-pre-wrap">{d.reference}</p>
                                     </div>
                                   )}
                                   {diagramFeedbackVisible[d.id] && (
-                                    <div className="mt-3 border-t border-[var(--app-border)] pt-3">
+                                    <div className="mt-3">
                                       <p className="text-[11px] font-medium text-[var(--app-muted)]">Discussion / Feedback (optionnel)</p>
                                       <div className="video-feedback-box relative mt-2 rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface-alt)]/60 focus-within:ring-1 focus-within:ring-medical-500">
                                         <textarea
@@ -1749,7 +1849,7 @@ export default function VideoPage() {
                                           type="button"
                                           onClick={() => handleSendPedagogicalFeedback('diagram', d.id)}
                                           disabled={!(diagramFeedbackDrafts[d.id] || '').trim()}
-                                          className="absolute right-2 bottom-2 inline-flex h-8 w-8 items-center justify-center rounded-full border border-medical-400/40 bg-medical-600 text-white shadow-sm hover:bg-medical-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                                          className="absolute right-2 bottom-2 inline-flex h-8 w-8 items-center justify-center rounded-full cas-validate-btn text-white shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
                                           aria-label="Envoyer le feedback à l'administration"
                                         >
                                           <SendHorizontal className="w-4 h-4" />
@@ -1758,6 +1858,32 @@ export default function VideoPage() {
                                     </div>
                                   )}
                                 </>
+                              )}
+
+                              {diagrams.length > 0 && (
+                                <div className="cas-question-nav flex items-center justify-between gap-2 pt-2 border-t border-[var(--app-border)]">
+                                  <button
+                                    type="button"
+                                    onClick={() => setActiveDiagramIndex((prev) => Math.max(prev - 1, 0))}
+                                    disabled={index === 0}
+                                    className="cas-nav-btn flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--app-border)] text-[var(--app-text)] text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+                                  >
+                                    <ChevronLeft className="w-3.5 h-3.5" />
+                                    Précédent
+                                  </button>
+                                  <span className="text-[11px] text-[var(--app-muted)] font-medium tabular-nums">
+                                    {String(index + 1).padStart(2, '0')} / {String(diagrams.length).padStart(2, '0')}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setActiveDiagramIndex((prev) => Math.min(prev + 1, diagrams.length - 1))}
+                                    disabled={index >= diagrams.length - 1}
+                                    className="cas-nav-btn cas-nav-btn--accent flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+                                  >
+                                    Suivant
+                                    <ChevronRight className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
                               )}
                             </div>
                           </div>
@@ -1782,14 +1908,13 @@ export default function VideoPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] bg-black/95 flex flex-col items-center justify-center p-4 md:p-8"
+            className="video-lightbox-overlay fixed inset-0 z-[100] flex flex-col items-center justify-center p-4 md:p-8"
             onClick={() => setSelectedImage(null)}
           >
-            <div className="absolute top-6 right-6 flex items-center gap-4">
-              <span className="text-white/70 text-sm font-medium hidden md:block">{selectedImage.title}</span>
+            <div className="video-lightbox-topbar absolute top-6 right-6 flex items-center gap-4">
               <button 
                 onClick={() => setSelectedImage(null)}
-                className="p-3 bg-white/10 hover:bg-white/20 rounded-full text-white transition-colors"
+                className="video-lightbox-close p-3 rounded-full transition-colors"
                 title="Fermer l image"
                 aria-label="Fermer l image"
               >
@@ -1800,7 +1925,7 @@ export default function VideoPage() {
             <motion.div 
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              className="relative w-full max-w-6xl h-full max-h-[80vh]"
+              className="video-lightbox-frame relative w-full max-w-6xl h-full max-h-[80vh]"
               onClick={(e) => e.stopPropagation()}
             >
               <Image 
@@ -1813,8 +1938,7 @@ export default function VideoPage() {
             </motion.div>
             
             <div className="mt-8 text-center max-w-2xl">
-              <h3 className="text-xl font-bold text-white mb-2">{selectedImage.title}</h3>
-              <p className="text-white/60 text-sm">Utilisez la molette de la souris pour zoomer ou faites glisser pour explorer les détails.</p>
+              <h3 className="video-lightbox-title text-xl font-bold mb-2">{selectedImage.title}</h3>
             </div>
           </motion.div>
         )}
