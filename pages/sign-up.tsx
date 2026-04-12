@@ -176,7 +176,7 @@ export default function SignUpPage() {
 
         <p className="mt-6 text-sm text-slate-600 text-center">
           Vous avez deja un compte ?{' '}
-          <Link href="/sign-in" className="font-semibold text-medical-700 hover:text-medical-800">
+          <Link href="/sign-in" className="font-semibold text-medical-700 hover:text-medical-800 auth-inline-link">
             Se connecter
           </Link>
         </p>

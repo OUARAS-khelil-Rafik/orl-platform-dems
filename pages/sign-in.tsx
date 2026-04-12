@@ -139,7 +139,7 @@ export default function SignInPage() {
 
         <p className="mt-6 text-sm text-slate-600 text-center">
           Pas de compte ?{' '}
-          <Link href="/sign-up" className="font-semibold" style={{ color: 'color-mix(in oklab, var(--app-accent) 78%, var(--app-text) 22%)' }}>
+          <Link href="/sign-up" className="font-semibold auth-inline-link" style={{ color: 'color-mix(in oklab, var(--app-accent) 78%, var(--app-text) 22%)' }}>
             Creer un compte
           </Link>
         </p>

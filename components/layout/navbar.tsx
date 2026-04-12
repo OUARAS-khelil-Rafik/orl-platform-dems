@@ -125,14 +125,17 @@ export function Navbar() {
     const storedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
     const profileTheme = profile?.defaultMode;
 
+    // Account preference must win on sign-in so each user gets their own default mode.
+    const hasProfileTheme = profileTheme === 'light' || profileTheme === 'dark';
+
     const nextTheme =
-      (storedTheme === 'light' || storedTheme === 'dark'
+      (hasProfileTheme
+        ? profileTheme
+        : storedTheme === 'light' || storedTheme === 'dark'
         ? storedTheme
         : rootTheme === 'light' || rootTheme === 'dark'
           ? rootTheme
-          : profileTheme === 'light' || profileTheme === 'dark'
-            ? profileTheme
-            : 'light') as 'light' | 'dark';
+          : 'light') as 'light' | 'dark';
 
     setThemeMode(nextTheme);
     document.documentElement.setAttribute('data-theme', nextTheme);
@@ -379,6 +382,182 @@ export function Navbar() {
   const unreadNotificationCount = notifications.filter((item) => !notificationReadIds.includes(item.id)).length;
   const visibleNotifications = showAllNotifications ? notifications : notifications.slice(0, 5);
 
+  const notificationTypeLabels: Record<NavbarNotification['type'], string> = {
+    payment: 'Paiement',
+    video: 'Cours',
+    qcm: 'QCM',
+    openQuestion: 'Question',
+    diagram: 'Schema',
+    clinicalCase: 'Cas clinique',
+  };
+
+  const formatNotificationTime = (timestamp: number) => {
+    if (!timestamp || Number.isNaN(timestamp)) return 'A l\'instant';
+
+    const diffMs = timestamp - Date.now();
+    const diffMinutes = Math.round(diffMs / 60000);
+    const rtf = new Intl.RelativeTimeFormat('fr', { numeric: 'auto' });
+
+    if (Math.abs(diffMinutes) < 60) {
+      return rtf.format(diffMinutes, 'minute');
+    }
+
+    const diffHours = Math.round(diffMinutes / 60);
+    if (Math.abs(diffHours) < 24) {
+      return rtf.format(diffHours, 'hour');
+    }
+
+    const diffDays = Math.round(diffHours / 24);
+    if (Math.abs(diffDays) < 7) {
+      return rtf.format(diffDays, 'day');
+    }
+
+    return new Date(timestamp).toLocaleDateString('fr-FR', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    });
+  };
+
+  const getTypeToneClass = (type: NavbarNotification['type']) => {
+    switch (type) {
+      case 'payment':
+        return 'notification-type-chip tone-payment';
+      case 'video':
+        return 'notification-type-chip tone-video';
+      case 'qcm':
+        return 'notification-type-chip tone-qcm';
+      case 'openQuestion':
+        return 'notification-type-chip tone-open-question';
+      case 'diagram':
+        return 'notification-type-chip tone-diagram';
+      case 'clinicalCase':
+        return 'notification-type-chip tone-clinical-case';
+      default:
+        return 'notification-type-chip';
+    }
+  };
+
+  const renderNotificationsPanel = (mode: 'desktop' | 'mobile') => (
+    <div
+      className={`notification-panel-shell ${mode === 'desktop' ? 'w-[400px] max-w-[calc(100vw-2rem)]' : 'w-full'}`}
+      role="dialog"
+      aria-label="Liste des notifications"
+    >
+      <div className="notification-panel-header">
+        <div className="flex items-center gap-3">
+          <div className="notification-panel-bell-wrap">
+            <Bell className="h-4 w-4" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-[var(--app-text)]">Notifications</p>
+            <span className="text-xs text-[var(--app-muted)]">
+              {unreadNotificationCount} non lue{unreadNotificationCount > 1 ? 's' : ''}
+            </span>
+          </div>
+        </div>
+
+        {notifications.length > 0 && (
+          <div className="ml-auto flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={markAllNotificationsRead}
+              disabled={unreadNotificationCount === 0}
+              className="notification-header-action"
+            >
+              Tout lire
+            </button>
+            <button
+              type="button"
+              onClick={deleteAllNotifications}
+              className="notification-header-action danger"
+            >
+              Tout supprimer
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="notification-panel-body">
+        {isLoadingNotifications ? (
+          <div className="notification-empty-state">
+            <p className="text-sm font-medium text-[var(--app-text)]">Chargement des notifications...</p>
+            <p className="text-xs text-[var(--app-muted)]">Un instant, nous recuperons les nouveautes.</p>
+          </div>
+        ) : visibleNotifications.length === 0 ? (
+          <div className="notification-empty-state">
+            <p className="text-sm font-medium text-[var(--app-text)]">Aucune notification</p>
+            <p className="text-xs text-[var(--app-muted)]">Les nouvelles activites apparaitront ici.</p>
+          </div>
+        ) : (
+          <ul className="space-y-2 p-2">
+            {visibleNotifications.map((notification) => {
+              const isRead = notificationReadIds.includes(notification.id);
+
+              return (
+                <li key={notification.id} className={`notification-card ${isRead ? 'is-read' : 'is-unread'}`}>
+                  <div className="flex min-w-0 items-start gap-3">
+                    <button
+                      type="button"
+                      onClick={() => openNotification(notification)}
+                      className="notification-card-main"
+                      title="Ouvrir la notification"
+                      aria-label="Ouvrir la notification"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className={getTypeToneClass(notification.type)}>{notificationTypeLabels[notification.type]}</span>
+                        <span className="notification-time">{formatNotificationTime(notification.createdAt)}</span>
+                      </div>
+                      <p className="notification-title mt-1">{notification.title}</p>
+                      <p className="notification-desc line-clamp-2">{notification.description}</p>
+                    </button>
+
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          toggleNotificationRead(notification.id);
+                        }}
+                        className={`notification-action mark-read ${isRead ? 'read' : 'unread'}`}
+                        title={isRead ? 'Marquer non lue' : 'Marquer lue'}
+                        aria-label={isRead ? 'Marquer non lue' : 'Marquer lue'}
+                      >
+                        {isRead ? <MailOpen className="h-4 w-4" /> : <Mail className="h-4 w-4" />}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          deleteNotification(notification.id);
+                        }}
+                        className="notification-action delete"
+                        title="Supprimer"
+                        aria-label="Supprimer"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+
+      {notifications.length > 5 && (
+        <div className="notification-panel-footer">
+          <button
+            type="button"
+            onClick={() => setShowAllNotifications((v) => !v)}
+            className="notification-footer-action"
+          >
+            {showAllNotifications ? 'Voir moins' : 'Voir toutes les notifications'}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+
   useEffect(() => {
     if (!user) {
       setNotificationReadIds([]);
@@ -558,101 +737,19 @@ export function Navbar() {
                     )}
                   </button>
 
-                  {isNotificationsOpen && (
-                    <div className="absolute right-0 top-11 w-[360px] max-w-[calc(100vw-2rem)] rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] shadow-lg py-2 z-50">
-                      <div className="px-3 pb-2 border-b border-[var(--app-border)] flex flex-wrap items-start justify-between gap-2">
-                        <div>
-                          <p className="text-sm font-semibold text-[var(--app-text)]">Notifications</p>
-                          <span className="text-xs text-[var(--app-muted)]">{unreadNotificationCount} non lue(s)</span>
-                        </div>
-                        {notifications.length > 0 && (
-                          <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-                            <button
-                              type="button"
-                              onClick={markAllNotificationsRead}
-                              disabled={unreadNotificationCount === 0}
-                              className="text-xs font-medium text-[var(--app-accent)] hover:opacity-85 disabled:opacity-40 disabled:cursor-not-allowed"
-                            >
-                              Marquer tout lu
-                            </button>
-                            <button
-                              type="button"
-                              onClick={deleteAllNotifications}
-                              className="text-xs font-medium text-[var(--app-danger)] hover:opacity-85"
-                            >
-                              Supprimer tous
-                            </button>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="max-h-80 overflow-y-auto">
-                        {isLoadingNotifications ? (
-                          <p className="px-3 py-4 text-sm text-[var(--app-muted)]">Chargement...</p>
-                        ) : visibleNotifications.length === 0 ? (
-                          <p className="px-3 py-4 text-sm text-[var(--app-muted)]">Aucune notification.</p>
-                        ) : (
-                          <ul className="divide-y divide-[var(--app-border)]">
-                            {visibleNotifications.map((notification) => {
-                              const isRead = notificationReadIds.includes(notification.id);
-                              return (
-                                <li key={notification.id} className={`px-3 py-2 notification-item ${isRead ? 'read' : 'unread'}`}>
-                                  <div className="flex items-start justify-between gap-3">
-                                    <button
-                                      type="button"
-                                      onClick={() => openNotification(notification)}
-                                      className="min-w-0 flex-1 text-left rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--app-accent)]"
-                                      title="Ouvrir la notification"
-                                      aria-label="Ouvrir la notification"
-                                    >
-                                      <p className="text-sm font-medium truncate notification-title">{notification.title}</p>
-                                      <p className="text-xs line-clamp-2 notification-desc">{notification.description}</p>
-                                    </button>
-                                    <div className="flex items-center gap-1 shrink-0">
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          toggleNotificationRead(notification.id);
-                                        }}
-                                        className={`notification-action mark-read ${isRead ? 'read' : 'unread'}`}
-                                        title={isRead ? 'Marquer non lue' : 'Marquer lue'}
-                                        aria-label={isRead ? 'Marquer non lue' : 'Marquer lue'}
-                                      >
-                                        {isRead ? <MailOpen className="h-4 w-4" /> : <Mail className="h-4 w-4" />}
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          deleteNotification(notification.id);
-                                        }}
-                                        className="notification-action delete"
-                                        title="Supprimer"
-                                        aria-label="Supprimer"
-                                      >
-                                        <Trash2 className="h-4 w-4" />
-                                      </button>
-                                    </div>
-                                  </div>
-                                </li>
-                              );
-                            })}
-                          </ul>
-                        )}
-                      </div>
-
-                      {notifications.length > 5 && (
-                        <div className="px-3 pt-2 border-t border-[var(--app-border)]">
-                          <button
-                            type="button"
-                            onClick={() => setShowAllNotifications((v) => !v)}
-                            className="text-xs font-medium text-[var(--app-accent)] hover:opacity-85"
-                          >
-                            {showAllNotifications ? 'Voir moins' : 'Voir toutes les notifications'}
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  )}
+                  <AnimatePresence>
+                    {isNotificationsOpen && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -8, scale: 0.98 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: -8, scale: 0.98 }}
+                        transition={{ duration: 0.18, ease: 'easeOut' }}
+                        className="absolute right-0 top-11 z-50"
+                      >
+                        {renderNotificationsPanel('desktop')}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
               )}
               {user && !isAdmin && (
@@ -771,6 +868,82 @@ export function Navbar() {
                 </>
               )}
             </div>
+          </div>
+
+          {/* Actions à droite (mobile / tablet) */}
+          <div className="flex lg:hidden items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => {
+                setIsSearchOpen(true);
+                setIsNotificationsOpen(false);
+              }}
+              className="no-fly-style p-2 rounded-full bg-white/75 text-[var(--app-muted)] hover:text-[var(--app-text)] hover:bg-white transition-colors"
+              title="Ouvrir la recherche"
+              aria-label="Ouvrir la recherche"
+            >
+              <Search className="h-5 w-5" />
+            </button>
+
+            <button
+              type="button"
+              onClick={toggleThemeMode}
+              className="no-fly-style p-2 rounded-full bg-white/75 text-[var(--app-muted)] hover:text-[var(--app-text)] hover:bg-white transition-colors"
+              title={themeMode === 'dark' ? 'Passer en mode clair' : 'Passer en mode sombre'}
+              aria-label={themeMode === 'dark' ? 'Passer en mode clair' : 'Passer en mode sombre'}
+            >
+              {themeMode === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+            </button>
+
+            {user && (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsNotificationsOpen((v) => !v);
+                  setIsMobileMenuOpen(false);
+                  setIsUserMenuOpen(false);
+                  setShowAllNotifications(false);
+                }}
+                className="no-fly-style relative p-2 rounded-full bg-white/75 text-[var(--app-muted)] hover:text-[var(--app-text)] hover:bg-white transition-colors"
+                title="Notifications"
+                aria-label="Notifications"
+              >
+                <Bell className="h-5 w-5" />
+                {unreadNotificationCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 bg-red-500 text-white text-[10px] font-bold flex items-center justify-center rounded-full">
+                    {unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}
+                  </span>
+                )}
+              </button>
+            )}
+
+            {user && !isAdmin && (
+              <Link
+                href="/checkout"
+                className="relative p-2 no-fly-style rounded-full bg-white/75 text-[var(--app-muted)] hover:text-[var(--app-text)] hover:bg-white transition-colors"
+              >
+                <ShoppingCart className="h-5 w-5" />
+                {itemCount > 0 && (
+                  <span className="absolute top-0 right-0 w-4 h-4 bg-red-500 text-white text-[10px] font-bold flex items-center justify-center rounded-full">
+                    {itemCount}
+                  </span>
+                )}
+              </Link>
+            )}
+
+            <button
+              type="button"
+              onClick={() => {
+                setIsMobileMenuOpen(true);
+                setIsNotificationsOpen(false);
+                setIsUserMenuOpen(false);
+              }}
+              className="no-fly-style p-2 rounded-full bg-white/75 text-[var(--app-muted)] hover:text-[var(--app-text)] hover:bg-white transition-colors"
+              title="Ouvrir le menu"
+              aria-label="Ouvrir le menu"
+            >
+              <Menu className="h-5 w-5" />
+            </button>
           </div>
 
         {/* Mobile Nav Drawer */}
@@ -911,11 +1084,20 @@ export function Navbar() {
         )}
         </AnimatePresence>
 
-        {user && isNotificationsOpen && (
-          <div ref={notificationMobileRef} className="lg:hidden absolute top-16 right-4 left-4 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] shadow-lg py-2 z-50">
-            {/* ...existing code... (notifications mobile) */}
-          </div>
-        )}
+        <AnimatePresence>
+          {user && isNotificationsOpen && (
+            <motion.div
+              ref={notificationMobileRef}
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.2, ease: 'easeOut' }}
+              className="lg:hidden absolute top-24 right-4 left-4 z-50"
+            >
+              {renderNotificationsPanel('mobile')}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </header>
     <SearchModal isOpen={isSearchOpen} onClose={() => setIsSearchOpen(false)} />

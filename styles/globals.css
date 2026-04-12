@@ -831,31 +831,199 @@ html[data-theme='dark'] .from-slate-900\/60 {
     border-color: color-mix(in oklab, var(--app-accent) 46%, var(--app-border) 54%);
   }
 
-  /* Notification item / action styles (extracted from inline styles in navbar) */
-  .notification-item {
-    border-radius: 8px;
+  /* Notification panel */
+  .notification-panel-shell {
+    border-radius: 16px;
+    border: 1px solid color-mix(in oklab, var(--app-border) 82%, transparent);
+    background:
+      radial-gradient(circle at 85% -20%, color-mix(in oklab, var(--app-accent) 18%, transparent), transparent 55%),
+      linear-gradient(180deg, color-mix(in oklab, var(--app-surface) 97%, white 3%), var(--app-surface));
+    box-shadow: 0 22px 44px -26px color-mix(in oklab, #000 44%, transparent);
+    overflow: hidden;
   }
 
-  .notification-item.read {
-    background-color: color-mix(in oklab, var(--app-surface) 92%, var(--app-border) 8%);
+  .notification-panel-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 0.75rem 0.65rem;
+    border-bottom: 1px solid color-mix(in oklab, var(--app-border) 78%, transparent);
   }
 
-  .notification-item.unread {
-    background-color: color-mix(in oklab, var(--app-accent) 14%, var(--app-surface) 86%);
+  .notification-panel-bell-wrap {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.875rem;
+    height: 1.875rem;
+    border-radius: 999px;
+    color: var(--app-accent);
+    border: 1px solid color-mix(in oklab, var(--app-accent) 34%, transparent);
+    background: color-mix(in oklab, var(--app-accent) 14%, var(--app-surface) 86%);
+  }
+
+  .notification-header-action {
+    border: 1px solid color-mix(in oklab, var(--app-border) 82%, transparent);
+    background: color-mix(in oklab, var(--app-surface) 92%, white 8%);
+    color: var(--app-accent);
+    border-radius: 999px;
+    padding: 0.26rem 0.62rem;
+    font-size: 0.69rem;
+    font-weight: 700;
+    transition: transform 140ms ease, border-color 140ms ease, background-color 140ms ease;
+  }
+
+  .notification-header-action:hover {
+    transform: translateY(-1px);
+    border-color: color-mix(in oklab, var(--app-accent) 48%, var(--app-border) 52%);
+  }
+
+  .notification-header-action:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  .notification-header-action.danger {
+    color: color-mix(in oklab, var(--app-danger) 86%, var(--app-text) 14%);
+    border-color: color-mix(in oklab, var(--app-danger) 28%, var(--app-border) 72%);
+    background: color-mix(in oklab, var(--app-danger) 8%, var(--app-surface) 92%);
+  }
+
+  .notification-panel-body {
+    max-height: min(24rem, 62vh);
+    overflow-y: auto;
+    padding: 0.25rem;
+  }
+
+  .notification-empty-state {
+    margin: 0.65rem;
+    border: 1px dashed color-mix(in oklab, var(--app-border) 72%, transparent);
+    border-radius: 12px;
+    background: color-mix(in oklab, var(--app-surface) 94%, white 6%);
+    min-height: 7.25rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.25rem;
+    text-align: center;
+    padding: 0.85rem;
+  }
+
+  .notification-card {
+    border-radius: 12px;
+    border: 1px solid color-mix(in oklab, var(--app-border) 78%, transparent);
+    background: color-mix(in oklab, var(--app-surface) 93%, white 7%);
+    padding: 0.6rem;
+    transition: border-color 160ms ease, transform 160ms ease, background-color 160ms ease;
+  }
+
+  .notification-card:hover {
+    transform: translateY(-1px);
+    border-color: color-mix(in oklab, var(--app-accent) 34%, var(--app-border) 66%);
+  }
+
+  .notification-card.is-unread {
+    border-color: color-mix(in oklab, var(--app-accent) 42%, var(--app-border) 58%);
+    background: linear-gradient(
+      100deg,
+      color-mix(in oklab, var(--app-accent) 14%, var(--app-surface) 86%),
+      color-mix(in oklab, var(--app-surface) 92%, white 8%)
+    );
+  }
+
+  .notification-card-main {
+    min-width: 0;
+    flex: 1;
+    text-align: left;
+    border-radius: 10px;
+    padding: 0.1rem 0.15rem;
+    outline: none;
+  }
+
+  .notification-card-main:focus-visible {
+    box-shadow: 0 0 0 2px color-mix(in oklab, var(--app-accent) 62%, transparent);
+  }
+
+  .notification-type-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    border: 1px solid color-mix(in oklab, var(--app-border) 78%, transparent);
+    padding: 0.08rem 0.45rem;
+    font-size: 0.64rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: color-mix(in oklab, var(--app-muted) 86%, var(--app-text) 14%);
+    background: color-mix(in oklab, var(--app-surface) 92%, white 8%);
+  }
+
+  .notification-type-chip.tone-payment {
+    color: color-mix(in oklab, #7c2d12 74%, var(--app-text) 26%);
+    border-color: color-mix(in oklab, #f97316 40%, var(--app-border) 60%);
+    background: color-mix(in oklab, #f97316 14%, var(--app-surface) 86%);
+  }
+
+  .notification-type-chip.tone-video {
+    color: color-mix(in oklab, #0f766e 78%, var(--app-text) 22%);
+    border-color: color-mix(in oklab, #14b8a6 42%, var(--app-border) 58%);
+    background: color-mix(in oklab, #14b8a6 14%, var(--app-surface) 86%);
+  }
+
+  .notification-type-chip.tone-qcm {
+    color: color-mix(in oklab, #1d4ed8 82%, var(--app-text) 18%);
+    border-color: color-mix(in oklab, #3b82f6 42%, var(--app-border) 58%);
+    background: color-mix(in oklab, #3b82f6 12%, var(--app-surface) 88%);
+  }
+
+  .notification-type-chip.tone-open-question {
+    color: color-mix(in oklab, #7c3aed 82%, var(--app-text) 18%);
+    border-color: color-mix(in oklab, #a855f7 44%, var(--app-border) 56%);
+    background: color-mix(in oklab, #a855f7 14%, var(--app-surface) 86%);
+  }
+
+  .notification-type-chip.tone-diagram {
+    color: color-mix(in oklab, #0369a1 76%, var(--app-text) 24%);
+    border-color: color-mix(in oklab, #0ea5e9 40%, var(--app-border) 60%);
+    background: color-mix(in oklab, #0ea5e9 13%, var(--app-surface) 87%);
+  }
+
+  .notification-type-chip.tone-clinical-case {
+    color: color-mix(in oklab, #b45309 82%, var(--app-text) 18%);
+    border-color: color-mix(in oklab, #f59e0b 44%, var(--app-border) 56%);
+    background: color-mix(in oklab, #f59e0b 14%, var(--app-surface) 86%);
+  }
+
+  .notification-time {
+    font-size: 0.67rem;
+    color: color-mix(in oklab, var(--app-muted) 84%, var(--app-text) 16%);
   }
 
   .notification-title {
     color: var(--app-text);
+    font-size: 0.86rem;
+    font-weight: 700;
+    line-height: 1.3;
   }
 
   .notification-desc {
-    color: color-mix(in oklab, var(--app-text) 72%, var(--app-muted) 28%);
+    margin-top: 0.2rem;
+    color: color-mix(in oklab, var(--app-text) 70%, var(--app-muted) 30%);
+    font-size: 0.75rem;
+    line-height: 1.35;
   }
 
   .notification-action {
     padding: 0.375rem;
-    border-radius: 6px;
-    transition: background-color 160ms ease, color 160ms ease;
+    border-radius: 8px;
+    border: 1px solid color-mix(in oklab, var(--app-border) 78%, transparent);
+    transition: background-color 160ms ease, color 160ms ease, transform 160ms ease;
+  }
+
+  .notification-action:hover {
+    transform: translateY(-1px);
   }
 
   .notification-action.mark-read.unread {
@@ -873,13 +1041,213 @@ html[data-theme='dark'] .from-slate-900\/60 {
     background-color: color-mix(in oklab, var(--app-danger) 20%, var(--app-surface) 80%);
   }
 
-  /* Dark mode notification adjustments */
-  html[data-theme='dark'] .notification-item.read {
-    background-color: color-mix(in oklab, var(--app-deep-surface) 86%, rgba(255,255,255,0.02));
+  .notification-panel-footer {
+    padding: 0.45rem 0.75rem 0.65rem;
+    border-top: 1px solid color-mix(in oklab, var(--app-border) 78%, transparent);
   }
 
-  html[data-theme='dark'] .notification-item.unread {
-    background-color: color-mix(in oklab, var(--app-accent) 12%, rgba(255,255,255,0.02));
+  .notification-footer-action {
+    width: 100%;
+    border-radius: 10px;
+    border: 1px solid color-mix(in oklab, var(--app-border) 82%, transparent);
+    background: color-mix(in oklab, var(--app-surface) 94%, white 6%);
+    color: var(--app-accent);
+    font-size: 0.76rem;
+    font-weight: 700;
+    padding: 0.45rem 0.75rem;
+    transition: border-color 150ms ease, background-color 150ms ease;
+  }
+
+  .notification-footer-action:hover {
+    border-color: color-mix(in oklab, var(--app-accent) 42%, var(--app-border) 58%);
+    background: color-mix(in oklab, var(--app-accent) 8%, var(--app-surface) 92%);
+  }
+
+  /* Dark mode notification adjustments */
+  html[data-theme='dark'] .notification-panel-shell {
+    border-color: color-mix(in oklab, var(--app-accent) 26%, var(--app-border) 74%);
+    background:
+      radial-gradient(circle at 82% -18%, color-mix(in oklab, var(--app-accent) 26%, transparent), transparent 54%),
+      linear-gradient(180deg, color-mix(in oklab, var(--app-deep-surface) 90%, rgba(255,255,255,0.03)), color-mix(in oklab, var(--app-deep-surface) 96%, #000 4%));
+    box-shadow:
+      0 28px 54px -30px color-mix(in oklab, #000 74%, transparent),
+      0 0 0 1px color-mix(in oklab, var(--app-accent) 20%, transparent);
+  }
+
+  html[data-theme='dark'] .notification-panel-header,
+  html[data-theme='dark'] .notification-panel-footer {
+    border-color: color-mix(in oklab, var(--app-accent) 22%, var(--app-border) 78%);
+  }
+
+  html[data-theme='dark'] .notification-panel-bell-wrap {
+    color: color-mix(in oklab, var(--app-accent) 90%, white 10%);
+    border-color: color-mix(in oklab, var(--app-accent) 44%, var(--app-border) 56%);
+    background: color-mix(in oklab, var(--app-accent) 18%, var(--app-deep-surface) 82%);
+  }
+
+  html[data-theme='dark'] .notification-header-action {
+    color: color-mix(in oklab, var(--app-accent) 86%, white 14%);
+    border-color: color-mix(in oklab, var(--app-border) 66%, rgba(255,255,255,0.08));
+    background: color-mix(in oklab, var(--app-deep-surface) 92%, rgba(255,255,255,0.02));
+  }
+
+  html[data-theme='dark'] .notification-header-action:hover {
+    border-color: color-mix(in oklab, var(--app-accent) 52%, var(--app-border) 48%);
+    background: color-mix(in oklab, var(--app-accent) 12%, var(--app-deep-surface) 88%);
+  }
+
+  html[data-theme='dark'] .notification-header-action.danger {
+    color: color-mix(in oklab, var(--app-danger) 80%, white 20%);
+    border-color: color-mix(in oklab, var(--app-danger) 34%, var(--app-border) 66%);
+    background: color-mix(in oklab, var(--app-danger) 14%, var(--app-deep-surface) 86%);
+  }
+
+  html[data-theme='dark'] .notification-empty-state {
+    border-color: color-mix(in oklab, var(--app-border) 62%, rgba(255,255,255,0.08));
+    background: color-mix(in oklab, var(--app-deep-surface) 90%, rgba(255,255,255,0.02));
+  }
+
+  html[data-theme='dark'] .notification-card {
+    background: linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--app-deep-surface) 92%, rgba(255,255,255,0.02)),
+      color-mix(in oklab, var(--app-deep-surface) 98%, #000 2%)
+    );
+    border-color: color-mix(in oklab, var(--app-border) 74%, rgba(255,255,255,0.06));
+  }
+
+  html[data-theme='dark'] .notification-card:hover {
+    border-color: color-mix(in oklab, var(--app-accent) 56%, var(--app-border) 44%);
+    background: color-mix(in oklab, var(--app-accent) 12%, var(--app-deep-surface) 88%);
+    box-shadow: 0 8px 22px -18px color-mix(in oklab, var(--app-accent) 60%, transparent);
+  }
+
+  html[data-theme='dark'] .notification-card.is-unread {
+    background: linear-gradient(
+      102deg,
+      color-mix(in oklab, var(--app-accent) 20%, var(--app-deep-surface) 80%),
+      color-mix(in oklab, var(--app-deep-surface) 92%, rgba(255,255,255,0.04))
+    );
+    border-color: color-mix(in oklab, var(--app-accent) 60%, var(--app-border) 40%);
+    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--app-accent) 20%, transparent);
+  }
+
+  html[data-theme='dark'] .notification-type-chip {
+    color: color-mix(in oklab, var(--app-deep-text) 84%, var(--app-muted) 16%);
+    border-color: color-mix(in oklab, var(--app-border) 66%, rgba(255,255,255,0.08));
+    background: color-mix(in oklab, var(--app-deep-surface) 88%, rgba(255,255,255,0.04));
+  }
+
+  html[data-theme='dark'] .notification-type-chip.tone-payment {
+    color: color-mix(in oklab, #fdba74 84%, white 16%);
+    border-color: color-mix(in oklab, #f97316 48%, var(--app-border) 52%);
+    background: color-mix(in oklab, #f97316 18%, var(--app-deep-surface) 82%);
+  }
+
+  html[data-theme='dark'] .notification-type-chip.tone-video {
+    color: color-mix(in oklab, #5eead4 84%, white 16%);
+    border-color: color-mix(in oklab, #14b8a6 46%, var(--app-border) 54%);
+    background: color-mix(in oklab, #14b8a6 18%, var(--app-deep-surface) 82%);
+  }
+
+  html[data-theme='dark'] .notification-type-chip.tone-qcm {
+    color: color-mix(in oklab, #93c5fd 86%, white 14%);
+    border-color: color-mix(in oklab, #3b82f6 48%, var(--app-border) 52%);
+    background: color-mix(in oklab, #3b82f6 18%, var(--app-deep-surface) 82%);
+  }
+
+  html[data-theme='dark'] .notification-type-chip.tone-open-question {
+    color: color-mix(in oklab, #d8b4fe 86%, white 14%);
+    border-color: color-mix(in oklab, #a855f7 50%, var(--app-border) 50%);
+    background: color-mix(in oklab, #a855f7 18%, var(--app-deep-surface) 82%);
+  }
+
+  html[data-theme='dark'] .notification-type-chip.tone-diagram {
+    color: color-mix(in oklab, #7dd3fc 86%, white 14%);
+    border-color: color-mix(in oklab, #0ea5e9 48%, var(--app-border) 52%);
+    background: color-mix(in oklab, #0ea5e9 18%, var(--app-deep-surface) 82%);
+  }
+
+  html[data-theme='dark'] .notification-type-chip.tone-clinical-case {
+    color: color-mix(in oklab, #fcd34d 86%, white 14%);
+    border-color: color-mix(in oklab, #f59e0b 50%, var(--app-border) 50%);
+    background: color-mix(in oklab, #f59e0b 18%, var(--app-deep-surface) 82%);
+  }
+
+  html[data-theme='dark'] .notification-time {
+    color: color-mix(in oklab, var(--app-muted) 64%, var(--app-deep-text) 36%);
+  }
+
+  html[data-theme='dark'] .notification-title {
+    color: color-mix(in oklab, var(--app-deep-text) 96%, white 4%);
+  }
+
+  html[data-theme='dark'] .notification-desc {
+    color: color-mix(in oklab, var(--app-deep-text) 76%, var(--app-muted) 24%);
+  }
+
+  html[data-theme='dark'] .notification-action {
+    border-color: color-mix(in oklab, var(--app-border) 74%, rgba(255,255,255,0.08));
+    box-shadow: inset 0 1px 0 color-mix(in oklab, white 10%, transparent);
+  }
+
+  html[data-theme='dark'] .notification-action:focus-visible {
+    outline: none;
+    border-color: color-mix(in oklab, var(--app-accent) 62%, var(--app-border) 38%);
+    box-shadow:
+      0 0 0 2px color-mix(in oklab, var(--app-accent) 24%, transparent),
+      inset 0 1px 0 color-mix(in oklab, white 12%, transparent);
+  }
+
+  html[data-theme='dark'] .notification-action svg {
+    stroke-width: 2.1;
+  }
+
+  html[data-theme='dark'] .notification-action.mark-read.unread {
+    color: color-mix(in oklab, #67e8f9 78%, #bbf7d0 22%);
+    background-color: color-mix(in oklab, #0e7490 30%, var(--app-deep-surface) 70%);
+    border-color: color-mix(in oklab, #22d3ee 40%, var(--app-border) 60%);
+  }
+
+  html[data-theme='dark'] .notification-action.mark-read.unread:hover {
+    color: color-mix(in oklab, #a5f3fc 88%, white 12%);
+    background-color: color-mix(in oklab, #0891b2 42%, var(--app-deep-surface) 58%);
+    border-color: color-mix(in oklab, #22d3ee 58%, var(--app-border) 42%);
+  }
+
+  html[data-theme='dark'] .notification-action.mark-read.read {
+    color: color-mix(in oklab, #fde68a 84%, white 16%);
+    background-color: color-mix(in oklab, #a16207 30%, var(--app-deep-surface) 70%);
+    border-color: color-mix(in oklab, #f59e0b 42%, var(--app-border) 58%);
+  }
+
+  html[data-theme='dark'] .notification-action.mark-read.read:hover {
+    color: color-mix(in oklab, #fef3c7 86%, white 14%);
+    background-color: color-mix(in oklab, #ca8a04 40%, var(--app-deep-surface) 60%);
+    border-color: color-mix(in oklab, #fbbf24 56%, var(--app-border) 44%);
+  }
+
+  html[data-theme='dark'] .notification-action.delete {
+    color: color-mix(in oklab, #fda4af 84%, white 16%);
+    background-color: color-mix(in oklab, #be123c 26%, var(--app-deep-surface) 74%);
+    border-color: color-mix(in oklab, #fb7185 42%, var(--app-border) 58%);
+  }
+
+  html[data-theme='dark'] .notification-action.delete:hover {
+    color: color-mix(in oklab, #fecdd3 86%, white 14%);
+    background-color: color-mix(in oklab, #e11d48 38%, var(--app-deep-surface) 62%);
+    border-color: color-mix(in oklab, #fb7185 58%, var(--app-border) 42%);
+  }
+
+  html[data-theme='dark'] .notification-footer-action {
+    color: color-mix(in oklab, var(--app-accent) 86%, white 14%);
+    border-color: color-mix(in oklab, var(--app-accent) 30%, var(--app-border) 70%);
+    background: color-mix(in oklab, var(--app-deep-surface) 92%, rgba(255,255,255,0.03));
+  }
+
+  html[data-theme='dark'] .notification-footer-action:hover {
+    border-color: color-mix(in oklab, var(--app-accent) 60%, var(--app-border) 40%);
+    background: color-mix(in oklab, var(--app-accent) 16%, var(--app-deep-surface) 84%);
   }
 
 
@@ -1178,6 +1546,31 @@ html[data-theme='dark'] .from-slate-900\/60 {
   html[data-theme='dark'] .fly-drawer-shell a[href*="/sign-in"] {
     background-color: color-mix(in oklab, var(--color-medical-600) 92%, black 8%) !important;
     color: white !important;
+  }
+
+  /* Keep inline auth helper links as text-only links (no button-like background). */
+  html[data-theme='dark'] a.auth-inline-link[href*="/sign-up"],
+  html[data-theme='dark'] a.auth-inline-link[href*="/sign-in"] {
+    background: none !important;
+    background-color: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    color: inherit;
+    transform: none !important;
+    filter: none !important;
+  }
+
+  html[data-theme='dark'] a.auth-inline-link[href*="/sign-up"] {
+    color: color-mix(in oklab, var(--app-accent) 78%, var(--app-text) 22%) !important;
+  }
+
+  html[data-theme='dark'] a.auth-inline-link[href*="/sign-in"] {
+    color: color-mix(in oklab, var(--app-accent) 78%, var(--app-text) 22%) !important;
+  }
+
+  html[data-theme='dark'] a.auth-inline-link[href*="/sign-up"]:hover,
+  html[data-theme='dark'] a.auth-inline-link[href*="/sign-in"]:hover {
+    text-decoration: underline;
   }
 
   /* Mobile drawer link color adjustments */

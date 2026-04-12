@@ -997,14 +997,14 @@ export default function VideoPage() {
                                                       rowClass += 'video-option-row--wrong';
                                                     } else {
                                                       rowClass +=
-                                                        'bg-[var(--app-surface-2)] border-[var(--app-border)] text-[var(--app-muted)] opacity-70';
+                                                        'bg-transparent border-[var(--app-border)] text-[var(--app-muted)] opacity-70';
                                                     }
                                                   } else if (isSelected) {
                                                     rowClass +=
                                                       'cas-option-selected';
                                                   } else {
                                                     rowClass +=
-                                                      'bg-[var(--app-surface-2)] border-[var(--app-border)] text-[var(--app-text)] hover:bg-[var(--app-surface-alt)] hover:border-[var(--app-accent)]/40';
+                                                      'bg-transparent border-[var(--app-border)] text-[var(--app-text)] hover:bg-transparent hover:border-[var(--app-accent)]/40';
                                                   }
 
                                                   const handleClick = () => {
@@ -1419,13 +1419,13 @@ export default function VideoPage() {
                                         rowClass += 'video-option-row--wrong';
                                       } else {
                                         rowClass +=
-                                          'bg-[var(--app-surface-2)] border-[var(--app-border)] text-[var(--app-muted)] opacity-70';
+                                            'bg-transparent border-[var(--app-border)] text-[var(--app-muted)] opacity-70';
                                       }
                                     } else if (isSelected) {
                                       rowClass += 'cas-option-selected';
                                     } else {
                                       rowClass +=
-                                        'bg-[var(--app-surface-2)] border-[var(--app-border)] text-[var(--app-text)] hover:bg-[var(--app-surface-alt)] hover:border-[var(--app-accent)]/40';
+                                          'bg-transparent border-[var(--app-border)] text-[var(--app-text)] hover:bg-transparent hover:border-[var(--app-accent)]/40';
                                     }
 
                                     return (
