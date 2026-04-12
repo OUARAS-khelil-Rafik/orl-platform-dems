@@ -1343,10 +1343,11 @@ export default function PlanningPage() {
         >
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
             <div>
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: 'var(--app-muted)' }}>
+              <label htmlFor="specialty-filter" className="mb-1 block text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: 'var(--app-muted)' }}>
                 Spécialité
               </label>
               <select
+                id="specialty-filter"
                 value={filters.specialty}
                 onChange={(event) => {
                   const nextSpecialty = event.target.value as PlanningFilterState['specialty'];
@@ -1359,6 +1360,7 @@ export default function PlanningPage() {
                 }}
                 className="w-full rounded-xl border px-3 py-2 text-sm"
                 style={{ borderColor: 'var(--app-border)', backgroundColor: 'var(--app-surface)', color: 'var(--app-text)' }}
+                title="Filtrer par spécialité"
               >
                 <option value="all">Toutes les spécialités</option>
                 <option value="otologie">Otologie</option>
@@ -1368,14 +1370,16 @@ export default function PlanningPage() {
             </div>
 
             <div>
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: 'var(--app-muted)' }}>
+              <label htmlFor="course-type-filter" className="mb-1 block text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: 'var(--app-muted)' }}>
                 Type du cours
               </label>
               <select
+                id="course-type-filter"
                 value={filters.courseType}
                 onChange={(event) => setFilters((prev) => ({ ...prev, courseType: event.target.value }))}
                 className="w-full rounded-xl border px-3 py-2 text-sm"
                 style={{ borderColor: 'var(--app-border)', backgroundColor: 'var(--app-surface)', color: 'var(--app-text)' }}
+                title="Filtrer par type de cours"
               >
                 <option value="all">Tous les types</option>
                 {availableCourseTypes.map((type) => (
@@ -1387,15 +1391,17 @@ export default function PlanningPage() {
             </div>
 
             <div>
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: 'var(--app-muted)' }}>
+              <label htmlFor="chapter-filter" className="mb-1 block text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: 'var(--app-muted)' }}>
                 Chapitre (Rhino/Cervico)
               </label>
               <select
+                id="chapter-filter"
                 value={filters.chapterKey}
                 onChange={(event) => setFilters((prev) => ({ ...prev, chapterKey: event.target.value }))}
                 disabled={availableChapters.length === 0}
                 className="w-full rounded-xl border px-3 py-2 text-sm disabled:opacity-60"
                 style={{ borderColor: 'var(--app-border)', backgroundColor: 'var(--app-surface)', color: 'var(--app-text)' }}
+                title="Filtrer par chapitre"
               >
                 <option value="all">Tous les chapitres</option>
                 {availableChapters.map((chapter) => (
@@ -1407,16 +1413,18 @@ export default function PlanningPage() {
             </div>
 
             <div>
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: 'var(--app-muted)' }}>
+              <label htmlFor="course-search" className="mb-1 block text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: 'var(--app-muted)' }}>
                 Cours
               </label>
               <input
+                id="course-search"
                 type="text"
                 value={filters.courseQuery}
                 onChange={(event) => setFilters((prev) => ({ ...prev, courseQuery: event.target.value }))}
                 placeholder="Rechercher un cours"
                 className="w-full rounded-xl border px-3 py-2 text-sm"
                 style={{ borderColor: 'var(--app-border)', backgroundColor: 'var(--app-surface)', color: 'var(--app-text)' }}
+                title="Rechercher un cours"
               />
             </div>
           </div>

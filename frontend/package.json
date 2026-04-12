@@ -9,9 +9,9 @@
     "start": "next start",
     "lint": "eslint .",
     "clean": "next clean",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test": "NODE_OPTIONS='' vitest run",
+    "test:watch": "NODE_OPTIONS='' vitest",
+    "test:coverage": "NODE_OPTIONS='' vitest run --coverage"
   },
   "dependencies": {
     "autoprefixer": "^10.4.27",

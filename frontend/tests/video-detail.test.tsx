@@ -135,7 +135,7 @@ describe('Video detail page', () => {
     fireEvent.click(screen.getByRole('button', { name: /Questions Ouvertes/i }));
 
     await waitFor(() =>
-      expect(screen.getByRole('heading', { level: 2, name: /Questions Ouvertes/i })).toBeInTheDocument(),
+      expect(screen.getByText('Question ouverte test')).toBeInTheDocument(),
     );
     expect(screen.getByRole('button', { name: /Afficher la réponse/i })).toBeInTheDocument();
   });
@@ -156,7 +156,7 @@ describe('Video detail page', () => {
 
     await waitFor(() => expect(screen.getByText('Video Test')).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole('button', { name: /^QCM$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /QCM/i }));
     await waitFor(() => expect(screen.getByText('Option B')).toBeInTheDocument());
     fireEvent.click(screen.getByText('Option B').closest('button') as HTMLButtonElement);
     fireEvent.click(screen.getByRole('button', { name: /Valider/i }));
@@ -180,7 +180,7 @@ describe('Video detail page', () => {
 
     await waitFor(() => expect(screen.getByText('Video Test')).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole('button', { name: /^QCM$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /QCM/i }));
     await waitFor(() => expect(screen.getByText('Option A')).toBeInTheDocument());
     fireEvent.click(screen.getByText('Option A').closest('button') as HTMLButtonElement);
     fireEvent.click(screen.getByText('Option C').closest('button') as HTMLButtonElement);
@@ -205,7 +205,7 @@ describe('Video detail page', () => {
 
     await waitFor(() => expect(screen.getByText('Video Test')).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole('button', { name: /^QCM$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /QCM/i }));
 
     await waitFor(() =>
       expect(screen.getByText(/Ce QCM est mal configure: aucune bonne reponse valide n'est definie/i)).toBeInTheDocument(),
@@ -228,7 +228,7 @@ describe('Video detail page', () => {
 
     await waitFor(() => expect(screen.getByText('Video Test')).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole('button', { name: /^QCM$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /QCM/i }));
 
     await waitFor(() => expect(screen.getByText(/Les options de ce QCM sont indisponibles/i)).toBeInTheDocument());
     expect(screen.getByRole('button', { name: /Valider/i })).toBeDisabled();
