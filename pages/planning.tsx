@@ -12,7 +12,7 @@ import {
   getDocs,
   setDoc,
   updateDoc,
-} from '@/lib/local-data';
+} from '@/lib/data/local-data';
 import { useAuth } from '@/components/providers/auth-provider';
 import { ArrowDown, ArrowUp, CheckCircle2, Pencil, Plus, Save, Trash2 } from 'lucide-react';
 

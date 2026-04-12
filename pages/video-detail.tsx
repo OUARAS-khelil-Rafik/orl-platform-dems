@@ -2,10 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
-import { db, doc, getDoc, collection, query, where, getDocs, addDoc } from '@/lib/local-data';
+import { db, doc, getDoc, collection, query, where, getDocs, addDoc } from '@/lib/data/local-data';
 import { useAuth } from '@/components/providers/auth-provider';
 import { useCart } from '@/components/providers/cart-provider';
-import { canAccessVideo } from '@/lib/access-control';
+import { canAccessVideo } from '@/lib/security/access-control';
 import type {
   CaseQuestionModel,
   CaseQuestionUiState,
@@ -14,7 +14,7 @@ import type {
   OpenQuestionModel,
   QcmModel,
   VideoModel,
-} from '@/lib/models';
+} from '@/lib/domain/models';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   FileText, BookOpen, 

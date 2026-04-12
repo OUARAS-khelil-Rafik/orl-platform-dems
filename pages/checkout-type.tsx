@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { useAuth } from '@/components/providers/auth-provider';
-import { db, collection, addDoc, doc, updateDoc } from '@/lib/local-data';
+import { db, collection, addDoc, doc, updateDoc } from '@/lib/data/local-data';
 import { motion } from 'motion/react';
 import { ShieldCheck, Upload, CheckCircle2, AlertCircle, CreditCard, Camera } from 'lucide-react';
 import Image from 'next/image';

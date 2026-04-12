@@ -15,9 +15,9 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'html'],
       include: [
-        'components/search-modal.tsx',
+        'components/features/search/search-modal.tsx',
         'components/layout/navbar.tsx',
-        'lib/access-control.ts',
+        'lib/security/access-control.ts',
         'pages/video-detail.tsx',
       ],
       thresholds: {

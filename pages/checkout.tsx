@@ -8,7 +8,7 @@ import { Trash2, CreditCard, ShieldCheck, Loader2, ArrowRight, ShoppingCart } fr
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/router';
-import { db, collection, addDoc } from '@/lib/local-data';
+import { db, collection, addDoc } from '@/lib/data/local-data';
 
 export default function CheckoutPage() {
   const { items, removeItem, total, clearCart } = useCart();

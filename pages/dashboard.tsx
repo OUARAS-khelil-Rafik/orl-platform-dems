@@ -21,9 +21,9 @@ import {
   deleteAuthAccountByUid,
   updateAuthPhotoURL,
   updateAuthPassword,
-} from '@/lib/local-data';
-import { isSubscriptionActive } from '@/lib/access-control';
-import { formatFullName, normalizeNameParts, splitFullName } from '@/lib/name-utils';
+} from '@/lib/data/local-data';
+import { isSubscriptionActive } from '@/lib/security/access-control';
+import { formatFullName, normalizeNameParts, splitFullName } from '@/lib/utils/name-utils';
 
 export default function UserDashboard() {
   const { user, profile, loading: authLoading, signOut } = useAuth();

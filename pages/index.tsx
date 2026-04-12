@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion, useScroll, useSpring } from 'motion/react';
 import Link from 'next/link';
 import {
@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 import Image from 'next/image';
 import { useAuth } from '@/components/providers/auth-provider';
-import { collection, db, getDocs } from '@/lib/local-data';
+import { collection, db, getDocs } from '@/lib/data/local-data';
 
 interface DemoVideo {
   id: string;
@@ -190,19 +190,19 @@ export default function HomePage() {
   const youtubeVideoId = extractYouTubeVideoId(demoVideo?.url || '');
   const isYouTubeDemo = Boolean(youtubeVideoId);
 
-  const clearHideControlsTimer = () => {
+  const clearHideControlsTimer = useCallback(() => {
     if (hideControlsTimeoutRef.current) {
       window.clearTimeout(hideControlsTimeoutRef.current);
       hideControlsTimeoutRef.current = null;
     }
-  };
+  }, []);
 
-  const scheduleHideControls = () => {
+  const scheduleHideControls = useCallback(() => {
     clearHideControlsTimer();
     hideControlsTimeoutRef.current = window.setTimeout(() => {
       setAreVideoControlsVisible(false);
     }, 5000);
-  };
+  }, [clearHideControlsTimer]);
 
   const revealVideoControls = () => {
     setAreVideoControlsVisible(true);
@@ -238,8 +238,12 @@ export default function HomePage() {
 
   useEffect(() => {
     if (typeof window === 'undefined' || !isAuthReady || !user) {
-      setUnfinishedVideos([]);
-      return;
+      const clearUnfinishedFrame = window.requestAnimationFrame(() => {
+        setUnfinishedVideos([]);
+      });
+      return () => {
+        window.cancelAnimationFrame(clearUnfinishedFrame);
+      };
     }
 
     const storageKey = `${WATCH_PROGRESS_KEY}:${user.uid}`;
@@ -316,12 +320,18 @@ export default function HomePage() {
   }, [isAuthReady, user?.uid, user]);
 
   useEffect(() => {
-    setIsPlaying(false);
-    setCurrentTime(0);
-    setDuration(0);
+    const resetStateFrame = window.requestAnimationFrame(() => {
+      setIsPlaying(false);
+      setCurrentTime(0);
+      setDuration(0);
+    });
 
     const videoEl = videoRef.current;
-    if (!videoEl || isYouTubeDemo) return;
+    if (!videoEl || isYouTubeDemo) {
+      return () => {
+        window.cancelAnimationFrame(resetStateFrame);
+      };
+    }
 
     const handleLoadedMetadata = () => {
       setDuration(Number.isFinite(videoEl.duration) ? videoEl.duration : 0);
@@ -330,8 +340,14 @@ export default function HomePage() {
       setCurrentTime(videoEl.currentTime);
     };
     const handlePlay = () => setIsPlaying(true);
-    const handlePause = () => setIsPlaying(false);
-    const handleEnded = () => setIsPlaying(false);
+    const handlePause = () => {
+      setIsPlaying(false);
+      setAreVideoControlsVisible(true);
+    };
+    const handleEnded = () => {
+      setIsPlaying(false);
+      setAreVideoControlsVisible(true);
+    };
 
     videoEl.addEventListener('loadedmetadata', handleLoadedMetadata);
     videoEl.addEventListener('timeupdate', handleTimeUpdate);
@@ -340,6 +356,7 @@ export default function HomePage() {
     videoEl.addEventListener('ended', handleEnded);
 
     return () => {
+      window.cancelAnimationFrame(resetStateFrame);
       videoEl.removeEventListener('loadedmetadata', handleLoadedMetadata);
       videoEl.removeEventListener('timeupdate', handleTimeUpdate);
       videoEl.removeEventListener('play', handlePlay);
@@ -451,18 +468,17 @@ export default function HomePage() {
   useEffect(() => {
     if (!isPlaying) {
       clearHideControlsTimer();
-      setAreVideoControlsVisible(true);
       return;
     }
 
     scheduleHideControls();
-  }, [isPlaying]);
+  }, [isPlaying, scheduleHideControls, clearHideControlsTimer]);
 
   useEffect(() => {
     return () => {
       clearHideControlsTimer();
     };
-  }, []);
+  }, [clearHideControlsTimer]);
 
   const togglePreviewPlayback = async () => {
     revealVideoControls();

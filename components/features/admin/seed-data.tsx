@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { db, collection, addDoc, getDocs, deleteDoc, doc } from '@/lib/local-data';
+import { db, collection, addDoc, getDocs, deleteDoc, doc } from '@/lib/data/local-data';
 import { Loader2, Database, Trash2 } from 'lucide-react';
 
 export function SeedDataButton() {

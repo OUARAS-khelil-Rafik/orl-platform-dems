@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { SearchModal } from '@/components/search-modal';
+import { SearchModal } from '@/components/features/search/search-modal';
 
 const routerPush = vi.fn();
 
@@ -33,7 +33,7 @@ const makeDocs = (rows: Array<Record<string, unknown>>) =>
     data: () => row,
   }));
 
-vi.mock('@/lib/local-data', () => ({
+vi.mock('@/lib/data/local-data', () => ({
   db: {},
   collection: (_db: unknown, name: string) => ({ name }),
   getDocs: async (source: { name: string }) => {

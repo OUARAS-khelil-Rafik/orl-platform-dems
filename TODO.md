@@ -11,7 +11,7 @@
 
 ## Phase 2 - Qualite de Code et Typage (Termine)
 
-- [x] Factoriser les modeles partages dans lib/models.ts.
+- [x] Factoriser les modeles partages dans lib/domain/models.ts.
 - [x] Reduire les any dans les ecrans critiques admin/lecture.
 - [x] Uniformiser les textes FR prioritaires dans l'interface.
 - [x] Ajouter la base de tests UI (Vitest + Testing Library).
@@ -32,11 +32,11 @@
 - [x] Ajouter une protection runtime si q.options est absent/non tableau dans la lecture QCM.
   - Fichier cible: pages/video-detail.tsx
 - [x] Rendre la recherche tolerante aux accents (ex: specialite/specialite, schema/schema).
-  - Fichier cible: components/search-modal.tsx
+  - Fichier cible: components/features/search/search-modal.tsx
 - [x] Gerer explicitement les resultats de recherche sans videoId (message ou fallback).
-  - Fichier cible: components/search-modal.tsx
+  - Fichier cible: components/features/search/search-modal.tsx
 - [x] Remplacer la generation d'ID de questions basee sur Date.now()/Math.random() par un ID plus robuste.
-  - Fichier cible: components/admin/content-manager.tsx
+  - Fichier cible: components/features/admin/content-manager.tsx
 
 ## Phase 5 - Qualite Produit (Nouveaux)
 

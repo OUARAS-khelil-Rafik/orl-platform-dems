@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/components/providers/auth-provider';
 import {
   db,
@@ -14,7 +14,7 @@ import {
   setDoc,
   createAuthAccountByAdmin,
   deleteAuthAccountByUid,
-} from '@/lib/local-data';
+} from '@/lib/data/local-data';
 import { motion } from 'motion/react';
 import {
   Users,
@@ -44,9 +44,9 @@ import {
   Search,
 } from 'lucide-react';
 import { useRouter } from 'next/router';
-import { AdminContentManager } from '@/components/admin/content-manager';
-import { SeedDataButton } from '@/components/admin/seed-data';
-import { formatFullName, normalizeNameParts, splitFullName } from '@/lib/name-utils';
+import { AdminContentManager } from '@/components/features/admin/content-manager';
+import { SeedDataButton } from '@/components/features/admin/seed-data';
+import { formatFullName, normalizeNameParts, splitFullName } from '@/lib/utils/name-utils';
 
 type AdminUser = {
   id: string;
@@ -288,7 +288,7 @@ export default function AdminDashboard() {
     if (!authLoading) fetchData();
   }, [profile, authLoading]);
 
-  const getCreationDate = (user: AdminUser) => {
+  const getCreationDate = useCallback((user: AdminUser) => {
     if (!user.createdAt) {
       return new Date(0);
     }
@@ -297,9 +297,9 @@ export default function AdminDashboard() {
       return new Date(0);
     }
     return parsed;
-  };
+  }, []);
 
-  const computeAutoExpiryDate = (user: AdminUser) => {
+  const computeAutoExpiryDate = useCallback((user: AdminUser) => {
     if (user.role === 'admin') {
       return null;
     }
@@ -316,9 +316,9 @@ export default function AdminDashboard() {
       expiry.setDate(expiry.getDate() + 10);
     }
     return expiry;
-  };
+  }, [getCreationDate]);
 
-  const getEffectiveExpiryDate = (user: AdminUser) => {
+  const getEffectiveExpiryDate = useCallback((user: AdminUser) => {
     if (user.role === 'admin') {
       return null;
     }
@@ -343,9 +343,9 @@ export default function AdminDashboard() {
     }
 
     return computeAutoExpiryDate(user);
-  };
+  }, [computeAutoExpiryDate]);
 
-  const getUserStatus = (user: AdminUser): UserStatus => {
+  const getUserStatus = useCallback((user: AdminUser): UserStatus => {
     if (user.subscriptionApprovalStatus === 'pending') {
       return 'pending';
     }
@@ -379,7 +379,7 @@ export default function AdminDashboard() {
     }
 
     return expiry > now ? 'active' : 'expired';
-  };
+  }, [allPayments, getEffectiveExpiryDate, now]);
 
   const getStatusBadgeClass = (status: UserStatus) => {
     if (status === 'active') {
@@ -435,7 +435,7 @@ export default function AdminDashboard() {
       const compare = aName.localeCompare(bName, 'fr', { sensitivity: 'base' });
       return nameSortDirection === 'asc' ? compare : -compare;
     });
-  }, [users, userRoleFilter, userStatusFilter, userSearchQuery, nameSortDirection, now]);
+  }, [users, userRoleFilter, userStatusFilter, userSearchQuery, nameSortDirection, getUserStatus]);
 
   const getVideoTitle = (videoId: string) => {
     return videos.find((video) => video.id === videoId)?.title || `Video ${videoId}`;

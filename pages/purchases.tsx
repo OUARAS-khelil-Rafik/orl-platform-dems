@@ -6,7 +6,25 @@ import { useRouter } from 'next/router';
 import { motion } from 'motion/react';
 import { PlayCircle } from 'lucide-react';
 import { useAuth } from '@/components/providers/auth-provider';
-import { collection, db, doc, getDoc, getDocs, query, where } from '@/lib/local-data';
+import { collection, db, doc, getDoc, getDocs, query, where } from '@/lib/data/local-data';
+
+const STATUS_TONE: Record<string, { bg: string; border: string; text: string }> = {
+  approved: {
+    bg: 'color-mix(in oklab, var(--app-success) 20%, var(--app-surface) 80%)',
+    border: 'color-mix(in oklab, var(--app-success) 56%, var(--app-border) 44%)',
+    text: 'var(--app-text)',
+  },
+  rejected: {
+    bg: 'color-mix(in oklab, var(--app-danger) 20%, var(--app-surface) 80%)',
+    border: 'color-mix(in oklab, var(--app-danger) 56%, var(--app-border) 44%)',
+    text: 'var(--app-text)',
+  },
+  pending: {
+    bg: 'color-mix(in oklab, var(--app-warning) 16%, var(--app-surface) 84%)',
+    border: 'color-mix(in oklab, var(--app-warning) 52%, var(--app-border) 48%)',
+    text: 'var(--app-text)',
+  },
+};
 
 export default function PurchasesPage() {
   const { user, profile, loading: authLoading } = useAuth();
@@ -41,24 +59,6 @@ export default function PurchasesPage() {
     borderColor: isLightMode
       ? 'color-mix(in oklab, var(--app-border) 90%, var(--app-surface) 10%)'
       : 'color-mix(in oklab, var(--app-border) 86%, var(--app-deep-surface-2) 14%)',
-  };
-
-  const statusTone: Record<string, { bg: string; border: string; text: string }> = {
-    approved: {
-      bg: 'color-mix(in oklab, var(--app-success) 20%, var(--app-surface) 80%)',
-      border: 'color-mix(in oklab, var(--app-success) 56%, var(--app-border) 44%)',
-      text: 'var(--app-text)',
-    },
-    rejected: {
-      bg: 'color-mix(in oklab, var(--app-danger) 20%, var(--app-surface) 80%)',
-      border: 'color-mix(in oklab, var(--app-danger) 56%, var(--app-border) 44%)',
-      text: 'var(--app-text)',
-    },
-    pending: {
-      bg: 'color-mix(in oklab, var(--app-warning) 16%, var(--app-surface) 84%)',
-      border: 'color-mix(in oklab, var(--app-warning) 52%, var(--app-border) 48%)',
-      text: 'var(--app-text)',
-    },
   };
 
   const subtleText = 'color-mix(in oklab, var(--app-text) 78%, var(--app-muted) 22%)';
@@ -207,7 +207,7 @@ export default function PurchasesPage() {
       .map((payment) => {
         const status = String(payment?.status || 'pending').toLowerCase();
         const statusLabel = status === 'approved' ? 'Approuve' : status === 'rejected' ? 'Refuse' : 'En attente';
-        const tone = statusTone[status] || statusTone.pending;
+        const tone = STATUS_TONE[status] || STATUS_TONE.pending;
 
         const itemCount = Array.isArray(payment?.items) ? payment.items.length : 0;
         const description =

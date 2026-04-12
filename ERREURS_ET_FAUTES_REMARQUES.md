@@ -17,15 +17,15 @@
 
 - [x] Recherche non tolerante aux accents (specialite vs specialite, schema vs schema).
   - Impact: resultats de recherche incomplets pour l'utilisateur.
-  - Fichier: components/search-modal.tsx
+  - Fichier: components/features/search/search-modal.tsx
 
 - [x] Resultat de recherche sans videoId non gere explicitement.
   - Impact: clic utilisateur sans navigation ni feedback.
-  - Fichier: components/search-modal.tsx
+  - Fichier: components/features/search/search-modal.tsx
 
 - [x] Generation d'ID de questions basee sur Date.now()/Math.random() non deterministe.
   - Impact: collisions rares mais possibles, risque sur edition/suppression par ID.
-  - Fichier: components/admin/content-manager.tsx
+  - Fichier: components/features/admin/content-manager.tsx
 
 ## Fautes de texte/consistance a garder en surveillance
 

@@ -14,9 +14,9 @@ import {
   signOut as localSignOut,
   updateAuthDisplayName,
   type LocalAuthUser,
-} from '@/lib/local-data';
-import { type SubscriptionApprovalStatus, type UserRole } from '@/lib/access-control';
-import { formatFullName, normalizeNameParts, splitFullName } from '@/lib/name-utils';
+} from '@/lib/data/local-data';
+import { type SubscriptionApprovalStatus, type UserRole } from '@/lib/security/access-control';
+import { formatFullName, normalizeNameParts, splitFullName } from '@/lib/utils/name-utils';
 
 export interface UserProfile {
   uid: string;

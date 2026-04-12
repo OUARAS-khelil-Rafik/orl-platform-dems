@@ -27,8 +27,8 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import Image from 'next/image';
-import { db, collection, getDocs, query, where } from '@/lib/local-data';
-import { SearchModal } from '@/components/search-modal';
+import { db, collection, getDocs, query, where } from '@/lib/data/local-data';
+import { SearchModal } from '@/components/features/search/search-modal';
 
 type NavbarNotification = {
   id: string;

@@ -2,12 +2,12 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
-import { db, collection, query, where, getDocs } from '@/lib/local-data';
+import { db, collection, query, where, getDocs } from '@/lib/data/local-data';
 import { motion } from 'motion/react';
 import { PlayCircle, Lock, Clock3, Search, SlidersHorizontal, ListChecks, Stethoscope, MessageSquare, Network } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/components/providers/auth-provider';
-import { canAccessVideo } from '@/lib/access-control';
+import { canAccessVideo } from '@/lib/security/access-control';
 import { useCart } from '@/components/providers/cart-provider';
 import Image from 'next/image';
 

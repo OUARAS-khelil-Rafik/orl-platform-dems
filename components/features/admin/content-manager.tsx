@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Video, FileText, HelpCircle, Image as ImageIcon, MessageSquare, Plus, Save, X, Loader2, Trash2, Edit2 } from 'lucide-react';
-import { db, collection, addDoc, getDocs, deleteDoc, doc, updateDoc } from '@/lib/local-data';
+import { db, collection, addDoc, getDocs, deleteDoc, doc, updateDoc } from '@/lib/data/local-data';
 import type {
   CaseQuestionModel,
   ClinicalCaseModel,
@@ -12,7 +12,7 @@ import type {
   QcmModel,
   QcmMode,
   VideoModel,
-} from '@/lib/models';
+} from '@/lib/domain/models';
 
 type EditableCaseQuestion = {
   id: string;

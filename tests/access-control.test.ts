@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canAccessVideo } from '@/lib/access-control';
+import { canAccessVideo } from '@/lib/security/access-control';
 
 describe('access-control', () => {
   const paidVideo = {

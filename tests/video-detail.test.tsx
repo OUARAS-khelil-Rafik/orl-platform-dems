@@ -44,7 +44,7 @@ vi.mock('@/components/providers/cart-provider', () => ({
   }),
 }));
 
-vi.mock('@/lib/access-control', () => ({
+vi.mock('@/lib/security/access-control', () => ({
   canAccessVideo: () => true,
 }));
 
@@ -72,7 +72,7 @@ const makeDocs = (rows: Array<Record<string, unknown>>) =>
     data: () => row,
   }));
 
-vi.mock('@/lib/local-data', () => ({
+vi.mock('@/lib/data/local-data', () => ({
   db: {},
   doc: (_db: unknown, _coll: string, id: string) => ({ id }),
   getDoc: async (_docRef: { id: string }) => ({
