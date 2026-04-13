@@ -45,7 +45,6 @@ import {
 } from 'lucide-react';
 import { useRouter } from 'next/router';
 import { AdminContentManager } from '@/components/features/admin/content-manager';
-import { SeedDataButton } from '@/components/features/admin/seed-data';
 import { formatFullName, normalizeNameParts, splitFullName } from '@/lib/utils/name-utils';
 
 type AdminUser = {
@@ -1281,18 +1280,15 @@ export default function AdminDashboard() {
 
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-10">
             <h1 className="text-4xl md:text-5xl font-bold text-slate-900">{activeTabLabel}</h1>
-            <div className="flex items-center gap-2">
-              {activeTab === 'users' && (
-                <button
-                  type="button"
-                  onClick={() => setIsCreateUserModalOpen(true)}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-medical-600 text-white text-base font-semibold hover:bg-medical-700 transition-colors"
-                >
-                  <Plus className="w-4 h-4" /> Ajouter un compte
-                </button>
-              )}
-              <SeedDataButton />
-            </div>
+            {activeTab === 'users' && (
+              <button
+                type="button"
+                onClick={() => setIsCreateUserModalOpen(true)}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-medical-600 text-white text-base font-semibold hover:bg-medical-700 transition-colors"
+              >
+                <Plus className="w-4 h-4" /> Ajouter un compte
+              </button>
+            )}
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-10">

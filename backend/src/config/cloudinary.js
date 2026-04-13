@@ -167,3 +167,91 @@ export const uploadLargeVideoToCloudinary = async ({
 
   throw new Error('Video upload failed after retries.');
 };
+
+export const inferCloudinaryResourceTypeFromUrl = (secureUrl) => {
+  const normalized = String(secureUrl || '').trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+
+  if (normalized.includes('/video/upload/')) {
+    return 'video';
+  }
+  if (normalized.includes('/image/upload/')) {
+    return 'image';
+  }
+  if (normalized.includes('/raw/upload/')) {
+    return 'raw';
+  }
+
+  return null;
+};
+
+export const extractCloudinaryPublicId = (secureUrl) => {
+  const raw = String(secureUrl || '').trim();
+  if (!raw) {
+    return '';
+  }
+
+  try {
+    const parsed = new URL(raw);
+    if (!/res\.cloudinary\.com$/i.test(parsed.hostname)) {
+      return '';
+    }
+
+    const segments = parsed.pathname.split('/').filter(Boolean);
+    const uploadIndex = segments.findIndex((segment) => segment === 'upload');
+    if (uploadIndex === -1) {
+      return '';
+    }
+
+    let startIndex = uploadIndex + 1;
+
+    // Skip optional transformation segments until version marker when present.
+    while (startIndex < segments.length && !/^v\d+$/i.test(segments[startIndex])) {
+      const value = segments[startIndex];
+      const hasTransformToken = value.includes(',') || value.includes('_');
+      if (!hasTransformToken) {
+        break;
+      }
+      startIndex += 1;
+    }
+
+    if (startIndex < segments.length && /^v\d+$/i.test(segments[startIndex])) {
+      startIndex += 1;
+    }
+
+    const publicPath = segments.slice(startIndex).join('/');
+    if (!publicPath) {
+      return '';
+    }
+
+    return decodeURIComponent(publicPath).replace(/\.[^./]+$/, '');
+  } catch {
+    return '';
+  }
+};
+
+export const destroyCloudinaryAsset = async ({
+  publicId,
+  resourceType = 'image',
+  authUser,
+  invalidate = true,
+}) => {
+  const config = resolveCloudinaryConfig(authUser);
+  if (!config) {
+    throw new Error('Cloudinary credentials are not configured for this account.');
+  }
+
+  const normalizedPublicId = String(publicId || '').trim();
+  if (!normalizedPublicId) {
+    throw new Error('publicId is required to delete a Cloudinary asset.');
+  }
+
+  cloudinary.config(config);
+  return cloudinary.uploader.destroy(normalizedPublicId, {
+    resource_type: resourceType,
+    invalidate,
+    type: 'upload',
+  });
+};

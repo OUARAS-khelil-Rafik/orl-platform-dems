@@ -7,12 +7,17 @@ import os from 'node:os';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { unlink } from 'node:fs/promises';
+import mongoose from 'mongoose';
 import { authRequired } from '../middleware/auth.js';
 import {
+  destroyCloudinaryAsset,
+  extractCloudinaryPublicId,
+  inferCloudinaryResourceTypeFromUrl,
   uploadBufferToCloudinary,
   uploadFileToCloudinary,
   uploadLargeVideoToCloudinary,
 } from '../config/cloudinary.js';
+import { User } from '../models/User.js';
 
 const router = express.Router();
 const cloudinaryUpload = multer({
@@ -31,6 +36,161 @@ const CLOUDINARY_LIMIT = 100 * 1024 * 1024; // 100MB
 const MAX_PARTS = 20;
 const MAX_RETRIES = 3;
 const UPLOAD_FOLDER = 'orl-platform';
+const CLEANUP_MAX_ASSETS = 200;
+
+const normalizeCleanupResourceType = (value) => {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'image' || normalized === 'video' || normalized === 'raw') {
+    return normalized;
+  }
+  return null;
+};
+
+const normalizeCleanupAsset = (entry) => {
+  if (!entry || typeof entry !== 'object') {
+    return null;
+  }
+
+  const secureUrl = String(entry.secureUrl || '').trim();
+  const publicId = String(entry.publicId || '').trim() || extractCloudinaryPublicId(secureUrl);
+  const resourceType =
+    normalizeCleanupResourceType(entry.resourceType)
+    || inferCloudinaryResourceTypeFromUrl(secureUrl)
+    || null;
+
+  if (!publicId && !secureUrl) {
+    return null;
+  }
+
+  return {
+    publicId,
+    secureUrl,
+    resourceType,
+  };
+};
+
+const buildCleanupAssetKey = (entry) => {
+  const normalized = normalizeCleanupAsset(entry);
+  if (!normalized) {
+    return '';
+  }
+
+  return `${normalized.publicId || ''}|${normalized.secureUrl || ''}|${normalized.resourceType || ''}`;
+};
+
+const verifyAssetUsageInMongo = async ({ publicId, secureUrl }) => {
+  const db = mongoose.connection?.db;
+  if (!db) {
+    throw new Error('MongoDB is not connected. Unable to verify content usage.');
+  }
+
+  const usedBy = [];
+
+  if (secureUrl) {
+    const userMatch = await User.exists({ photoURL: secureUrl });
+    if (userMatch) {
+      usedBy.push('users.photoURL');
+    }
+  }
+
+  const videoFilter = [];
+  if (secureUrl) {
+    videoFilter.push({ url: secureUrl }, { 'parts.secureUrl': secureUrl });
+  }
+  if (publicId) {
+    videoFilter.push({ 'parts.publicId': publicId });
+  }
+  if (videoFilter.length > 0) {
+    const videoMatch = await db.collection('videos').findOne(
+      { $or: videoFilter },
+      { projection: { _id: 1 } },
+    );
+    if (videoMatch) {
+      usedBy.push('videos');
+    }
+  }
+
+  if (secureUrl) {
+    const caseMatch = await db.collection('clinicalCases').findOne(
+      {
+        $or: [{ images: secureUrl }, { 'questions.images': secureUrl }],
+      },
+      { projection: { _id: 1 } },
+    );
+
+    if (caseMatch) {
+      usedBy.push('clinicalCases');
+    }
+
+    const diagramMatch = await db.collection('diagrams').findOne(
+      { imageUrl: secureUrl },
+      { projection: { _id: 1 } },
+    );
+    if (diagramMatch) {
+      usedBy.push('diagrams');
+    }
+  }
+
+  return {
+    isReferenced: usedBy.length > 0,
+    usedBy,
+  };
+};
+
+const deleteCloudinaryAssetWithFallback = async ({ publicId, resourceType, authUser }) => {
+  if (!publicId) {
+    return {
+      deleted: false,
+      status: 'missing-public-id',
+      resourceType: resourceType || null,
+    };
+  }
+
+  const candidateTypes = resourceType ? [resourceType] : ['image', 'video', 'raw'];
+  let lastError = null;
+  let lastStatus = 'not found';
+
+  for (const candidateType of candidateTypes) {
+    try {
+      const response = await destroyCloudinaryAsset({
+        publicId,
+        resourceType: candidateType,
+        authUser,
+        invalidate: true,
+      });
+
+      const status = String(response?.result || '').trim().toLowerCase() || 'unknown';
+      if (status === 'ok') {
+        return {
+          deleted: true,
+          status,
+          resourceType: candidateType,
+        };
+      }
+
+      lastStatus = status;
+      if (status !== 'not found') {
+        return {
+          deleted: false,
+          status,
+          resourceType: candidateType,
+        };
+      }
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  if (lastError) {
+    throw lastError;
+  }
+
+  return {
+    deleted: false,
+    status: lastStatus,
+    resourceType: resourceType || null,
+  };
+};
 
 const execFileAsync = promisify(execFile);
 
@@ -351,6 +511,114 @@ router.post('/cloudinary', authRequired, withSingleFile(cloudinaryUpload), async
     if (temporaryPath) {
       await unlink(temporaryPath).catch(() => undefined);
     }
+  }
+});
+
+router.post('/cleanup', authRequired, async (req, res) => {
+  try {
+    const rawAssets = Array.isArray(req.body?.assets) ? req.body.assets : [];
+    if (rawAssets.length === 0) {
+      return res.status(400).json({ message: 'assets must be a non-empty array.' });
+    }
+
+    if (rawAssets.length > CLEANUP_MAX_ASSETS) {
+      return res.status(413).json({
+        message: `Too many assets requested for cleanup. Maximum is ${CLEANUP_MAX_ASSETS}.`,
+      });
+    }
+
+    const dedupeKeys = new Set();
+    const assets = [];
+    for (const entry of rawAssets) {
+      const normalized = normalizeCleanupAsset(entry);
+      if (!normalized) {
+        continue;
+      }
+
+      const key = buildCleanupAssetKey(normalized);
+      if (!key || dedupeKeys.has(key)) {
+        continue;
+      }
+
+      dedupeKeys.add(key);
+      assets.push(normalized);
+    }
+
+    if (assets.length === 0) {
+      return res.status(400).json({ message: 'No valid Cloudinary assets were provided.' });
+    }
+
+    const results = [];
+
+    for (const asset of assets) {
+      try {
+        const usage = await verifyAssetUsageInMongo(asset);
+        if (usage.isReferenced) {
+          results.push({
+            ...asset,
+            deleted: false,
+            skipped: true,
+            reason: 'still-referenced',
+            usedBy: usage.usedBy,
+          });
+          continue;
+        }
+
+        if (!asset.publicId) {
+          results.push({
+            ...asset,
+            deleted: false,
+            skipped: true,
+            reason: 'missing-public-id',
+            usedBy: [],
+          });
+          continue;
+        }
+
+        const cleanupResult = await deleteCloudinaryAssetWithFallback({
+          publicId: asset.publicId,
+          resourceType: asset.resourceType,
+          authUser: req.authUser,
+        });
+
+        results.push({
+          ...asset,
+          deleted: cleanupResult.deleted,
+          skipped: false,
+          reason: cleanupResult.status,
+          usedBy: [],
+          deletedAs: cleanupResult.resourceType,
+        });
+      } catch (error) {
+        results.push({
+          ...asset,
+          deleted: false,
+          skipped: false,
+          reason: String(error?.message || 'cleanup-failed'),
+          usedBy: [],
+        });
+      }
+    }
+
+    const summary = {
+      requested: assets.length,
+      deleted: results.filter((entry) => entry.deleted).length,
+      skippedInUse: results.filter((entry) => entry.reason === 'still-referenced').length,
+      missingPublicId: results.filter((entry) => entry.reason === 'missing-public-id').length,
+      notFound: results.filter((entry) => entry.reason === 'not found').length,
+      failed: results.filter(
+        (entry) => !entry.deleted && !entry.skipped && entry.reason !== 'not found',
+      ).length,
+    };
+
+    return res.json({
+      results,
+      summary,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      message: error?.message || 'Unable to cleanup Cloudinary assets.',
+    });
   }
 });
 

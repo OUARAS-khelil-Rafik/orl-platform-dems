@@ -3,7 +3,20 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Video, FileText, HelpCircle, Image as ImageIcon, MessageSquare, Plus, Save, X, Loader2, Trash2, Edit2, Search } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
-import { db, collection, addDoc, getDocs, deleteDoc, doc, updateDoc, uploadCloudinaryAsset } from '@/lib/data/local-data';
+import {
+  db,
+  collection,
+  addDoc,
+  getDocs,
+  deleteDoc,
+  doc,
+  updateDoc,
+  uploadCloudinaryAsset,
+  cleanupCloudinaryAssets,
+  cleanupCloudinaryAssetsOnPageExit,
+  type CloudinaryCleanupAsset,
+  type CloudinaryResourceType,
+} from '@/lib/data/local-data';
 import SeamlessPlayer from '@/components/features/video/seamless-player';
 import type {
   CaseQuestionModel,
@@ -92,6 +105,166 @@ type VideoUploadPhase = 'idle' | 'uploading' | 'processing' | 'complete' | 'erro
 const CLOUDINARY_LIMIT = 100 * 1024 * 1024; // 100MB
 const BACKEND_UPLOAD_LIMIT = 1024 * 1024 * 1024; // 1GB
 const UPLOAD_FOLDER = 'orl-platform';
+
+const cleanupAssetKey = (asset: CloudinaryCleanupAsset) => {
+  const publicId = String(asset.publicId || '').trim();
+  const secureUrl = String(asset.secureUrl || '').trim();
+  const resourceType = String(asset.resourceType || '').trim().toLowerCase();
+  return `${publicId}|${secureUrl}|${resourceType}`;
+};
+
+const normalizeCleanupAsset = (asset: CloudinaryCleanupAsset): CloudinaryCleanupAsset | null => {
+  const publicId = String(asset.publicId || '').trim();
+  const secureUrl = String(asset.secureUrl || '').trim();
+  const resourceTypeRaw = String(asset.resourceType || '').trim().toLowerCase();
+  const resourceType: CloudinaryResourceType | undefined =
+    resourceTypeRaw === 'image' || resourceTypeRaw === 'video' || resourceTypeRaw === 'raw'
+      ? (resourceTypeRaw as CloudinaryResourceType)
+      : undefined;
+
+  if (!publicId && !secureUrl) {
+    return null;
+  }
+
+  return {
+    publicId,
+    secureUrl,
+    resourceType,
+  };
+};
+
+const dedupeCleanupAssets = (assets: CloudinaryCleanupAsset[]): CloudinaryCleanupAsset[] => {
+  const seen = new Set<string>();
+  const output: CloudinaryCleanupAsset[] = [];
+
+  for (const entry of assets) {
+    const normalized = normalizeCleanupAsset(entry);
+    if (!normalized) {
+      continue;
+    }
+
+    const key = cleanupAssetKey(normalized);
+    if (!key || seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    output.push(normalized);
+  }
+
+  return output;
+};
+
+const filterOutCleanupAssets = (
+  source: CloudinaryCleanupAsset[],
+  toRemove: CloudinaryCleanupAsset[],
+) => {
+  const removeKeys = new Set(dedupeCleanupAssets(toRemove).map(cleanupAssetKey));
+  if (removeKeys.size === 0) {
+    return dedupeCleanupAssets(source);
+  }
+
+  return dedupeCleanupAssets(source).filter((entry) => !removeKeys.has(cleanupAssetKey(entry)));
+};
+
+const inferResourceTypeFromCloudinaryUrl = (url: string): CloudinaryResourceType | undefined => {
+  const normalized = String(url || '').toLowerCase();
+  if (normalized.includes('/video/upload/')) {
+    return 'video';
+  }
+  if (normalized.includes('/image/upload/')) {
+    return 'image';
+  }
+  if (normalized.includes('/raw/upload/')) {
+    return 'raw';
+  }
+  return undefined;
+};
+
+const toCleanupAssetFromUrl = (
+  secureUrl: string | undefined,
+  resourceTypeHint?: CloudinaryResourceType,
+): CloudinaryCleanupAsset | null => {
+  const normalizedUrl = String(secureUrl || '').trim();
+  if (!normalizedUrl) {
+    return null;
+  }
+
+  return {
+    secureUrl: normalizedUrl,
+    resourceType: resourceTypeHint || inferResourceTypeFromCloudinaryUrl(normalizedUrl),
+  };
+};
+
+const collectVideoAssets = (video: {
+  url?: string;
+  parts?: VideoPartModel[];
+}): CloudinaryCleanupAsset[] => {
+  const assets: CloudinaryCleanupAsset[] = [];
+
+  if (Array.isArray(video.parts)) {
+    for (const part of video.parts) {
+      assets.push({
+        publicId: String(part?.publicId || '').trim(),
+        secureUrl: String(part?.secureUrl || '').trim(),
+        resourceType: 'video',
+      });
+    }
+  }
+
+  const fromUrl = toCleanupAssetFromUrl(video.url, 'video');
+  if (fromUrl) {
+    assets.push(fromUrl);
+  }
+
+  return dedupeCleanupAssets(assets);
+};
+
+const collectCaseAssets = (entry: {
+  images?: string[];
+  questions?: Array<{ images?: string[] }>;
+}): CloudinaryCleanupAsset[] => {
+  const assets: CloudinaryCleanupAsset[] = [];
+
+  if (Array.isArray(entry.images)) {
+    for (const imageUrl of entry.images) {
+      const asset = toCleanupAssetFromUrl(imageUrl, 'image');
+      if (asset) {
+        assets.push(asset);
+      }
+    }
+  }
+
+  if (Array.isArray(entry.questions)) {
+    for (const question of entry.questions) {
+      if (!Array.isArray(question?.images)) {
+        continue;
+      }
+
+      for (const imageUrl of question.images) {
+        const asset = toCleanupAssetFromUrl(imageUrl, 'image');
+        if (asset) {
+          assets.push(asset);
+        }
+      }
+    }
+  }
+
+  return dedupeCleanupAssets(assets);
+};
+
+const collectDiagramAssets = (entry: { imageUrl?: string }): CloudinaryCleanupAsset[] => {
+  const asset = toCleanupAssetFromUrl(entry.imageUrl, 'image');
+  return asset ? [asset] : [];
+};
+
+const subtractCleanupAssets = (
+  source: CloudinaryCleanupAsset[],
+  toKeep: CloudinaryCleanupAsset[],
+) => {
+  const keepKeys = new Set(dedupeCleanupAssets(toKeep).map(cleanupAssetKey));
+  return dedupeCleanupAssets(source).filter((entry) => !keepKeys.has(cleanupAssetKey(entry)));
+};
 
 const getErrorMessage = (error: unknown, fallback: string) => {
   if (error instanceof Error && error.message) {
@@ -188,6 +361,10 @@ export function AdminContentManager() {
   const [editingOpenQuestionId, setEditingOpenQuestionId] = useState<string | null>(null);
   const [editingDiagramId, setEditingDiagramId] = useState<string | null>(null);
 
+  const [pendingVideoUploads, setPendingVideoUploads] = useState<CloudinaryCleanupAsset[]>([]);
+  const [pendingCaseUploads, setPendingCaseUploads] = useState<CloudinaryCleanupAsset[]>([]);
+  const [pendingDiagramUploads, setPendingDiagramUploads] = useState<CloudinaryCleanupAsset[]>([]);
+
   const editorGridClass = 'grid gap-6';
   const formPanelClass = 'order-2 space-y-6 rounded-3xl border border-[var(--app-border)] bg-[var(--app-surface)] p-6 shadow-sm';
   const listPanelClass = 'order-1 rounded-3xl border border-[var(--app-border)] bg-[var(--app-surface-alt)] p-5 shadow-sm max-h-[58vh] overflow-y-auto content-manager-scroll';
@@ -224,10 +401,127 @@ export function AdminContentManager() {
     fetchData();
   }, []);
 
+  const runCloudinaryCleanup = useCallback(
+    async (
+      assets: CloudinaryCleanupAsset[],
+      contextLabel: string,
+      { silent = true }: { silent?: boolean } = {},
+    ) => {
+      const payload = dedupeCleanupAssets(assets);
+      if (payload.length === 0) {
+        return null;
+      }
+
+      try {
+        const response = await cleanupCloudinaryAssets(payload);
+        const hardFailures = response.results.filter(
+          (entry) => !entry.deleted && entry.reason !== 'still-referenced' && entry.reason !== 'not found',
+        );
+
+        if (hardFailures.length > 0) {
+          console.warn(`[cloudinary-cleanup:${contextLabel}]`, hardFailures);
+          if (!silent) {
+            setErrorMessage(
+              `Nettoyage Cloudinary incomplet (${contextLabel}). Certains médias n'ont pas pu être supprimés.`,
+            );
+          }
+        }
+
+        return response;
+      } catch (error) {
+        console.error(`[cloudinary-cleanup:${contextLabel}]`, error);
+        if (!silent) {
+          setErrorMessage(
+            `Impossible de finaliser le nettoyage Cloudinary (${contextLabel}).`,
+          );
+        }
+        return null;
+      }
+    },
+    [],
+  );
+
+  const getPendingDraftAssets = useCallback(() => {
+    return dedupeCleanupAssets([
+      ...pendingVideoUploads,
+      ...pendingCaseUploads,
+      ...pendingDiagramUploads,
+    ]);
+  }, [pendingVideoUploads, pendingCaseUploads, pendingDiagramUploads]);
+
+  useEffect(() => {
+    const flushPageExitDrafts = () => {
+      const pendingAssets = getPendingDraftAssets();
+      if (pendingAssets.length === 0) {
+        return;
+      }
+      cleanupCloudinaryAssetsOnPageExit(pendingAssets);
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('beforeunload', flushPageExitDrafts);
+      window.addEventListener('pagehide', flushPageExitDrafts);
+    }
+
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('beforeunload', flushPageExitDrafts);
+        window.removeEventListener('pagehide', flushPageExitDrafts);
+      }
+
+      const pendingAssets = getPendingDraftAssets();
+      if (pendingAssets.length === 0) {
+        return;
+      }
+
+      void cleanupCloudinaryAssets(pendingAssets).catch((error) => {
+        console.error('[cloudinary-cleanup:admin-unmount]', error);
+      });
+    };
+  }, [getPendingDraftAssets]);
+
+  const isAssetTrackedInPending = useCallback(
+    (asset: CloudinaryCleanupAsset, pendingAssets: CloudinaryCleanupAsset[]) => {
+      const key = cleanupAssetKey(asset);
+      return pendingAssets.some((entry) => cleanupAssetKey(entry) === key);
+    },
+    [],
+  );
+
+  const getCollectionCleanupAssets = useCallback(
+    (collectionName: string, id: string): CloudinaryCleanupAsset[] => {
+      if (collectionName === 'videos') {
+        const item = videos.find((entry) => entry.id === id);
+        return item ? collectVideoAssets(item) : [];
+      }
+
+      if (collectionName === 'clinicalCases') {
+        const item = cases.find((entry) => entry.id === id);
+        return item ? collectCaseAssets(item) : [];
+      }
+
+      if (collectionName === 'diagrams') {
+        const item = diagrams.find((entry) => entry.id === id);
+        return item ? collectDiagramAssets(item) : [];
+      }
+
+      return [];
+    },
+    [videos, cases, diagrams],
+  );
+
   const handleDelete = async (collectionName: string, id: string) => {
     if (!confirm('Êtes-vous sûr de vouloir supprimer cet élément ?')) return;
+
+    const cleanupCandidates = getCollectionCleanupAssets(collectionName, id);
+
     try {
       await deleteDoc(doc(db, collectionName, id));
+
+      if (cleanupCandidates.length > 0) {
+        await runCloudinaryCleanup(cleanupCandidates, `delete:${collectionName}`, { silent: true });
+      }
+
       setSuccessMessage('Élément supprimé avec succès.');
       logAdminAction('delete', collectionName, { id });
       fetchData(); // Refresh lists
@@ -313,7 +607,7 @@ export function AdminContentManager() {
     setDiagramUploadFileSize(0);
   };
 
-  const resetVideoForm = () => {
+  const resetVideoFormState = () => {
     setEditingVideoId(null);
     setVideoData({
       title: '',
@@ -328,6 +622,20 @@ export function AdminContentManager() {
       parts: [],
     });
     resetVideoUploadState();
+  };
+
+  const discardPendingVideoUploads = useCallback(async () => {
+    if (pendingVideoUploads.length === 0) {
+      return;
+    }
+
+    await runCloudinaryCleanup(pendingVideoUploads, 'video:discard-pending', { silent: true });
+    setPendingVideoUploads([]);
+  }, [pendingVideoUploads, runCloudinaryCleanup]);
+
+  const resetVideoForm = async () => {
+    await discardPendingVideoUploads();
+    resetVideoFormState();
   };
 
   const QCM_OPTION_LABELS = ['A', 'B', 'C', 'D', 'E'];
@@ -373,6 +681,16 @@ export function AdminContentManager() {
     setVideoUploadProgress(3);
     setVideoUploadPhase('uploading');
 
+    const currentFormVideoAssets = collectVideoAssets(videoData);
+    const stalePendingAssets = currentFormVideoAssets.filter((asset) =>
+      isAssetTrackedInPending(asset, pendingVideoUploads),
+    );
+
+    if (stalePendingAssets.length > 0) {
+      await runCloudinaryCleanup(stalePendingAssets, 'video:replace-draft', { silent: true });
+      setPendingVideoUploads((prev) => filterOutCleanupAssets(prev, stalePendingAssets));
+    }
+
     try {
       const response = await uploadCloudinaryAsset(file, {
         resourceType: 'video',
@@ -391,6 +709,26 @@ export function AdminContentManager() {
 
       setVideoUploadPhase('processing');
       setVideoUploadProgress((prev) => Math.max(prev, 98));
+
+      const uploadedVideoAssets = dedupeCleanupAssets([
+        {
+          publicId: response.publicId,
+          secureUrl: response.secureUrl,
+          resourceType: 'video',
+        },
+        ...(Array.isArray(response.parts)
+          ? response.parts.map((part) => ({
+              publicId: part.publicId,
+              secureUrl: part.secureUrl,
+              resourceType: 'video' as const,
+            }))
+          : []),
+      ]);
+
+      if (uploadedVideoAssets.length > 0) {
+        setPendingVideoUploads((prev) => dedupeCleanupAssets([...prev, ...uploadedVideoAssets]));
+      }
+
       setVideoData((prev) => ({
         ...prev,
         url: response.secureUrl,
@@ -465,18 +803,28 @@ export function AdminContentManager() {
     setSuccessMessage('');
 
     try {
+      const targetVideoId = editingVideoId;
       const payload = {
         ...videoData,
         packId: videoData.isFreeDemo ? '' : videoData.subspecialty,
       };
 
-      if (editingVideoId) {
-        await updateDoc(doc(db, 'videos', editingVideoId), {
+      const previousVideo = targetVideoId
+        ? videos.find((entry) => entry.id === targetVideoId)
+        : null;
+      const previousAssets = previousVideo ? collectVideoAssets(previousVideo) : [];
+      const nextAssets = collectVideoAssets(payload);
+      const assetsToCleanupAfterSave = targetVideoId
+        ? subtractCleanupAssets(previousAssets, nextAssets)
+        : [];
+
+      if (targetVideoId) {
+        await updateDoc(doc(db, 'videos', targetVideoId), {
           ...payload,
           updatedAt: new Date().toISOString()
         });
         setSuccessMessage('Vidéo mise à jour avec succès !');
-        logAdminAction('update', 'videos', { id: editingVideoId, title: payload.title });
+        logAdminAction('update', 'videos', { id: targetVideoId, title: payload.title });
         setEditingVideoId(null);
       } else {
         const docRef = await addDoc(collection(db, 'videos'), {
@@ -486,10 +834,11 @@ export function AdminContentManager() {
         logAdminAction('create', 'videos', { id: docRef.id, title: payload.title });
         setSuccessMessage('Vidéo ajoutée avec succès !');
       }
-      
-      fetchData(); // Refresh list
 
-      resetVideoForm();
+      setPendingVideoUploads([]);
+      resetVideoFormState();
+      await runCloudinaryCleanup(assetsToCleanupAfterSave, 'video:replace-saved', { silent: true });
+      await fetchData();
     } catch (error: unknown) {
       console.error('Error adding/updating video:', error);
       setErrorMessage(getSaveErrorMessage('de la vidéo', error));
@@ -499,6 +848,7 @@ export function AdminContentManager() {
   };
 
   const handleEditVideo = (video: VideoModel) => {
+    void discardPendingVideoUploads();
     setEditingVideoId(video.id);
     setVideoViewMode('editor');
     resetVideoUploadState();
@@ -534,6 +884,7 @@ export function AdminContentManager() {
     }
 
     if (target === 'case') {
+      void discardPendingCaseUploads();
       setEditingCaseId(null);
       setCaseData({
         videoId,
@@ -562,6 +913,7 @@ export function AdminContentManager() {
     }
 
     if (target === 'diagram') {
+      void discardPendingDiagramUploads();
       setEditingDiagramId(null);
       setDiagramData({
         videoId,
@@ -785,7 +1137,7 @@ export function AdminContentManager() {
     questions: []
   });
 
-  const resetCaseForm = (videoId = '') => {
+  const resetCaseFormState = (videoId = '') => {
     setEditingCaseId(null);
     setCaseData({
       videoId,
@@ -803,6 +1155,20 @@ export function AdminContentManager() {
     });
   };
 
+  const discardPendingCaseUploads = useCallback(async () => {
+    if (pendingCaseUploads.length === 0) {
+      return;
+    }
+
+    await runCloudinaryCleanup(pendingCaseUploads, 'case:discard-pending', { silent: true });
+    setPendingCaseUploads([]);
+  }, [pendingCaseUploads, runCloudinaryCleanup]);
+
+  const resetCaseForm = async (videoId = '') => {
+    await discardPendingCaseUploads();
+    resetCaseFormState(videoId);
+  };
+
   const handleCaseSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!caseData.videoId) {
@@ -815,13 +1181,21 @@ export function AdminContentManager() {
     setSuccessMessage('');
 
     try {
-      if (editingCaseId) {
-        await updateDoc(doc(db, 'clinicalCases', editingCaseId), {
+      const targetCaseId = editingCaseId;
+      const previousCase = targetCaseId ? cases.find((entry) => entry.id === targetCaseId) : null;
+      const previousAssets = previousCase ? collectCaseAssets(previousCase) : [];
+      const nextAssets = collectCaseAssets(caseData);
+      const assetsToCleanupAfterSave = targetCaseId
+        ? subtractCleanupAssets(previousAssets, nextAssets)
+        : [];
+
+      if (targetCaseId) {
+        await updateDoc(doc(db, 'clinicalCases', targetCaseId), {
           ...caseData,
           updatedAt: new Date().toISOString()
         });
         setSuccessMessage('Cas clinique mis à jour avec succès !');
-        logAdminAction('update', 'clinicalCases', { id: editingCaseId, videoId: caseData.videoId });
+        logAdminAction('update', 'clinicalCases', { id: targetCaseId, videoId: caseData.videoId });
         setEditingCaseId(null);
       } else {
         const docRef = await addDoc(collection(db, 'clinicalCases'), {
@@ -831,10 +1205,11 @@ export function AdminContentManager() {
         logAdminAction('create', 'clinicalCases', { id: docRef.id, videoId: caseData.videoId });
         setSuccessMessage('Cas clinique ajouté avec succès !');
       }
-      
-      fetchData(); // Refresh list
 
-      resetCaseForm(caseData.videoId);
+      setPendingCaseUploads([]);
+      resetCaseFormState(caseData.videoId);
+      await runCloudinaryCleanup(assetsToCleanupAfterSave, 'case:replace-saved', { silent: true });
+      await fetchData();
     } catch (error: unknown) {
       console.error('Error adding/updating clinical case:', error);
       setErrorMessage(getSaveErrorMessage('du cas clinique', error));
@@ -844,6 +1219,7 @@ export function AdminContentManager() {
   };
 
   const handleEditCase = (c: ClinicalCaseModel) => {
+    void discardPendingCaseUploads();
     setEditingCaseId(c.id);
     setCaseData({
       videoId: c.videoId || '',
@@ -875,6 +1251,18 @@ export function AdminContentManager() {
         resourceType: 'image',
         folder: 'orl-platform/case-images',
       });
+
+      const uploadedAsset = dedupeCleanupAssets([
+        {
+          publicId: response.publicId,
+          secureUrl: response.secureUrl,
+          resourceType: 'image',
+        },
+      ]);
+      if (uploadedAsset.length > 0) {
+        setPendingCaseUploads((prev) => dedupeCleanupAssets([...prev, ...uploadedAsset]));
+      }
+
       setUploadProgress(100);
       setCaseData((prev) => ({
         ...prev,
@@ -892,6 +1280,53 @@ export function AdminContentManager() {
         e.target.value = '';
       }
     }
+  };
+
+  const handleRemoveCaseImage = async (index: number) => {
+    const targetUrl = caseData.images?.[index];
+    const targetAsset = toCleanupAssetFromUrl(targetUrl, 'image');
+
+    if (targetAsset && isAssetTrackedInPending(targetAsset, pendingCaseUploads)) {
+      await runCloudinaryCleanup([targetAsset], 'case:remove-draft-image', { silent: true });
+      setPendingCaseUploads((prev) => filterOutCleanupAssets(prev, [targetAsset]));
+    }
+
+    setCaseData((prev) => ({
+      ...prev,
+      images: prev.images.filter((_, i) => i !== index),
+    }));
+  };
+
+  const handleRemoveCaseQuestionImage = async (questionIndex: number, imageIndex: number) => {
+    const targetQuestion = caseData.questions?.[questionIndex];
+    const targetUrl = Array.isArray(targetQuestion?.images)
+      ? targetQuestion.images[imageIndex]
+      : undefined;
+    const targetAsset = toCleanupAssetFromUrl(targetUrl, 'image');
+
+    if (targetAsset && isAssetTrackedInPending(targetAsset, pendingCaseUploads)) {
+      await runCloudinaryCleanup([targetAsset], 'case:remove-draft-question-image', { silent: true });
+      setPendingCaseUploads((prev) => filterOutCleanupAssets(prev, [targetAsset]));
+    }
+
+    setCaseData((prev) => {
+      const questions = [...(prev.questions || [])];
+      const current = questions[questionIndex];
+      if (!current) {
+        return prev;
+      }
+
+      const currentImages = Array.isArray(current.images) ? current.images : [];
+      questions[questionIndex] = {
+        ...current,
+        images: currentImages.filter((_, i) => i !== imageIndex),
+      };
+
+      return {
+        ...prev,
+        questions,
+      };
+    });
   };
 
   const addCaseQuestion = (kind: 'qcm' | 'select' | 'open') => {
@@ -1027,6 +1462,18 @@ export function AdminContentManager() {
         resourceType: 'image',
         folder: 'orl-platform/case-question-images',
       });
+
+      const uploadedAsset = dedupeCleanupAssets([
+        {
+          publicId: response.publicId,
+          secureUrl: response.secureUrl,
+          resourceType: 'image',
+        },
+      ]);
+      if (uploadedAsset.length > 0) {
+        setPendingCaseUploads((prev) => dedupeCleanupAssets([...prev, ...uploadedAsset]));
+      }
+
       setUploadProgress(100);
       setCaseData((prev) => {
         const questions = [...(prev.questions || [])];
@@ -1067,7 +1514,7 @@ export function AdminContentManager() {
     reference: '',
   });
 
-  const resetDiagramForm = (videoId = '') => {
+  const resetDiagramFormState = (videoId = '') => {
     setEditingDiagramId(null);
     setDiagramData({
       videoId,
@@ -1078,6 +1525,31 @@ export function AdminContentManager() {
     });
     resetDiagramUploadState();
   };
+
+  const discardPendingDiagramUploads = useCallback(async () => {
+    if (pendingDiagramUploads.length === 0) {
+      return;
+    }
+
+    await runCloudinaryCleanup(pendingDiagramUploads, 'diagram:discard-pending', { silent: true });
+    setPendingDiagramUploads([]);
+  }, [pendingDiagramUploads, runCloudinaryCleanup]);
+
+  const resetDiagramForm = async (videoId = '') => {
+    await discardPendingDiagramUploads();
+    resetDiagramFormState(videoId);
+  };
+
+  const handleRemoveDiagramImage = useCallback(async () => {
+    const currentAsset = toCleanupAssetFromUrl(diagramData.imageUrl, 'image');
+    if (currentAsset && isAssetTrackedInPending(currentAsset, pendingDiagramUploads)) {
+      await runCloudinaryCleanup([currentAsset], 'diagram:remove-draft-image', { silent: true });
+      setPendingDiagramUploads((prev) => filterOutCleanupAssets(prev, [currentAsset]));
+    }
+
+    setDiagramData((prev) => ({ ...prev, imageUrl: '' }));
+    resetDiagramUploadState();
+  }, [diagramData.imageUrl, isAssetTrackedInPending, pendingDiagramUploads, runCloudinaryCleanup]);
 
   const handleDiagramSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1091,13 +1563,23 @@ export function AdminContentManager() {
     setSuccessMessage('');
 
     try {
-      if (editingDiagramId) {
-        await updateDoc(doc(db, 'diagrams', editingDiagramId), {
+      const targetDiagramId = editingDiagramId;
+      const previousDiagram = targetDiagramId
+        ? diagrams.find((entry) => entry.id === targetDiagramId)
+        : null;
+      const previousAssets = previousDiagram ? collectDiagramAssets(previousDiagram) : [];
+      const nextAssets = collectDiagramAssets(diagramData);
+      const assetsToCleanupAfterSave = targetDiagramId
+        ? subtractCleanupAssets(previousAssets, nextAssets)
+        : [];
+
+      if (targetDiagramId) {
+        await updateDoc(doc(db, 'diagrams', targetDiagramId), {
           ...diagramData,
           updatedAt: new Date().toISOString()
         });
         setSuccessMessage('Schéma mis à jour avec succès !');
-        logAdminAction('update', 'diagrams', { id: editingDiagramId, videoId: diagramData.videoId });
+        logAdminAction('update', 'diagrams', { id: targetDiagramId, videoId: diagramData.videoId });
         setEditingDiagramId(null);
       } else {
         const docRef = await addDoc(collection(db, 'diagrams'), {
@@ -1107,10 +1589,11 @@ export function AdminContentManager() {
         logAdminAction('create', 'diagrams', { id: docRef.id, videoId: diagramData.videoId });
         setSuccessMessage('Schéma ajouté avec succès !');
       }
-      
-      fetchData(); // Refresh list
 
-      resetDiagramForm(diagramData.videoId);
+      setPendingDiagramUploads([]);
+      resetDiagramFormState(diagramData.videoId);
+      await runCloudinaryCleanup(assetsToCleanupAfterSave, 'diagram:replace-saved', { silent: true });
+      await fetchData();
     } catch (error: unknown) {
       console.error('Error adding/updating diagram:', error);
       setErrorMessage(getSaveErrorMessage('du schéma', error));
@@ -1120,6 +1603,7 @@ export function AdminContentManager() {
   };
 
   const handleEditDiagram = (d: DiagramModel) => {
+    void discardPendingDiagramUploads();
     setEditingDiagramId(d.id);
     resetDiagramUploadState();
     setDiagramData({
@@ -1144,6 +1628,12 @@ export function AdminContentManager() {
     setDiagramUploadPhase('uploading');
     setErrorMessage('');
 
+    const currentDiagramAsset = toCleanupAssetFromUrl(diagramData.imageUrl, 'image');
+    if (currentDiagramAsset && isAssetTrackedInPending(currentDiagramAsset, pendingDiagramUploads)) {
+      await runCloudinaryCleanup([currentDiagramAsset], 'diagram:replace-draft', { silent: true });
+      setPendingDiagramUploads((prev) => filterOutCleanupAssets(prev, [currentDiagramAsset]));
+    }
+
     try {
       const response = await uploadCloudinaryAsset(file, {
         resourceType: 'image',
@@ -1159,6 +1649,18 @@ export function AdminContentManager() {
           setDiagramUploadProgress(Math.max(3, Math.min(95, percentage)));
         },
       });
+
+      const uploadedAsset = dedupeCleanupAssets([
+        {
+          publicId: response.publicId,
+          secureUrl: response.secureUrl,
+          resourceType: 'image',
+        },
+      ]);
+      if (uploadedAsset.length > 0) {
+        setPendingDiagramUploads((prev) => dedupeCleanupAssets([...prev, ...uploadedAsset]));
+      }
+
       setDiagramUploadPhase('processing');
       setDiagramUploadProgress((prev) => Math.max(prev, 98));
       setDiagramData((prev) => ({
@@ -2002,7 +2504,9 @@ export function AdminContentManager() {
             <div className="pt-4 border-t border-slate-200 flex justify-end gap-3">
               <button
                 type="button"
-                onClick={resetVideoForm}
+                onClick={() => {
+                  void resetVideoForm();
+                }}
                 disabled={!hasVideoFormContent}
                 className="flex items-center gap-2 border border-slate-300 text-slate-700 px-6 py-3 rounded-xl font-medium hover:bg-slate-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
               >
@@ -2668,12 +3172,9 @@ export function AdminContentManager() {
                             <span className="truncate max-w-[160px]" title={img}>{img}</span>
                             <button
                               type="button"
-                              onClick={() =>
-                                setCaseData(prev => ({
-                                  ...prev,
-                                  images: prev.images.filter((_, i) => i !== index),
-                                }))
-                              }
+                              onClick={() => {
+                                void handleRemoveCaseImage(index);
+                              }}
                               className="ml-1 text-red-600 hover:text-red-800"
                               title="Supprimer la figure"
                             >
@@ -3095,17 +3596,9 @@ export function AdminContentManager() {
                                           </span>
                                           <button
                                             type="button"
-                                            onClick={() =>
-                                              updateCaseQuestion(index, (current) => {
-                                                const currentImages: string[] = Array.isArray(current.images)
-                                                  ? current.images
-                                                  : [];
-                                                return {
-                                                  ...current,
-                                                  images: currentImages.filter((_, i) => i !== imgIndex),
-                                                };
-                                              })
-                                            }
+                                            onClick={() => {
+                                              void handleRemoveCaseQuestionImage(index, imgIndex);
+                                            }}
                                             className="ml-1 text-red-600 hover:text-red-800"
                                             title="Supprimer la figure"
                                           >
@@ -3148,7 +3641,9 @@ export function AdminContentManager() {
               <div className="pt-4 border-t border-slate-200 flex justify-end gap-3">
                 <button
                   type="button"
-                  onClick={() => resetCaseForm()}
+                  onClick={() => {
+                    void resetCaseForm();
+                  }}
                   disabled={!hasCaseFormContent}
                   className="flex items-center gap-2 border border-slate-300 text-slate-700 px-6 py-3 rounded-xl font-medium hover:bg-slate-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                 >
@@ -3415,8 +3910,7 @@ export function AdminContentManager() {
                               <button
                                 type="button"
                                 onClick={() => {
-                                  setDiagramData(prev => ({ ...prev, imageUrl: '' }));
-                                  resetDiagramUploadState();
+                                  void handleRemoveDiagramImage();
                                 }}
                                 className="inline-flex items-center gap-1 text-xs text-red-600 hover:text-red-700 font-medium"
                               >
@@ -3516,7 +4010,9 @@ export function AdminContentManager() {
               <div className="pt-4 border-t border-slate-200 flex justify-end gap-3">
                 <button
                   type="button"
-                  onClick={() => resetDiagramForm()}
+                  onClick={() => {
+                    void resetDiagramForm();
+                  }}
                   disabled={!hasDiagramFormContent}
                   className="flex items-center gap-2 border border-slate-300 text-slate-700 px-6 py-3 rounded-xl font-medium hover:bg-slate-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                 >

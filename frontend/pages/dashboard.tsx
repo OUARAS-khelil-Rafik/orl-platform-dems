@@ -23,6 +23,9 @@ import {
   updateAuthPhotoURL,
   updateAuthPassword,
   uploadAvatarImage,
+  cleanupCloudinaryAssets,
+  cleanupCloudinaryAssetsOnPageExit,
+  type CloudinaryCleanupAsset,
 } from '@/lib/data/local-data';
 import { isSubscriptionActive } from '@/lib/security/access-control';
 import { formatFullName, normalizeNameParts, splitFullName } from '@/lib/utils/name-utils';
@@ -46,6 +49,7 @@ export default function UserDashboard() {
   const [avatarRotation, setAvatarRotation] = useState(0);
   const [avatarAspectMode, setAvatarAspectMode] = useState<'square' | 'free'>('square');
   const [avatarCroppedAreaPixels, setAvatarCroppedAreaPixels] = useState<Area | null>(null);
+  const [pendingAvatarDraftAssets, setPendingAvatarDraftAssets] = useState<CloudinaryCleanupAsset[]>([]);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -171,6 +175,35 @@ export default function UserDashboard() {
     setAvatarAspectMode('square');
     setAvatarCroppedAreaPixels(null);
   };
+
+  useEffect(() => {
+    const flushAvatarDraftsOnPageExit = () => {
+      if (pendingAvatarDraftAssets.length === 0) {
+        return;
+      }
+      cleanupCloudinaryAssetsOnPageExit(pendingAvatarDraftAssets);
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('beforeunload', flushAvatarDraftsOnPageExit);
+      window.addEventListener('pagehide', flushAvatarDraftsOnPageExit);
+    }
+
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('beforeunload', flushAvatarDraftsOnPageExit);
+        window.removeEventListener('pagehide', flushAvatarDraftsOnPageExit);
+      }
+
+      if (pendingAvatarDraftAssets.length === 0) {
+        return;
+      }
+
+      void cleanupCloudinaryAssets(pendingAvatarDraftAssets).catch((error) => {
+        console.error('[avatar-cleanup:dashboard-unmount]', error);
+      });
+    };
+  }, [pendingAvatarDraftAssets]);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -299,6 +332,9 @@ export default function UserDashboard() {
   const handleAvatarSave = async () => {
     if (!user || !avatarSource || !avatarCroppedAreaPixels) return;
 
+    const previousAvatarUrl = String(profile?.photoURL || user.photoURL || '').trim();
+    let uploadedAvatarAsset: { publicId: string; secureUrl: string; resourceType: 'image' } | null = null;
+
     try {
       setAvatarUploading(true);
       const croppedBlob = await getCroppedAvatarBlob(
@@ -312,11 +348,43 @@ export default function UserDashboard() {
 
       const data = await uploadAvatarImage(croppedFile);
       const url = data.secureUrl;
+      uploadedAvatarAsset = {
+        publicId: data.publicId,
+        secureUrl: data.secureUrl,
+        resourceType: 'image',
+      };
+      setPendingAvatarDraftAssets([uploadedAvatarAsset]);
 
       await updateDoc(doc(db, 'users', user.uid), { photoURL: url });
       await updateAuthPhotoURL(user.uid, url);
+
+      if (previousAvatarUrl && previousAvatarUrl !== url) {
+        await cleanupCloudinaryAssets([
+          {
+            secureUrl: previousAvatarUrl,
+            resourceType: 'image',
+          },
+        ]).catch((cleanupError) => {
+          console.warn('[avatar-cleanup:previous]', cleanupError);
+        });
+      }
+
+      setPendingAvatarDraftAssets([]);
+      uploadedAvatarAsset = null;
       resetAvatarEditor();
     } catch (error) {
+      if (uploadedAvatarAsset) {
+        const rollbackOk = await cleanupCloudinaryAssets([uploadedAvatarAsset])
+          .then(() => true)
+          .catch((cleanupError) => {
+            console.warn('[avatar-cleanup:rollback]', cleanupError);
+            return false;
+          });
+
+        if (rollbackOk) {
+          setPendingAvatarDraftAssets([]);
+        }
+      }
       console.error('Error updating avatar:', error);
       alert('Erreur lors du changement de la photo.');
     } finally {

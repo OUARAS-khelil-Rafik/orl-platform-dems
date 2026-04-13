@@ -68,6 +68,22 @@ export interface LocalAuthUser {
   photoURL: string;
 }
 
+export type CloudinaryResourceType = 'image' | 'video' | 'raw';
+
+export interface CloudinaryCleanupAsset {
+  publicId?: string;
+  secureUrl?: string;
+  resourceType?: CloudinaryResourceType;
+}
+
+export interface CloudinaryCleanupResult extends CloudinaryCleanupAsset {
+  deleted: boolean;
+  skipped: boolean;
+  reason: string;
+  usedBy: string[];
+  deletedAs?: CloudinaryResourceType | null;
+}
+
 const resolveApiBaseUrl = () => {
   const fromEnv = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '');
   if (fromEnv) {
@@ -557,6 +573,7 @@ export const uploadCloudinaryAsset = async (
 ): Promise<{
   secureUrl: string;
   publicId: string;
+  resourceType?: 'image' | 'video';
   isMultipart?: boolean;
   totalParts?: number;
   parts?: Array<{ publicId: string; secureUrl: string; duration?: number; fileSize?: number }>;
@@ -581,6 +598,7 @@ export const uploadCloudinaryAsset = async (
     return apiRequest<{
       secureUrl: string;
       publicId: string;
+      resourceType?: 'image' | 'video';
       isMultipart?: boolean;
       totalParts?: number;
       parts?: Array<{ publicId: string; secureUrl: string; duration?: number; fileSize?: number }>;
@@ -628,6 +646,7 @@ export const uploadCloudinaryAsset = async (
         resolve({
           secureUrl,
           publicId,
+          resourceType: payload.resourceType === 'video' ? 'video' : 'image',
           isMultipart: Boolean(payload.isMultipart),
           totalParts: Number(payload.totalParts || 0) || undefined,
           parts: Array.isArray(payload.parts)
@@ -670,4 +689,69 @@ export const uploadAvatarImage = async (
     },
     true,
   );
+};
+
+export const cleanupCloudinaryAssets = async (
+  assets: CloudinaryCleanupAsset[],
+): Promise<{
+  results: CloudinaryCleanupResult[];
+  summary: {
+    requested: number;
+    deleted: number;
+    skippedInUse: number;
+    missingPublicId: number;
+    notFound: number;
+    failed: number;
+  };
+}> => {
+  return apiRequest(
+    '/uploads/cleanup',
+    {
+      method: 'POST',
+      body: JSON.stringify({ assets }),
+    },
+    true,
+  );
+};
+
+export const cleanupCloudinaryAssetsOnPageExit = (assets: CloudinaryCleanupAsset[]): boolean => {
+  if (!isBrowser()) {
+    return false;
+  }
+
+  const token = getAuthToken();
+  if (!token) {
+    return false;
+  }
+
+  const payload = assets
+    .map((entry) => ({
+      publicId: String(entry.publicId || '').trim(),
+      secureUrl: String(entry.secureUrl || '').trim(),
+      resourceType:
+        entry.resourceType === 'image' || entry.resourceType === 'video' || entry.resourceType === 'raw'
+          ? entry.resourceType
+          : undefined,
+    }))
+    .filter((entry) => entry.publicId || entry.secureUrl);
+
+  if (payload.length === 0) {
+    return false;
+  }
+
+  try {
+    const apiBaseUrl = resolveApiBaseUrl();
+    void fetch(`${apiBaseUrl}/uploads/cleanup`, {
+      method: 'POST',
+      keepalive: true,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ assets: payload }),
+    });
+    return true;
+  } catch {
+    return false;
+  }
 };
