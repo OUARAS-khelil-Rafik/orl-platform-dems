@@ -33,6 +33,8 @@ export interface UserProfile {
   phoneNumber?: string;
   purchasedVideos: string[];
   purchasedPacks: string[];
+  favoriteVideoIds: string[];
+  importantVideoIds: string[];
   blockedVideoIds?: string[];
   isBlocked?: boolean;
   createdAt: string;
@@ -77,6 +79,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const uniquePurchasedPacks = Array.isArray(profile.purchasedPacks)
       ? Array.from(new Set(profile.purchasedPacks.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)))
       : [];
+    const uniqueImportantVideoIds = Array.isArray(profile.importantVideoIds)
+      ? Array.from(new Set(profile.importantVideoIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)))
+      : [];
+    const uniqueFavoriteVideoIds = Array.isArray(profile.favoriteVideoIds)
+      ? Array.from(new Set(profile.favoriteVideoIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)))
+      : [];
+
+    // Important videos are a subset of favorites in the UX.
+    const mergedFavoriteVideoIds = Array.from(new Set([...uniqueFavoriteVideoIds, ...uniqueImportantVideoIds]));
 
     const sourceDisplayName = profile.displayName || authUser?.displayName || 'Utilisateur';
     const splitSourceName = splitFullName(sourceDisplayName);
@@ -100,6 +111,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       subscriptionApprovalStatus: profile.subscriptionApprovalStatus || 'none',
       purchasedVideos: uniquePurchasedVideos,
       purchasedPacks: uniquePurchasedPacks,
+      favoriteVideoIds: mergedFavoriteVideoIds,
+      importantVideoIds: uniqueImportantVideoIds,
       blockedVideoIds: Array.isArray(profile.blockedVideoIds) ? profile.blockedVideoIds : [],
       isBlocked: Boolean(profile.isBlocked),
       createdAt: profile.createdAt || new Date().toISOString(),
@@ -140,6 +153,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       subscriptionApprovalStatus: 'none',
       purchasedVideos: [],
       purchasedPacks: [],
+      favoriteVideoIds: [],
+      importantVideoIds: [],
       blockedVideoIds: [],
       isBlocked: false,
       createdAt: new Date().toISOString(),

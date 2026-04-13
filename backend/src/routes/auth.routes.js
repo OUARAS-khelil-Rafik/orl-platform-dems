@@ -52,6 +52,8 @@ const createUserWithPassword = async ({
     subscriptionApprovalStatus,
     purchasedVideos: [],
     purchasedPacks: [],
+    favoriteVideoIds: [],
+    importantVideoIds: [],
     blockedVideoIds: [],
     isBlocked: false,
     createdAt: now,

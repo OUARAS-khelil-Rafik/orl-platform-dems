@@ -23,6 +23,8 @@ const userSchema = new mongoose.Schema(
     phoneNumber: { type: String },
     purchasedVideos: { type: [String], default: [] },
     purchasedPacks: { type: [String], default: [] },
+    favoriteVideoIds: { type: [String], default: [] },
+    importantVideoIds: { type: [String], default: [] },
     blockedVideoIds: { type: [String], default: [] },
     isBlocked: { type: Boolean, default: false },
     cloudinary: {

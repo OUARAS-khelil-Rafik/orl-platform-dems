@@ -28,6 +28,7 @@ interface DemoVideo {
   id: string;
   title: string;
   url: string;
+  parts?: Array<{ secureUrl?: string }>;
   subspecialty?: string;
   duration?: string | number;
   durationMinutes?: number;
@@ -45,6 +46,8 @@ type WatchProgressEntry = {
 type UnfinishedVideoItem = {
   id: string;
   title: string;
+  thumbnailUrl: string;
+  subspecialtyLabel: string;
   currentTime: number;
   duration: number;
   remainingSeconds: number;
@@ -94,6 +97,52 @@ const extractYouTubeVideoId = (url: string) => {
   if (embedMatch?.[1]) return embedMatch[1];
 
   return null;
+};
+
+const VIDEO_CARD_PLACEHOLDER = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360"><rect width="640" height="360" fill="%230f172a"/><circle cx="520" cy="80" r="120" fill="%231e293b"/><circle cx="130" cy="320" r="160" fill="%23334155"/></svg>';
+
+const buildCloudinaryVideoThumbnailUrl = (videoUrl: string, secondMark = 60) => {
+  const cleaned = videoUrl.trim().split('#')[0]?.split('?')[0] ?? '';
+  if (!cleaned) return null;
+
+  const uploadMarker = '/video/upload/';
+  const markerIndex = cleaned.indexOf(uploadMarker);
+  if (markerIndex === -1) return null;
+
+  const uploadBase = cleaned.slice(0, markerIndex + uploadMarker.length);
+  let pathAfterUpload = cleaned.slice(markerIndex + uploadMarker.length);
+  if (!pathAfterUpload) return null;
+
+  const versionSegmentMatch = pathAfterUpload.match(/\/v\d+\//);
+  if (versionSegmentMatch && typeof versionSegmentMatch.index === 'number') {
+    pathAfterUpload = pathAfterUpload.slice(versionSegmentMatch.index + 1);
+  } else {
+    const pathTokens = pathAfterUpload.split('/');
+    if (pathTokens.length > 1 && pathTokens[0].includes(',')) {
+      pathAfterUpload = pathTokens.slice(1).join('/');
+    }
+  }
+
+  const jpgPath = /\.[a-z0-9]+$/i.test(pathAfterUpload)
+    ? pathAfterUpload.replace(/\.[a-z0-9]+$/i, '.jpg')
+    : `${pathAfterUpload}.jpg`;
+
+  const safeSecond = Math.max(0, Math.floor(secondMark));
+  return `${uploadBase}so_${safeSecond},c_fill,g_auto,ar_16:9,w_960,f_jpg,q_auto/${jpgPath}`;
+};
+
+const getVideoThumbnailUrl = (videoUrl: string, secondMark = 60) => {
+  const cloudinaryThumbnail = buildCloudinaryVideoThumbnailUrl(videoUrl, secondMark);
+  if (cloudinaryThumbnail) {
+    return cloudinaryThumbnail;
+  }
+
+  const youtubeId = extractYouTubeVideoId(videoUrl);
+  if (youtubeId) {
+    return `https://i.ytimg.com/vi/${youtubeId}/hqdefault.jpg`;
+  }
+
+  return VIDEO_CARD_PLACEHOLDER;
 };
 
 const formatClock = (seconds: number) => {
@@ -166,6 +215,41 @@ const parseDurationToSeconds = (video: DemoVideo): number => {
 const formatSubspecialtyLabel = (subspecialty?: string) => {
   if (!subspecialty) return 'Otologie';
   return `${subspecialty.charAt(0).toUpperCase()}${subspecialty.slice(1)}`;
+};
+
+const getUnfinishedVideoTheme = (subspecialtyLabel: string) => {
+  const normalized = subspecialtyLabel.toLowerCase();
+
+  if (normalized.includes('rhin')) {
+    return {
+      chipClass: 'specialty-glow-rhinology',
+      borderColor: 'color-mix(in oklab, var(--specialty-rhinology) 36%, var(--app-border) 64%)',
+      background: 'linear-gradient(180deg, color-mix(in oklab, var(--specialty-rhinology) 14%, var(--app-surface) 86%) 0%, color-mix(in oklab, var(--specialty-rhinology) 24%, var(--app-surface-alt) 76%) 100%)',
+      stripeGradient: 'linear-gradient(90deg, color-mix(in oklab, var(--specialty-rhinology) 84%, #0ea5e9 16%), color-mix(in oklab, var(--specialty-rhinology) 68%, #2563eb 32%))',
+      progressGradient: 'linear-gradient(90deg, color-mix(in oklab, var(--specialty-rhinology) 88%, #0ea5e9 12%), color-mix(in oklab, var(--specialty-rhinology) 72%, #2563eb 28%))',
+      ctaColor: 'color-mix(in oklab, var(--specialty-rhinology) 78%, var(--app-text) 22%)',
+    };
+  }
+
+  if (normalized.includes('lary')) {
+    return {
+      chipClass: 'specialty-glow-laryngology',
+      borderColor: 'color-mix(in oklab, var(--specialty-laryngology) 36%, var(--app-border) 64%)',
+      background: 'linear-gradient(180deg, color-mix(in oklab, var(--specialty-laryngology) 14%, var(--app-surface) 86%) 0%, color-mix(in oklab, var(--specialty-laryngology) 24%, var(--app-surface-alt) 76%) 100%)',
+      stripeGradient: 'linear-gradient(90deg, color-mix(in oklab, var(--specialty-laryngology) 84%, #ec4899 16%), color-mix(in oklab, var(--specialty-laryngology) 68%, #db2777 32%))',
+      progressGradient: 'linear-gradient(90deg, color-mix(in oklab, var(--specialty-laryngology) 88%, #ec4899 12%), color-mix(in oklab, var(--specialty-laryngology) 72%, #db2777 28%))',
+      ctaColor: 'color-mix(in oklab, var(--specialty-laryngology) 78%, var(--app-text) 22%)',
+    };
+  }
+
+  return {
+    chipClass: 'specialty-glow-otology',
+    borderColor: 'color-mix(in oklab, var(--specialty-otology) 36%, var(--app-border) 64%)',
+    background: 'linear-gradient(180deg, color-mix(in oklab, var(--specialty-otology) 14%, var(--app-surface) 86%) 0%, color-mix(in oklab, var(--specialty-otology) 24%, var(--app-surface-alt) 76%) 100%)',
+    stripeGradient: 'linear-gradient(90deg, color-mix(in oklab, var(--specialty-otology) 84%, #f97316 16%), color-mix(in oklab, var(--specialty-otology) 68%, #f59e0b 32%))',
+    progressGradient: 'linear-gradient(90deg, color-mix(in oklab, var(--specialty-otology) 88%, #f97316 12%), color-mix(in oklab, var(--specialty-otology) 72%, #f59e0b 28%))',
+    ctaColor: 'color-mix(in oklab, var(--specialty-otology) 78%, var(--app-text) 22%)',
+  };
 };
 
 export default function HomePage() {
@@ -287,6 +371,8 @@ export default function HomePage() {
             return {
               id: videoId,
               title: source.title || 'Vidéo sans titre',
+              thumbnailUrl: getVideoThumbnailUrl(String(source.parts?.[0]?.secureUrl || source.url || '').trim()),
+              subspecialtyLabel: formatSubspecialtyLabel(source.subspecialty),
               currentTime,
               duration,
               remainingSeconds,
@@ -784,37 +870,69 @@ export default function HomePage() {
                 </span>
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                {unfinishedVideos.map((item) => (
-                  <Link
-                    key={item.id}
-                    href={`/videos/${item.id}`}
-                    className="rounded-2xl border px-4 py-4 transition-all hover:-translate-y-0.5 hover:shadow-md"
-                    style={{
-                      borderColor: 'color-mix(in oklab, var(--app-accent) 20%, var(--app-border) 80%)',
-                      backgroundColor: 'color-mix(in oklab, var(--app-surface) 90%, white 10%)',
-                    }}
-                  >
-                    <div className="flex items-center justify-between gap-4 mb-2">
-                      <p className="font-semibold line-clamp-1" style={{ color: 'var(--app-text)' }}>{item.title}</p>
-                      <span className="text-xs font-medium whitespace-nowrap" style={{ color: 'var(--app-muted)' }}>
-                        Reste {formatClock(item.remainingSeconds)}
-                      </span>
-                    </div>
-                    <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: 'color-mix(in oklab, var(--app-border) 76%, transparent)' }}>
-                      <div
-                        className="h-full rounded-full"
-                        style={{
-                          width: `${item.progressPercent}%`,
-                          background: 'linear-gradient(90deg, color-mix(in oklab, var(--app-accent) 76%, #6b4a35 24%), color-mix(in oklab, var(--app-accent) 92%, #2e1f16 8%))',
-                        }}
-                      />
-                    </div>
-                    <div className="mt-2 text-xs" style={{ color: 'var(--app-muted)' }}>
-                      {formatClock(item.currentTime)} / {formatClock(item.duration)}
-                    </div>
-                  </Link>
-                ))}
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                {unfinishedVideos.map((item) => {
+                  const theme = getUnfinishedVideoTheme(item.subspecialtyLabel);
+
+                  return (
+                    <Link
+                      key={item.id}
+                      href={`/videos/${item.id}`}
+                      className="group overflow-hidden rounded-2xl border transition-all hover:-translate-y-0.5 hover:shadow-lg"
+                      style={{
+                        borderColor: theme.borderColor,
+                        background: theme.background,
+                      }}
+                    >
+                      <div className="relative aspect-video overflow-hidden bg-slate-900">
+                        <Image
+                          src={item.thumbnailUrl || VIDEO_CARD_PLACEHOLDER}
+                          alt={item.title}
+                          fill
+                          sizes="(max-width: 640px) 100vw, (max-width: 1280px) 50vw, 33vw"
+                          className="object-cover transition-transform duration-300 group-hover:scale-105"
+                          loading="lazy"
+                          referrerPolicy="no-referrer"
+                        />
+                        <div className="absolute inset-x-0 top-0 h-1" style={{ background: theme.stripeGradient }} />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/15 to-transparent" />
+                        <div className={`absolute top-3 left-3 inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] ${theme.chipClass}`} style={{ borderColor: 'rgba(255,255,255,0.35)' }}>
+                          {item.subspecialtyLabel}
+                        </div>
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <span className="inline-flex h-12 w-12 items-center justify-center rounded-full border"
+                            style={{ borderColor: 'rgba(255,255,255,0.5)', backgroundColor: 'rgba(255,255,255,0.2)', color: 'white' }}
+                          >
+                            <PlayCircle className="h-7 w-7" />
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="p-4">
+                        <p className="font-semibold line-clamp-2 mb-3" style={{ color: 'var(--app-text)' }}>{item.title}</p>
+
+                        <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: 'color-mix(in oklab, var(--app-border) 76%, transparent)' }}>
+                          <div
+                            className="h-full rounded-full"
+                            style={{
+                              width: `${item.progressPercent}%`,
+                              background: theme.progressGradient,
+                            }}
+                          />
+                        </div>
+
+                        <div className="mt-3 flex items-center justify-between gap-3 text-xs" style={{ color: 'var(--app-muted)' }}>
+                          <span>Reste {formatClock(item.remainingSeconds)}</span>
+                          <span>{formatClock(item.currentTime)} / {formatClock(item.duration)}</span>
+                        </div>
+                      </div>
+
+                      <div className="px-4 pb-4 text-xs font-semibold" style={{ color: theme.ctaColor }}>
+                        Reprendre maintenant
+                      </div>
+                    </Link>
+                  );
+                })}
               </div>
             </div>
           </div>

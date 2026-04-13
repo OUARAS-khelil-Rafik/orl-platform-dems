@@ -2,9 +2,9 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
-import { db, collection, query, where, getDocs } from '@/lib/data/local-data';
+import { db, collection, query, where, getDocs, doc, updateDoc, arrayUnion, arrayRemove } from '@/lib/data/local-data';
 import { motion } from 'motion/react';
-import { PlayCircle, Lock, Clock3, Search, SlidersHorizontal, ListChecks, Stethoscope, MessageSquare, Network } from 'lucide-react';
+import { PlayCircle, Lock, Clock3, Search, SlidersHorizontal, ListChecks, Stethoscope, MessageSquare, Network, Heart, BookmarkCheck } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/components/providers/auth-provider';
 import { canAccessVideo } from '@/lib/security/access-control';
@@ -30,9 +30,28 @@ interface Video {
 type VideoPaymentStatus = 'pending' | 'rejected';
 
 type SectionFilter = 'all' | 'anatomie' | 'pathologie';
+type PlaylistFilter = 'all' | 'favorites' | 'important';
 
 const VIEWED_VIDEOS_KEY = 'dems-viewed-videos-v1';
 const EMPTY_DURATION_LABEL = '00 h 00 min';
+
+const normalizeUniqueIdList = (source: unknown): string[] => {
+  if (!Array.isArray(source)) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(source.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)),
+  );
+};
+
+const appendUniqueId = (source: string[], id: string) => {
+  if (source.includes(id)) {
+    return source;
+  }
+
+  return [...source, id];
+};
 
 const formatSectionLabel = (section: string) =>
   section === 'anatomie' ? 'Anatomie' : section === 'pathologie' ? 'Pathologie' : 'Autre';
@@ -236,6 +255,12 @@ const SECTION_OPTIONS: Array<{ value: SectionFilter; label: string }> = [
   { value: 'pathologie', label: 'Pathologie' },
 ];
 
+const PLAYLIST_OPTIONS: Array<{ value: PlaylistFilter; label: string }> = [
+  { value: 'all', label: 'Toutes les videos' },
+  { value: 'favorites', label: 'Mes favorites' },
+  { value: 'important', label: 'Mes importantes' },
+];
+
 export default function SpecialtyPage() {
   const router = useRouter();
   const slugParam = router.query.slug;
@@ -247,10 +272,24 @@ export default function SpecialtyPage() {
   const [videos, setVideos] = useState<Video[]>([]);
   const [videoNameFilter, setVideoNameFilter] = useState('');
   const [sectionFilter, setSectionFilter] = useState<SectionFilter>('all');
+  const [playlistFilter, setPlaylistFilter] = useState<PlaylistFilter>('all');
   const [viewedVideoIds, setViewedVideoIds] = useState<string[]>([]);
+  const [favoriteVideoIds, setFavoriteVideoIds] = useState<string[]>([]);
+  const [importantVideoIds, setImportantVideoIds] = useState<string[]>([]);
+  const [favoritesBusyById, setFavoritesBusyById] = useState<Record<string, boolean>>({});
+  const [favoriteActionError, setFavoriteActionError] = useState<string | null>(null);
   const [contentCounts, setContentCounts] = useState<Record<string, { qcm: number; cases: number; open: number; diagrams: number }>>({});
   const [videoPaymentStatusById, setVideoPaymentStatusById] = useState<Record<string, VideoPaymentStatus>>({});
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const normalizedImportant = normalizeUniqueIdList(profile?.importantVideoIds);
+    const normalizedFavorites = normalizeUniqueIdList(profile?.favoriteVideoIds);
+    const mergedFavorites = Array.from(new Set([...normalizedFavorites, ...normalizedImportant]));
+
+    setFavoriteVideoIds(mergedFavorites);
+    setImportantVideoIds(normalizedImportant.filter((id) => mergedFavorites.includes(id)));
+  }, [profile?.favoriteVideoIds, profile?.importantVideoIds, user?.uid]);
 
   useEffect(() => {
     const fetchVideoPaymentStatuses = async () => {
@@ -418,6 +457,8 @@ export default function SpecialtyPage() {
   }
 
   const hasAccess = (video: Video) => canAccessVideo(video, profile);
+  const favoriteVideoIdSet = new Set(favoriteVideoIds);
+  const importantVideoIdSet = new Set(importantVideoIds);
 
   const trimmedNameFilter = videoNameFilter.trim();
 
@@ -454,12 +495,111 @@ export default function SpecialtyPage() {
       return false;
     }
 
+    if (playlistFilter === 'favorites' && !favoriteVideoIdSet.has(video.id)) {
+      return false;
+    }
+
+    if (playlistFilter === 'important' && !importantVideoIdSet.has(video.id)) {
+      return false;
+    }
+
     return true;
   });
 
   const filteredDemoCount = filteredVideos.filter((video) => video.isFreeDemo).length;
   const filteredUnlockedCount = filteredVideos.filter((video) => hasAccess(video)).length;
   const filteredViewedCount = filteredVideos.filter((video) => viewedVideoIds.includes(video.id)).length;
+  const filteredFavoriteCount = filteredVideos.filter((video) => favoriteVideoIdSet.has(video.id)).length;
+  const filteredImportantCount = filteredVideos.filter((video) => importantVideoIdSet.has(video.id)).length;
+  const specialtyFavoriteCount = videos.filter((video) => favoriteVideoIdSet.has(video.id)).length;
+  const specialtyImportantCount = videos.filter((video) => importantVideoIdSet.has(video.id)).length;
+
+  const withBusyFlag = (videoId: string, isBusy: boolean) => {
+    setFavoritesBusyById((prev) => {
+      if (isBusy) {
+        return { ...prev, [videoId]: true };
+      }
+
+      const next = { ...prev };
+      delete next[videoId];
+      return next;
+    });
+  };
+
+  const requireSignedInForPlaylist = () => {
+    if (user) {
+      return true;
+    }
+
+    void router.push(`/sign-in?redirect=${encodeURIComponent(`/specialties/${slug}`)}`);
+    return false;
+  };
+
+  const handleToggleFavorite = async (videoId: string) => {
+    if (!requireSignedInForPlaylist() || !user || favoritesBusyById[videoId]) {
+      return;
+    }
+
+    const isFavorite = favoriteVideoIdSet.has(videoId);
+    setFavoriteActionError(null);
+    withBusyFlag(videoId, true);
+
+    try {
+      if (isFavorite) {
+        await updateDoc(doc(db, 'users', user.uid), {
+          favoriteVideoIds: arrayRemove(videoId),
+          importantVideoIds: arrayRemove(videoId),
+        });
+
+        setFavoriteVideoIds((prev) => prev.filter((entry) => entry !== videoId));
+        setImportantVideoIds((prev) => prev.filter((entry) => entry !== videoId));
+      } else {
+        await updateDoc(doc(db, 'users', user.uid), {
+          favoriteVideoIds: arrayUnion(videoId),
+        });
+
+        setFavoriteVideoIds((prev) => appendUniqueId(prev, videoId));
+      }
+    } catch (error) {
+      console.error('Error while toggling favorite video:', error);
+      setFavoriteActionError('Impossible de mettre a jour vos favoris pour le moment.');
+    } finally {
+      withBusyFlag(videoId, false);
+    }
+  };
+
+  const handleToggleImportant = async (videoId: string) => {
+    if (!requireSignedInForPlaylist() || !user || favoritesBusyById[videoId]) {
+      return;
+    }
+
+    const isImportant = importantVideoIdSet.has(videoId);
+    setFavoriteActionError(null);
+    withBusyFlag(videoId, true);
+
+    try {
+      if (isImportant) {
+        await updateDoc(doc(db, 'users', user.uid), {
+          importantVideoIds: arrayRemove(videoId),
+        });
+
+        setImportantVideoIds((prev) => prev.filter((entry) => entry !== videoId));
+      } else {
+        await updateDoc(doc(db, 'users', user.uid), {
+          favoriteVideoIds: arrayUnion(videoId),
+          importantVideoIds: arrayUnion(videoId),
+        });
+
+        setFavoriteVideoIds((prev) => appendUniqueId(prev, videoId));
+        setImportantVideoIds((prev) => appendUniqueId(prev, videoId));
+      }
+    } catch (error) {
+      console.error('Error while toggling important video:', error);
+      setFavoriteActionError('Impossible de mettre a jour vos videos importantes.');
+    } finally {
+      withBusyFlag(videoId, false);
+    }
+  };
 
   const getLockedVideoAction = (video: Video, isInCart: boolean) => {
     const paymentStatus = videoPaymentStatusById[video.id];
@@ -566,6 +706,12 @@ export default function SpecialtyPage() {
               <span className="inline-flex items-center rounded-full border px-3 py-1" style={{ backgroundColor: 'var(--hero-chip-bg)', borderColor: 'var(--hero-chip-border)', color: 'var(--hero-chip-text)' }}>
                 {filteredViewedCount} déjà vues
               </span>
+              <span className="inline-flex items-center rounded-full border px-3 py-1" style={{ backgroundColor: 'var(--hero-chip-bg)', borderColor: 'var(--hero-chip-border)', color: 'var(--hero-chip-text)' }}>
+                {specialtyFavoriteCount} aimees
+              </span>
+              <span className="inline-flex items-center rounded-full border px-3 py-1" style={{ backgroundColor: 'var(--hero-chip-bg)', borderColor: 'var(--hero-chip-border)', color: 'var(--hero-chip-text)' }}>
+                {specialtyImportantCount} importantes
+              </span>
             </motion.div>
           </div>
           
@@ -617,6 +763,30 @@ export default function SpecialtyPage() {
 
               </div>
 
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                {PLAYLIST_OPTIONS.map((option) => {
+                  const active = playlistFilter === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setPlaylistFilter(option.value)}
+                      className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                        active
+                          ? 'border-amber-300 bg-amber-100 text-amber-800'
+                          : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {favoriteActionError ? (
+                <p className="mt-3 text-sm font-medium text-rose-700">{favoriteActionError}</p>
+              ) : null}
+
               <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold">
                 <span className="inline-flex items-center rounded-full bg-white border border-slate-200 px-3 py-1 text-slate-700">
                   {filteredVideos.length} vidéos affichées
@@ -629,6 +799,12 @@ export default function SpecialtyPage() {
                 </span>
                 <span className="inline-flex items-center rounded-full bg-medical-50 border border-medical-200 px-3 py-1 text-medical-700">
                   {filteredUnlockedCount} accessibles maintenant
+                </span>
+                <span className="inline-flex items-center rounded-full bg-rose-50 border border-rose-200 px-3 py-1 text-rose-700">
+                  {filteredFavoriteCount} favorites
+                </span>
+                <span className="inline-flex items-center rounded-full bg-amber-50 border border-amber-200 px-3 py-1 text-amber-700">
+                  {filteredImportantCount} importantes
                 </span>
               </div>
             </div>
@@ -656,6 +832,15 @@ export default function SpecialtyPage() {
                       isInCart={isInCart}
                       lockActionLabel={action.label}
                       onUnlock={action.onClick}
+                      isFavorite={favoriteVideoIdSet.has(video.id)}
+                      isImportant={importantVideoIdSet.has(video.id)}
+                      favoriteBusy={Boolean(favoritesBusyById[video.id])}
+                      onToggleFavorite={() => {
+                        void handleToggleFavorite(video.id);
+                      }}
+                      onToggleImportant={() => {
+                        void handleToggleImportant(video.id);
+                      }}
                       index={i}
                     />
                       );
@@ -681,6 +866,11 @@ function VideoCard({
   isInCart,
   lockActionLabel,
   onUnlock,
+  isFavorite,
+  isImportant,
+  favoriteBusy,
+  onToggleFavorite,
+  onToggleImportant,
   index,
 }: {
   video: Video;
@@ -691,6 +881,11 @@ function VideoCard({
   isInCart: boolean;
   lockActionLabel: string;
   onUnlock: () => void;
+  isFavorite: boolean;
+  isImportant: boolean;
+  favoriteBusy: boolean;
+  onToggleFavorite: () => void;
+  onToggleImportant: () => void;
   index: number;
 }) {
   const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
@@ -821,19 +1016,51 @@ function VideoCard({
           </span>
         </div>
         <div className="absolute inset-0 flex items-center justify-center">
-          {hasAccess ? (
-            <Link
-              href={`/videos/${video.id}`}
-              aria-label={`Ouvrir le contenu de ${video.title}`}
-              className="w-14 h-14 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center group-hover:scale-110 transition-transform focus:outline-none focus:ring-2 focus:ring-white/70"
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={onToggleFavorite}
+              disabled={favoriteBusy}
+              className={`inline-flex h-11 w-11 items-center justify-center rounded-full border backdrop-blur-sm transition-transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-rose-300 disabled:cursor-not-allowed disabled:opacity-60 ${
+                isFavorite
+                  ? 'border-rose-200/80 bg-rose-500/80 text-white'
+                  : 'border-white/45 bg-black/35 text-white hover:bg-black/50'
+              }`}
+              aria-label={isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}
+              title={isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}
             >
-              <PlayCircle className="h-8 w-8 text-white" />
-            </Link>
-          ) : (
-            <div className="w-14 h-14 rounded-full bg-slate-900/60 backdrop-blur-sm flex items-center justify-center">
-              <Lock className="h-6 w-6 text-slate-300" />
-            </div>
-          )}
+              <Heart className={`h-5 w-5 ${isFavorite ? 'fill-current' : ''}`} />
+            </button>
+
+            {hasAccess ? (
+              <Link
+                href={`/videos/${video.id}`}
+                aria-label={`Ouvrir le contenu de ${video.title}`}
+                className="w-14 h-14 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center group-hover:scale-110 transition-transform focus:outline-none focus:ring-2 focus:ring-white/70"
+              >
+                <PlayCircle className="h-8 w-8 text-white" />
+              </Link>
+            ) : (
+              <div className="w-14 h-14 rounded-full bg-slate-900/60 backdrop-blur-sm flex items-center justify-center">
+                <Lock className="h-6 w-6 text-slate-300" />
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={onToggleImportant}
+              disabled={favoriteBusy}
+              className={`inline-flex h-11 w-11 items-center justify-center rounded-full border backdrop-blur-sm transition-transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-amber-300 disabled:cursor-not-allowed disabled:opacity-60 ${
+                isImportant
+                  ? 'border-amber-200/80 bg-amber-500/80 text-white'
+                  : 'border-white/45 bg-black/35 text-white hover:bg-black/50'
+              }`}
+              aria-label={isImportant ? 'Retirer des importantes' : 'Marquer comme importante'}
+              title={isImportant ? 'Retirer des importantes' : 'Marquer comme importante'}
+            >
+              <BookmarkCheck className="h-5 w-5" />
+            </button>
+          </div>
         </div>
         <div
           className={`absolute top-3 right-3 text-white text-xs font-bold px-2 py-1 rounded-md uppercase tracking-wider ${statusClass}`}
