@@ -520,33 +520,35 @@ export default function UserDashboard() {
               background: 'linear-gradient(140deg, var(--hero-bg-start) 0%, color-mix(in oklab, var(--hero-bg-end) 82%, var(--app-accent) 18%) 100%)',
             }}
           >
-            <div className="flex flex-col gap-5">
-              <div className="flex flex-col lg:flex-row lg:items-center gap-5">
-                <div className="p-4 rounded-2xl flex flex-col items-center text-center min-w-[220px]">
-                  <div className="relative w-24 h-24 rounded-full overflow-hidden bg-slate-100 mb-3 border-4 border-white shadow-md">
-                    {profile.photoURL ? (
-                      <Image
-                        src={profile.photoURL}
-                        alt={profile.displayName}
-                        fill
-                        sizes="96px"
-                        className="object-cover"
-                        referrerPolicy="no-referrer"
-                      />
-                    ) : (
-                      <User className="w-12 h-12 text-[var(--app-muted)] absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
-                    )}
+            <div className="grid gap-6 lg:grid-cols-[260px_minmax(0,1fr)] lg:items-center">
+              <div className="rounded-2xl border border-white/30 bg-white/10 p-4 backdrop-blur-sm">
+                <div className="flex flex-col items-center text-center">
+                  <div className="relative mb-6">
+                    <div className="relative w-36 h-36 md:w-40 md:h-40 rounded-full overflow-hidden bg-slate-100 border-4 border-white shadow-[0_24px_48px_-24px_rgba(0,0,0,0.85)]">
+                      {profile.photoURL ? (
+                        <Image
+                          src={profile.photoURL}
+                          alt={profile.displayName}
+                          fill
+                          sizes="160px"
+                          className="object-cover"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        <User className="w-16 h-16 text-[var(--app-muted)] absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+                      )}
+                    </div>
                     <label
-                      className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-xs py-1 flex justify-center items-center gap-1 hover:bg-black/70 transition-colors cursor-pointer"
-                      title="Changer la photo"
-                      aria-label="Changer la photo"
+                      className={`absolute -bottom-4 left-1/2 -translate-x-1/2 inline-flex items-center gap-1.5 rounded-full border border-[var(--app-border)] bg-[var(--app-surface)] px-4 py-2 text-xs font-semibold text-[var(--app-text)] shadow-xl shadow-black/35 transition ${avatarUploading || avatarEditorOpen ? 'cursor-not-allowed opacity-70' : 'cursor-pointer hover:-translate-y-0.5 hover:brightness-105'}`}
+                      title="Modifier la photo"
+                      aria-label="Modifier la photo"
                     >
                       {avatarUploading ? (
                         <span>Chargement...</span>
                       ) : (
                         <>
-                          <Camera className="w-3 h-3" />
-                          <span>Changer la photo</span>
+                          <Camera className="w-3.5 h-3.5" />
+                          <span>Modifier</span>
                         </>
                       )}
                       <input
@@ -558,29 +560,42 @@ export default function UserDashboard() {
                       />
                     </label>
                   </div>
-                  <h2 className="text-base font-bold">{formatFullName(lastName, firstName) || profile.displayName}</h2>
-                  <p className="text-xs mb-2" style={{ color: 'var(--hero-body)' }}>{profile.email}</p>
-                  <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
-                    isVipPlus
-                      ? 'bg-accent-100 text-accent-700'
-                      : profile.role === 'vip'
-                        ? 'bg-medical-100 text-medical-700'
-                        : profile.role === 'admin'
-                          ? 'bg-purple-100 text-purple-700'
-                          : 'bg-[var(--app-surface-2)] text-[var(--app-text)]'
-                  }`}>
-                    {isVipPlus ? <Star className="w-3 h-3 fill-current" /> : null}
-                    {accountLevelLabel}
-                  </span>
-                </div>
-
-                <div className="flex-1">
-                  <p className="text-xs uppercase tracking-[0.16em]" style={{ color: 'var(--hero-body)' }}>Espace personnel</p>
-                  <h1 className="text-2xl md:text-3xl font-bold mt-1">{formatFullName(lastName, firstName) || profile.displayName}</h1>
-                  <p className="text-sm mt-2" style={{ color: 'var(--hero-body)' }}>Gérez votre profil, votre sécurité et vos accès pédagogiques depuis un seul espace.</p>
                 </div>
               </div>
 
+              <div className="min-w-0 space-y-4">
+                <p className="text-xs uppercase tracking-[0.16em]" style={{ color: 'var(--hero-body)' }}>Espace personnel</p>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em]" style={{ color: 'var(--hero-body)' }}>Nom complet</p>
+                  <h1 className="text-2xl md:text-3xl font-bold mt-1">{formatFullName(lastName, firstName) || profile.displayName}</h1>
+                </div>
+                <p className="text-sm leading-relaxed" style={{ color: 'var(--hero-body)' }}>Gérez votre profil, votre sécurité et vos accès pédagogiques depuis un seul espace.</p>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-xl border border-white/25 bg-white/10 px-4 py-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: 'var(--hero-body)' }}>Email</p>
+                    <p className="mt-1 text-sm font-medium break-all" style={{ color: 'var(--hero-title)' }}>{profile.email}</p>
+                  </div>
+
+                  <div className="rounded-xl border border-white/25 bg-white/10 px-4 py-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: 'var(--hero-body)' }}>Role</p>
+                    <div className="mt-1">
+                      <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
+                        isVipPlus
+                          ? 'bg-accent-100 text-accent-700'
+                          : profile.role === 'vip'
+                            ? 'bg-medical-100 text-medical-700'
+                            : profile.role === 'admin'
+                              ? 'bg-purple-100 text-purple-700'
+                              : 'bg-[var(--app-surface-2)] text-[var(--app-text)]'
+                      }`}>
+                        {isVipPlus ? <Star className="w-3 h-3 fill-current" /> : null}
+                        {accountLevelLabel}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 

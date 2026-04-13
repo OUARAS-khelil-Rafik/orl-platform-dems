@@ -16,6 +16,7 @@ interface Video {
   title: string;
   description: string;
   url: string;
+  parts?: Array<{ secureUrl?: string; duration?: number | string }>;
   subspecialty: string;
   section: string;
   isFreeDemo: boolean;
@@ -31,6 +32,7 @@ type VideoPaymentStatus = 'pending' | 'rejected';
 type SectionFilter = 'all' | 'anatomie' | 'pathologie';
 
 const VIEWED_VIDEOS_KEY = 'dems-viewed-videos-v1';
+const EMPTY_DURATION_LABEL = '00 h 00 min';
 
 const formatSectionLabel = (section: string) =>
   section === 'anatomie' ? 'Anatomie' : section === 'pathologie' ? 'Pathologie' : 'Autre';
@@ -47,65 +49,164 @@ const getSectionBadgeClass = (section: string) => {
   return 'bg-slate-900/75 text-slate-100 border-white/20';
 };
 
+const formatMinutesAsHHMM = (totalMinutes: number) => {
+  const safeMinutes = Math.max(0, Math.floor(totalMinutes));
+  const hours = Math.floor(safeMinutes / 60);
+  const minutes = safeMinutes % 60;
+  return `${String(hours).padStart(2, '0')} h ${String(minutes).padStart(2, '0')} min`;
+};
+
+const formatSecondsAsHHMM = (totalSeconds: number) => {
+  const roundedMinutes = Math.max(0, Math.ceil(totalSeconds / 60));
+  return formatMinutesAsHHMM(roundedMinutes);
+};
+
 const formatVideoDuration = (video: Video): string => {
-  const durationRaw = video.duration ?? video.durationMinutes ?? video.durationSeconds;
-
-  // Helper to render minutes as "Xh Y min", "Xh" or "Y min" (always returns something)
-  const minutesToLabel = (totalMinutes: number) => {
-    const mins = Math.max(0, Math.floor(totalMinutes));
-    const hours = Math.floor(mins / 60);
-    const minutes = mins % 60;
-    if (hours > 0 && minutes > 0) return `${hours}h ${minutes} min`;
-    if (hours > 0 && minutes === 0) return `${hours}h`;
-    return `${minutes} min`;
-  };
-
-  // If string, attempt to parse common patterns like "HH:MM:SS" or "MM:SS" or numeric string
-  if (typeof durationRaw === 'string') {
-    const s = durationRaw.trim();
-    if (s.length === 0) return '0 min';
-
-    // colon-delimited time
-    if (s.includes(':')) {
-      const parts = s.split(':').map(p => Number(p));
-      if (parts.every(Number.isFinite)) {
-        let totalSeconds = 0;
-        if (parts.length === 3) {
-          totalSeconds = parts[0] * 3600 + parts[1] * 60 + parts[2];
-        } else if (parts.length === 2) {
-          totalSeconds = parts[0] * 60 + parts[1];
-        } else {
-          totalSeconds = Math.floor(parts[0]);
+  const totalPartSeconds = Array.isArray(video.parts)
+    ? video.parts.reduce((sum, part) => {
+        const value = Number(part?.duration);
+        if (!Number.isFinite(value) || value <= 0) {
+          return sum;
         }
-        const totalMinutes = Math.floor(totalSeconds / 60);
-        return minutesToLabel(totalMinutes);
+        return sum + value;
+      }, 0)
+    : 0;
+
+  if (totalPartSeconds > 0) {
+    return formatSecondsAsHHMM(totalPartSeconds);
+  }
+
+  const explicitSeconds = Number(video.durationSeconds);
+  if (Number.isFinite(explicitSeconds) && explicitSeconds > 0) {
+    return formatSecondsAsHHMM(explicitSeconds);
+  }
+
+  const explicitMinutes = Number(video.durationMinutes);
+  if (Number.isFinite(explicitMinutes) && explicitMinutes >= 0) {
+    return formatMinutesAsHHMM(explicitMinutes);
+  }
+
+  const durationRaw = video.duration;
+
+  if (typeof durationRaw === 'number' && Number.isFinite(durationRaw)) {
+    // Backward compatibility: numeric duration has historically been stored as minutes.
+    return formatMinutesAsHHMM(durationRaw);
+  }
+
+  if (typeof durationRaw === 'string') {
+    const source = durationRaw.trim().toLowerCase();
+    if (!source) {
+      return EMPTY_DURATION_LABEL;
+    }
+
+    const isoMatch = source.match(/^pt(?:(\d+(?:[\.,]\d+)?)h)?(?:(\d+(?:[\.,]\d+)?)m)?(?:(\d+(?:[\.,]\d+)?)s)?$/i);
+    if (isoMatch) {
+      const hours = Number((isoMatch[1] || '0').replace(',', '.'));
+      const minutes = Number((isoMatch[2] || '0').replace(',', '.'));
+      const seconds = Number((isoMatch[3] || '0').replace(',', '.'));
+      const totalMinutes = (Number.isFinite(hours) ? hours * 60 : 0)
+        + (Number.isFinite(minutes) ? minutes : 0)
+        + (Number.isFinite(seconds) ? Math.ceil(seconds / 60) : 0);
+      return formatMinutesAsHHMM(totalMinutes);
+    }
+
+    if (source.includes(':')) {
+      const parts = source.split(':').map((part) => Number(part.trim()));
+      if (parts.length > 0 && parts.every(Number.isFinite)) {
+        let totalMinutes = 0;
+        if (parts.length === 3) {
+          return formatSecondsAsHHMM(parts[0] * 3600 + parts[1] * 60 + parts[2]);
+        } else if (parts.length === 2) {
+          // In this page we want HH:MM display; 2-part values are interpreted as HH:MM.
+          totalMinutes = parts[0] * 60 + parts[1];
+        } else {
+          totalMinutes = parts[0];
+        }
+        return formatMinutesAsHHMM(totalMinutes);
       }
     }
 
-    // try numeric parse (minutes)
-    const asNum = Number(s);
-    if (Number.isFinite(asNum)) {
-      return minutesToLabel(asNum);
+    const hoursMatch = source.match(/(\d+(?:[\.,]\d+)?)\s*h/);
+    const minutesMatch = source.match(/(\d+(?:[\.,]\d+)?)\s*m(?:in)?/);
+    const secondsMatch = source.match(/(\d+(?:[\.,]\d+)?)\s*s/);
+
+    if (hoursMatch || minutesMatch || secondsMatch) {
+      const hours = Number((hoursMatch?.[1] || '0').replace(',', '.'));
+      const minutes = Number((minutesMatch?.[1] || '0').replace(',', '.'));
+      const seconds = Number((secondsMatch?.[1] || '0').replace(',', '.'));
+      const totalMinutes = (Number.isFinite(hours) ? hours * 60 : 0)
+        + (Number.isFinite(minutes) ? minutes : 0)
+        + (Number.isFinite(seconds) ? Math.ceil(seconds / 60) : 0);
+      return formatMinutesAsHHMM(totalMinutes);
     }
 
-    // fallback: return the raw string (but not empty)
-    return s;
-  }
-
-  // If number: interpret as minutes by default. If it's likely seconds (durationSeconds), handled below.
-  if (typeof durationRaw === 'number' && Number.isFinite(durationRaw)) {
-    // If explicit durationSeconds provided on the model use it as seconds
-    if (typeof video.durationSeconds === 'number' && Number.isFinite(video.durationSeconds)) {
-      const totalMinutes = Math.floor(video.durationSeconds / 60);
-      return minutesToLabel(totalMinutes);
+    const numericMinutes = Number(source.replace(',', '.'));
+    if (Number.isFinite(numericMinutes)) {
+      return formatMinutesAsHHMM(numericMinutes);
     }
-
-    // Otherwise interpret numeric as minutes
-    return minutesToLabel(durationRaw);
   }
 
-  // Default fallback: always show 0 min
-  return '0 min';
+  return EMPTY_DURATION_LABEL;
+};
+
+const extractYouTubeVideoId = (url: string) => {
+  const trimmed = url.trim();
+  if (!trimmed) return null;
+
+  const shortMatch = trimmed.match(/youtu\.be\/([^?&/]+)/i);
+  if (shortMatch?.[1]) return shortMatch[1];
+
+  const watchMatch = trimmed.match(/[?&]v=([^?&/]+)/i);
+  if (watchMatch?.[1]) return watchMatch[1];
+
+  const embedMatch = trimmed.match(/youtube\.com\/embed\/([^?&/]+)/i);
+  if (embedMatch?.[1]) return embedMatch[1];
+
+  return null;
+};
+
+const buildCloudinaryVideoThumbnailUrl = (videoUrl: string, secondMark = 60) => {
+  const cleaned = videoUrl.trim().split('#')[0]?.split('?')[0] ?? '';
+  if (!cleaned) return null;
+
+  const uploadMarker = '/video/upload/';
+  const markerIndex = cleaned.indexOf(uploadMarker);
+  if (markerIndex === -1) return null;
+
+  const uploadBase = cleaned.slice(0, markerIndex + uploadMarker.length);
+  let pathAfterUpload = cleaned.slice(markerIndex + uploadMarker.length);
+  if (!pathAfterUpload) return null;
+
+  const versionSegmentMatch = pathAfterUpload.match(/\/v\d+\//);
+  if (versionSegmentMatch && typeof versionSegmentMatch.index === 'number') {
+    pathAfterUpload = pathAfterUpload.slice(versionSegmentMatch.index + 1);
+  } else {
+    const pathTokens = pathAfterUpload.split('/');
+    if (pathTokens.length > 1 && pathTokens[0].includes(',')) {
+      pathAfterUpload = pathTokens.slice(1).join('/');
+    }
+  }
+
+  const jpgPath = /\.[a-z0-9]+$/i.test(pathAfterUpload)
+    ? pathAfterUpload.replace(/\.[a-z0-9]+$/i, '.jpg')
+    : `${pathAfterUpload}.jpg`;
+
+  const safeSecond = Math.max(0, Math.floor(secondMark));
+  return `${uploadBase}so_${safeSecond},c_fill,g_auto,ar_16:9,w_960,f_jpg,q_auto/${jpgPath}`;
+};
+
+const getVideoThumbnailUrl = (videoUrl: string, secondMark = 60) => {
+  const cloudinaryThumb = buildCloudinaryVideoThumbnailUrl(videoUrl, secondMark);
+  if (cloudinaryThumb) {
+    return cloudinaryThumb;
+  }
+
+  const youtubeId = extractYouTubeVideoId(videoUrl);
+  if (youtubeId) {
+    return `https://i.ytimg.com/vi/${youtubeId}/hqdefault.jpg`;
+  }
+
+  return null;
 };
 
 const SPECIALTIES = {
@@ -593,7 +694,16 @@ function VideoCard({
   index: number;
 }) {
   const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
+  const [thumbnailSecond, setThumbnailSecond] = useState(60);
   const previewRef = useRef<HTMLVideoElement | null>(null);
+  const [durationLabel, setDurationLabel] = useState(() => formatVideoDuration(video));
+
+  const primaryVideoUrl = String(video.parts?.[0]?.secureUrl || video.url || '').trim();
+  const thumbnailUrl = getVideoThumbnailUrl(primaryVideoUrl, thumbnailSecond);
+
+  useEffect(() => {
+    setDurationLabel(formatVideoDuration(video));
+  }, [video]);
 
   const statusLabel = video.isFreeDemo
     ? 'Démo Gratuite'
@@ -611,9 +721,8 @@ function VideoCard({
 
   const hasInlinePreview =
     hasAccess &&
-    typeof video.url === 'string' &&
-    video.url.trim().length > 0 &&
-    !/youtube\.com|youtu\.be/i.test(video.url);
+    primaryVideoUrl.length > 0 &&
+    !/youtube\.com|youtu\.be/i.test(primaryVideoUrl);
 
   const handlePreviewStart = async () => {
     if (!hasInlinePreview || !previewRef.current) return;
@@ -632,6 +741,16 @@ function VideoCard({
     setIsPreviewPlaying(false);
   };
 
+  const updateDurationFromMetadata = (durationValue: number) => {
+    if (durationLabel !== EMPTY_DURATION_LABEL) {
+      return;
+    }
+    if (!Number.isFinite(durationValue) || durationValue <= 0) {
+      return;
+    }
+    setDurationLabel(formatSecondsAsHHMM(durationValue));
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -647,7 +766,7 @@ function VideoCard({
         onBlur={handlePreviewStop}
       >
         <Image
-          src={`https://picsum.photos/seed/thumbnail-${video.subspecialty}-${video.section}/640/360`}
+          src={thumbnailUrl || 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360"><rect width="640" height="360" fill="%230f172a"/><circle cx="520" cy="80" r="120" fill="%231e293b"/><circle cx="130" cy="320" r="160" fill="%23334155"/></svg>'}
           alt={video.title}
           fill
           sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
@@ -656,18 +775,32 @@ function VideoCard({
           }`}
           loading="lazy"
           referrerPolicy="no-referrer"
+          onError={() => {
+            if (thumbnailSecond !== 0) {
+              setThumbnailSecond(0);
+            }
+          }}
         />
         {hasInlinePreview && (
           <video
             ref={previewRef}
-            src={video.url}
+            src={primaryVideoUrl}
             muted
             loop
             playsInline
             preload="metadata"
+            onLoadedMetadata={(event) => updateDurationFromMetadata(Number(event.currentTarget.duration))}
             className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-300 ${
               isPreviewPlaying ? 'opacity-100' : 'opacity-0'
             }`}
+          />
+        )}
+        {durationLabel === EMPTY_DURATION_LABEL && primaryVideoUrl && !/youtube\.com|youtu\.be/i.test(primaryVideoUrl) && !hasInlinePreview && (
+          <video
+            src={primaryVideoUrl}
+            preload="metadata"
+            className="hidden"
+            onLoadedMetadata={(event) => updateDurationFromMetadata(Number(event.currentTarget.duration))}
           />
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-transparent" />
@@ -714,7 +847,7 @@ function VideoCard({
         <div className="mb-4 flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-700">
           <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 border border-slate-200 px-2.5 py-1.5">
             <Clock3 className="h-3.5 w-3.5" />
-            <span>{formatVideoDuration(video)}</span>
+            <span>{durationLabel}</span>
           </span>
 
           <span
