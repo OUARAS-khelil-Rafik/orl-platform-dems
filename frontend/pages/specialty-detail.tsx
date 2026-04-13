@@ -968,7 +968,8 @@ function VideoCard({
           className={`object-cover transition-opacity duration-300 ${
             isPreviewPlaying ? 'opacity-0' : 'opacity-60 group-hover:opacity-80'
           }`}
-          loading="lazy"
+          loading={index === 0 ? 'eager' : 'lazy'}
+          fetchPriority={index === 0 ? 'high' : 'auto'}
           referrerPolicy="no-referrer"
           onError={() => {
             if (thumbnailSecond !== 0) {

@@ -66,6 +66,7 @@ export function Navbar() {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isSearchHover, setIsSearchHover] = useState(false);
   const [isAccountHover, setIsAccountHover] = useState(false);
+  const [isPathHydrated, setIsPathHydrated] = useState(false);
   const [themeMode, setThemeMode] = useState<'light' | 'dark'>('light');
   const [notifications, setNotifications] = useState<NavbarNotification[]>([]);
   const [notificationReadIds, setNotificationReadIds] = useState<string[]>([]);
@@ -94,11 +95,37 @@ export function Navbar() {
   ];
   const visibleNavLinks = isAdmin ? navLinks.filter((link) => link.name !== 'Tarifs') : navLinks;
 
-  const isRouteActive = (href: string) => {
-    if (href === '/') {
-      return router.pathname === '/';
+  const normalizePath = (value: string) => {
+    const [pathOnly] = value.split('?');
+    if (!pathOnly) {
+      return '/';
     }
-    return router.asPath.startsWith(href);
+
+    const trimmed = pathOnly.endsWith('/') && pathOnly !== '/' ? pathOnly.slice(0, -1) : pathOnly;
+    return trimmed || '/';
+  };
+
+  const isRouteActive = (href: string) => {
+    const targetPath = normalizePath(href);
+    const currentPathname = normalizePath(router.pathname || '/');
+
+    if (targetPath === '/') {
+      return currentPathname === '/';
+    }
+
+    if (targetPath.startsWith('/specialties/')) {
+      if (!isPathHydrated) {
+        return false;
+      }
+
+      const targetSlug = targetPath.replace('/specialties/', '');
+      const rawCurrentSlug = router.query.slug;
+      const currentSlug = Array.isArray(rawCurrentSlug) ? rawCurrentSlug[0] : rawCurrentSlug;
+
+      return currentPathname === '/specialty-detail' && currentSlug === targetSlug;
+    }
+
+    return currentPathname === targetPath;
   };
 
   const displayName = profile?.displayName?.trim() || '';
@@ -117,6 +144,10 @@ export function Navbar() {
     }
     document.documentElement.setAttribute('data-theme', nextMode);
   };
+
+  useEffect(() => {
+    setIsPathHydrated(true);
+  }, []);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
