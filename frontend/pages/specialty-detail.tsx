@@ -800,7 +800,7 @@ export default function SpecialtyPage() {
                 <span className="inline-flex items-center rounded-full bg-medical-50 border border-medical-200 px-3 py-1 text-medical-700">
                   {filteredUnlockedCount} accessibles maintenant
                 </span>
-                <span className="inline-flex items-center rounded-full bg-rose-50 border border-rose-200 px-3 py-1 text-rose-700">
+                <span className="inline-flex items-center rounded-full bg-rose-100 border border-red-200 px-3 py-1 text-rose-700">
                   {filteredFavoriteCount} favorites
                 </span>
                 <span className="inline-flex items-center rounded-full bg-amber-50 border border-amber-200 px-3 py-1 text-amber-700">
