@@ -48,7 +48,7 @@ type WatchProgressEntry = {
   currentTime: number;
   duration: number;
   completed: boolean;
-  updatedAt: string;
+  updatedAt?: string;
 };
 
 type LockedVideoPaymentStatus = 'pending' | 'rejected';

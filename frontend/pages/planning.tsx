@@ -1135,7 +1135,7 @@ export default function PlanningPage() {
                     className="px-3 py-1.5 rounded-lg border text-sm font-medium"
                     style={{ borderColor: 'var(--app-border)', color: 'var(--app-text)' }}
                   >
-                    Annuler l&apos;édition
+                    Annuler
                   </button>
                 )}
               </div>

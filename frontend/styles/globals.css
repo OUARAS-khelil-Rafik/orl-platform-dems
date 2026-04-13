@@ -2595,6 +2595,40 @@ html[data-theme='dark'] .from-slate-900\/60 {
   background: linear-gradient(180deg, var(--app-accent) 0%, color-mix(in srgb, var(--app-accent) 75%, #000000 25%) 100%);
 }
 
+/* Content manager list scrollbar */
+.content-manager-scroll {
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--app-accent) 55%, var(--app-border) 45%) color-mix(in srgb, var(--app-surface-2) 82%, transparent);
+}
+
+.content-manager-scroll::-webkit-scrollbar {
+  width: 10px;
+}
+
+.content-manager-scroll::-webkit-scrollbar-track {
+  background: color-mix(in srgb, var(--app-surface-2) 82%, transparent);
+  border-radius: 9999px;
+}
+
+.content-manager-scroll::-webkit-scrollbar-thumb {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--app-accent) 70%, #ffffff 30%) 0%,
+    color-mix(in srgb, var(--app-accent) 88%, #000000 12%) 100%
+  );
+  border-radius: 9999px;
+  border: 2px solid color-mix(in srgb, var(--app-surface-2) 82%, transparent);
+}
+
+.content-manager-scroll::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--app-accent) 82%, #ffffff 18%) 0%,
+    color-mix(in srgb, var(--app-accent) 95%, #000000 5%) 100%
+  );
+}
+
 /* Date input calendar icon contrast in dark mode */
 html[data-theme='dark'] input[type='date']::-webkit-calendar-picker-indicator {
   filter: invert(1) brightness(1.15);

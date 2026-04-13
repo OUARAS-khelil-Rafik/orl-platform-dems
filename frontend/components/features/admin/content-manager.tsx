@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Video, FileText, HelpCircle, Image as ImageIcon, MessageSquare, Plus, Save, X, Loader2, Trash2, Edit2, Search } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
 import { db, collection, addDoc, getDocs, deleteDoc, doc, updateDoc, uploadCloudinaryAsset } from '@/lib/data/local-data';
 import SeamlessPlayer from '@/components/features/video/seamless-player';
 import type {
@@ -86,6 +87,8 @@ type PreviewSource = {
   duration?: number;
 };
 
+type VideoUploadPhase = 'idle' | 'uploading' | 'processing' | 'complete' | 'error';
+
 const CLOUDINARY_LIMIT = 100 * 1024 * 1024; // 100MB
 const BACKEND_UPLOAD_LIMIT = 1024 * 1024 * 1024; // 1GB
 const UPLOAD_FOLDER = 'orl-platform';
@@ -107,6 +110,53 @@ const createCaseQuestionId = () => {
 const getSaveErrorMessage = (entityLabel: string, error: unknown) => {
   const details = getErrorMessage(error, 'Cause inconnue');
   return `Echec d'enregistrement ${entityLabel}. Verifiez les champs obligatoires puis reessayez. (${details})`;
+};
+
+const formatDisplayLabel = (value?: string) => {
+  const normalized = value?.trim();
+  if (!normalized) return 'N/A';
+  return `${normalized.charAt(0).toUpperCase()}${normalized.slice(1)}`;
+};
+
+const markdownPreviewClassName = [
+  'text-xs leading-relaxed text-[var(--app-muted)]',
+  '[&_p]:mb-1',
+  '[&_p:last-child]:mb-0',
+  '[&_ul]:my-1',
+  '[&_ul]:list-disc',
+  '[&_ul]:pl-4',
+  '[&_ul]:space-y-1',
+  '[&_ol]:my-1',
+  '[&_ol]:list-decimal',
+  '[&_ol]:pl-4',
+  '[&_ol]:space-y-1',
+  '[&_li]:leading-relaxed',
+  '[&_strong]:font-semibold',
+  '[&_strong]:text-[var(--app-text)]',
+  '[&_em]:italic',
+].join(' ');
+
+const MarkdownPreview = ({
+  content,
+  emptyMessage,
+  maxHeightClass = 'max-h-24',
+}: {
+  content?: string;
+  emptyMessage?: string;
+  maxHeightClass?: string;
+}) => {
+  const normalized = content?.trim();
+  if (!normalized) {
+    return emptyMessage ? <p className="text-xs text-[var(--app-muted)]">{emptyMessage}</p> : null;
+  }
+
+  return (
+    <div className={`${maxHeightClass} overflow-y-auto content-manager-scroll pr-1`}>
+      <div className={markdownPreviewClassName}>
+        <ReactMarkdown>{normalized}</ReactMarkdown>
+      </div>
+    </div>
+  );
 };
 
 const logAdminAction = (action: 'create' | 'update' | 'delete', entity: string, payload: Record<string, unknown>) => {
@@ -137,7 +187,18 @@ export function AdminContentManager() {
   const [editingCaseId, setEditingCaseId] = useState<string | null>(null);
   const [editingOpenQuestionId, setEditingOpenQuestionId] = useState<string | null>(null);
   const [editingDiagramId, setEditingDiagramId] = useState<string | null>(null);
-  const [previewVideoId, setPreviewVideoId] = useState<string | null>(null);
+
+  const editorGridClass = 'grid gap-6';
+  const formPanelClass = 'order-2 space-y-6 rounded-3xl border border-[var(--app-border)] bg-[var(--app-surface)] p-6 shadow-sm';
+  const listPanelClass = 'order-1 rounded-3xl border border-[var(--app-border)] bg-[var(--app-surface-alt)] p-5 shadow-sm max-h-[58vh] overflow-y-auto content-manager-scroll';
+  const sectionCardClass = 'rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface-alt)] p-4 space-y-4';
+  const existingItemCardClass = 'rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface)] p-4 shadow-sm';
+  const existingItemRowClass = `${existingItemCardClass} flex items-start justify-between gap-3`;
+  const listSummaryCardClass = 'rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface)] px-4 py-3 shadow-sm';
+  const existingItemMetaChipClass = 'inline-flex items-center rounded-full border border-[var(--app-border)] bg-[var(--app-surface)] px-2 py-1 text-[11px] font-medium text-[var(--app-muted)]';
+  const packGridClass = 'grid gap-4 md:grid-cols-2 xl:grid-cols-3';
+  const sectionTitleClass = 'text-sm font-semibold text-[var(--app-text)]';
+  const sectionHintClass = 'text-xs text-[var(--app-muted)]';
 
   const fetchData = async () => {
     try {
@@ -188,6 +249,86 @@ export function AdminContentManager() {
   });
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
+  const [videoUploadProgress, setVideoUploadProgress] = useState(0);
+  const [videoUploadPhase, setVideoUploadPhase] = useState<VideoUploadPhase>('idle');
+  const [videoUploadFileName, setVideoUploadFileName] = useState('');
+  const [videoUploadFileSize, setVideoUploadFileSize] = useState(0);
+  const [diagramUploadProgress, setDiagramUploadProgress] = useState(0);
+  const [diagramUploadPhase, setDiagramUploadPhase] = useState<VideoUploadPhase>('idle');
+  const [diagramUploadFileName, setDiagramUploadFileName] = useState('');
+  const [diagramUploadFileSize, setDiagramUploadFileSize] = useState(0);
+
+  const isVideoUploading = videoUploadPhase === 'uploading' || videoUploadPhase === 'processing';
+  const isDiagramUploading = diagramUploadPhase === 'uploading' || diagramUploadPhase === 'processing';
+  const progressWidthClassByStep: Record<number, string> = {
+    0: 'w-0',
+    5: 'w-[5%]',
+    10: 'w-[10%]',
+    15: 'w-[15%]',
+    20: 'w-[20%]',
+    25: 'w-[25%]',
+    30: 'w-[30%]',
+    35: 'w-[35%]',
+    40: 'w-[40%]',
+    45: 'w-[45%]',
+    50: 'w-1/2',
+    55: 'w-[55%]',
+    60: 'w-3/5',
+    65: 'w-[65%]',
+    70: 'w-[70%]',
+    75: 'w-3/4',
+    80: 'w-4/5',
+    85: 'w-[85%]',
+    90: 'w-[90%]',
+    95: 'w-[95%]',
+    100: 'w-full',
+  };
+  const clampedVideoUploadProgress = Math.max(0, Math.min(100, Math.round(videoUploadProgress)));
+  const normalizedVideoUploadProgressStep = Math.round(clampedVideoUploadProgress / 5) * 5;
+  const videoUploadProgressWidthClass = progressWidthClassByStep[normalizedVideoUploadProgressStep] || 'w-0';
+  const clampedDiagramUploadProgress = Math.max(0, Math.min(100, Math.round(diagramUploadProgress)));
+  const normalizedDiagramUploadProgressStep = Math.round(clampedDiagramUploadProgress / 5) * 5;
+  const diagramUploadProgressWidthClass = progressWidthClassByStep[normalizedDiagramUploadProgressStep] || 'w-0';
+
+  const formatFileSize = (bytes: number) => {
+    if (!bytes || bytes <= 0) return '0 MB';
+    const mb = bytes / (1024 * 1024);
+    if (mb < 1024) {
+      return `${mb.toFixed(1)} MB`;
+    }
+    return `${(mb / 1024).toFixed(2)} GB`;
+  };
+
+  const resetVideoUploadState = () => {
+    setVideoUploadProgress(0);
+    setVideoUploadPhase('idle');
+    setVideoUploadFileName('');
+    setVideoUploadFileSize(0);
+  };
+
+  const resetDiagramUploadState = () => {
+    setDiagramUploadProgress(0);
+    setDiagramUploadPhase('idle');
+    setDiagramUploadFileName('');
+    setDiagramUploadFileSize(0);
+  };
+
+  const resetVideoForm = () => {
+    setEditingVideoId(null);
+    setVideoData({
+      title: '',
+      description: '',
+      url: '',
+      subspecialty: 'otologie',
+      section: 'anatomie',
+      isFreeDemo: false,
+      price: 0,
+      isMultipart: false,
+      totalParts: 1,
+      parts: [],
+    });
+    resetVideoUploadState();
+  };
 
   const QCM_OPTION_LABELS = ['A', 'B', 'C', 'D', 'E'];
   const getDefaultQcmOptions = () => QCM_OPTION_LABELS.map(() => '');
@@ -217,26 +358,39 @@ export function AdminContentManager() {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    const input = e.target;
+
     // The backend now performs chunked single-video upload, but we keep a guardrail here.
     if (file.size > BACKEND_UPLOAD_LIMIT) {
       setErrorMessage('Fichier trop volumineux. La limite actuelle est 1GB par video.');
+      input.value = '';
       return;
     }
 
-    setIsUploading(true);
-    setUploadProgress(0);
     setErrorMessage('');
+    setVideoUploadFileName(file.name);
+    setVideoUploadFileSize(file.size);
+    setVideoUploadProgress(3);
+    setVideoUploadPhase('uploading');
 
     try {
       const response = await uploadCloudinaryAsset(file, {
         resourceType: 'video',
         folder: `${UPLOAD_FOLDER}/videos`,
         onProgress: (percentage) => {
-          setUploadProgress(percentage);
+          if (percentage >= 100) {
+            setVideoUploadPhase('processing');
+            setVideoUploadProgress((prev) => Math.max(prev, 96));
+            return;
+          }
+
+          setVideoUploadPhase('uploading');
+          setVideoUploadProgress(Math.max(3, Math.min(95, percentage)));
         },
       });
 
-      setUploadProgress(100);
+      setVideoUploadPhase('processing');
+      setVideoUploadProgress((prev) => Math.max(prev, 98));
       setVideoData((prev) => ({
         ...prev,
         url: response.secureUrl,
@@ -244,8 +398,9 @@ export function AdminContentManager() {
         totalParts: response.totalParts,
         parts: response.parts,
       }));
+      setVideoUploadProgress(100);
+      setVideoUploadPhase('complete');
       setSuccessMessage('Video telechargee avec succes sur Cloudinary.');
-      setIsUploading(false);
     } catch (error) {
       console.error('Upload error:', error);
       const details = getErrorMessage(error, 'Une erreur inattendue est survenue lors du telechargement.');
@@ -254,7 +409,10 @@ export function AdminContentManager() {
       } else {
         setErrorMessage(details);
       }
-      setIsUploading(false);
+      setVideoUploadPhase('error');
+      setVideoUploadProgress((prev) => (prev > 0 ? prev : 0));
+    } finally {
+      input.value = '';
     }
   };
 
@@ -268,6 +426,19 @@ export function AdminContentManager() {
     explanation: '',
     reference: '',
   });
+
+  const resetQcmForm = (videoId = '') => {
+    setEditingQcmId(null);
+    setQcmData({
+      videoId,
+      question: '',
+      options: getDefaultQcmOptions(),
+      mode: 'single',
+      correctOptionIndexes: [],
+      explanation: '',
+      reference: '',
+    });
+  };
 
   const handleVideoSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -317,19 +488,8 @@ export function AdminContentManager() {
       }
       
       fetchData(); // Refresh list
-      
-      setVideoData({
-        title: '',
-        description: '',
-        url: '',
-        subspecialty: 'otologie',
-        section: 'anatomie',
-        isFreeDemo: false,
-        price: 0,
-        isMultipart: false,
-        totalParts: 1,
-        parts: [],
-      });
+
+      resetVideoForm();
     } catch (error: unknown) {
       console.error('Error adding/updating video:', error);
       setErrorMessage(getSaveErrorMessage('de la vidéo', error));
@@ -341,6 +501,7 @@ export function AdminContentManager() {
   const handleEditVideo = (video: VideoModel) => {
     setEditingVideoId(video.id);
     setVideoViewMode('editor');
+    resetVideoUploadState();
     setVideoData({
       title: video.title || '',
       description: video.description || '',
@@ -468,15 +629,7 @@ export function AdminContentManager() {
       
       fetchData(); // Refresh list
 
-      setQcmData({
-        videoId: qcmData.videoId, // garder la vidéo sélectionnée
-        question: '',
-        options: getDefaultQcmOptions(),
-        mode: 'single',
-        correctOptionIndexes: [],
-        explanation: '',
-        reference: '',
-      });
+      resetQcmForm(qcmData.videoId);
     } catch (error: unknown) {
       console.error('Error adding/updating QCM:', error);
       setErrorMessage(getSaveErrorMessage('du QCM', error));
@@ -548,6 +701,16 @@ export function AdminContentManager() {
     reference: '',
   });
 
+  const resetQrocForm = (videoId = '') => {
+    setEditingOpenQuestionId(null);
+    setOpenQuestionData({
+      videoId,
+      question: '',
+      answer: '',
+      reference: '',
+    });
+  };
+
   const handleOpenQuestionSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!openQuestionData.videoId) {
@@ -569,7 +732,7 @@ export function AdminContentManager() {
           ...payload,
           updatedAt: new Date().toISOString(),
         });
-        setSuccessMessage('Question ouverte mise à jour avec succès !');
+        setSuccessMessage('QROC mis à jour avec succès !');
         logAdminAction('update', 'openQuestions', {
           id: editingOpenQuestionId,
           videoId: payload.videoId,
@@ -581,20 +744,15 @@ export function AdminContentManager() {
           createdAt: new Date().toISOString(),
         });
         logAdminAction('create', 'openQuestions', { id: docRef.id, videoId: payload.videoId });
-        setSuccessMessage('Question ouverte ajoutée avec succès !');
+        setSuccessMessage('QROC ajouté avec succès !');
       }
 
       fetchData();
 
-      setOpenQuestionData({
-        videoId: openQuestionData.videoId,
-        question: '',
-        answer: '',
-        reference: '',
-      });
+      resetQrocForm(openQuestionData.videoId);
     } catch (error: unknown) {
       console.error('Error adding/updating open question:', error);
-      setErrorMessage(getSaveErrorMessage('de la question ouverte', error));
+      setErrorMessage(getSaveErrorMessage('du QROC', error));
     } finally {
       setIsSubmitting(false);
     }
@@ -627,6 +785,24 @@ export function AdminContentManager() {
     questions: []
   });
 
+  const resetCaseForm = (videoId = '') => {
+    setEditingCaseId(null);
+    setCaseData({
+      videoId,
+      title: '',
+      description: '',
+      patientHistory: '',
+      clinicalExamination: '',
+      additionalTests: '',
+      diagnosis: '',
+      treatment: '',
+      discussion: '',
+      images: [],
+      reference: '',
+      questions: [],
+    });
+  };
+
   const handleCaseSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!caseData.videoId) {
@@ -658,20 +834,7 @@ export function AdminContentManager() {
       
       fetchData(); // Refresh list
 
-      setCaseData({
-        videoId: caseData.videoId,
-        title: '',
-        description: '',
-        patientHistory: '',
-        clinicalExamination: '',
-        additionalTests: '',
-        diagnosis: '',
-        treatment: '',
-        discussion: '',
-        images: [],
-        reference: '',
-        questions: []
-      });
+      resetCaseForm(caseData.videoId);
     } catch (error: unknown) {
       console.error('Error adding/updating clinical case:', error);
       setErrorMessage(getSaveErrorMessage('du cas clinique', error));
@@ -904,6 +1067,18 @@ export function AdminContentManager() {
     reference: '',
   });
 
+  const resetDiagramForm = (videoId = '') => {
+    setEditingDiagramId(null);
+    setDiagramData({
+      videoId,
+      title: '',
+      imageUrl: '',
+      markers: [],
+      reference: '',
+    });
+    resetDiagramUploadState();
+  };
+
   const handleDiagramSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!diagramData.videoId) {
@@ -935,13 +1110,7 @@ export function AdminContentManager() {
       
       fetchData(); // Refresh list
 
-      setDiagramData({
-        videoId: diagramData.videoId,
-        title: '',
-        imageUrl: '',
-        markers: [],
-        reference: '',
-      });
+      resetDiagramForm(diagramData.videoId);
     } catch (error: unknown) {
       console.error('Error adding/updating diagram:', error);
       setErrorMessage(getSaveErrorMessage('du schéma', error));
@@ -952,6 +1121,7 @@ export function AdminContentManager() {
 
   const handleEditDiagram = (d: DiagramModel) => {
     setEditingDiagramId(d.id);
+    resetDiagramUploadState();
     setDiagramData({
       videoId: d.videoId || '',
       title: d.title || '',
@@ -966,30 +1136,45 @@ export function AdminContentManager() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setIsUploading(true);
-    setUploadProgress(0);
+    const input = e.target;
+
+    setDiagramUploadFileName(file.name);
+    setDiagramUploadFileSize(file.size);
+    setDiagramUploadProgress(3);
+    setDiagramUploadPhase('uploading');
     setErrorMessage('');
 
     try {
       const response = await uploadCloudinaryAsset(file, {
         resourceType: 'image',
         folder: 'orl-platform/diagrams',
+        onProgress: (percentage) => {
+          if (percentage >= 100) {
+            setDiagramUploadPhase('processing');
+            setDiagramUploadProgress((prev) => Math.max(prev, 96));
+            return;
+          }
+
+          setDiagramUploadPhase('uploading');
+          setDiagramUploadProgress(Math.max(3, Math.min(95, percentage)));
+        },
       });
-      setUploadProgress(100);
+      setDiagramUploadPhase('processing');
+      setDiagramUploadProgress((prev) => Math.max(prev, 98));
       setDiagramData((prev) => ({
         ...prev,
         imageUrl: response.secureUrl,
       }));
+      setDiagramUploadProgress(100);
+      setDiagramUploadPhase('complete');
       setSuccessMessage('Schema televerse avec succes.');
-      setIsUploading(false);
     } catch (error) {
       console.error('Upload diagram error:', error);
-      setErrorMessage('Une erreur inattendue est survenue lors du téléchargement du schéma.');
-      setIsUploading(false);
+      setErrorMessage(getErrorMessage(error, 'Une erreur inattendue est survenue lors du téléchargement du schéma.'));
+      setDiagramUploadPhase('error');
+      setDiagramUploadProgress((prev) => (prev > 0 ? prev : 0));
     } finally {
-      if (e.target) {
-        e.target.value = '';
-      }
+      input.value = '';
     }
   };
 
@@ -998,20 +1183,13 @@ export function AdminContentManager() {
     const qcmCount = qcms.filter((entry) => entry.videoId === videoId).length;
     const openQuestionCount = openQuestions.filter((entry) => entry.videoId === videoId).length;
     const diagramCount = diagrams.filter((entry) => entry.videoId === videoId).length;
-    const missingItems: string[] = [];
-
-    if (caseCount === 0) missingItems.push('Cas cliniques');
-    if (qcmCount === 0) missingItems.push('QCM');
-    if (openQuestionCount === 0) missingItems.push('Questions ouvertes');
-    if (diagramCount === 0) missingItems.push('Schémas');
 
     return {
       caseCount,
       qcmCount,
       openQuestionCount,
       diagramCount,
-      missingItems,
-      isComplete: missingItems.length === 0,
+      totalExtensions: caseCount + qcmCount + openQuestionCount + diagramCount,
     };
   }, [cases, qcms, openQuestions, diagrams]);
 
@@ -1024,7 +1202,7 @@ export function AdminContentManager() {
         || video.description?.toLowerCase().includes(normalizedSearch)
         || video.subspecialty?.toLowerCase().includes(normalizedSearch)
         || video.section?.toLowerCase().includes(normalizedSearch);
-    });
+    }).sort((a, b) => (a.title || '').localeCompare(b.title || '', 'fr', { sensitivity: 'base' }));
   }, [videos, normalizedSearch]);
 
   const filteredQcms = useMemo(() => {
@@ -1036,6 +1214,10 @@ export function AdminContentManager() {
     });
   }, [qcms, videos, normalizedSearch]);
 
+  const orderedFilteredQcms = useMemo(() => {
+    return [...filteredQcms].sort((a, b) => (a.question || '').localeCompare(b.question || '', 'fr', { sensitivity: 'base' }));
+  }, [filteredQcms]);
+
   const filteredOpenQuestions = useMemo(() => {
     return openQuestions.filter((item) => {
       const video = videos.find((v) => v.id === item.videoId);
@@ -1045,6 +1227,10 @@ export function AdminContentManager() {
         || video?.title?.toLowerCase().includes(normalizedSearch);
     });
   }, [openQuestions, videos, normalizedSearch]);
+
+  const orderedFilteredOpenQuestions = useMemo(() => {
+    return [...filteredOpenQuestions].sort((a, b) => (a.question || '').localeCompare(b.question || '', 'fr', { sensitivity: 'base' }));
+  }, [filteredOpenQuestions]);
 
   const filteredCases = useMemo(() => {
     return cases.filter((entry) => {
@@ -1056,6 +1242,14 @@ export function AdminContentManager() {
     });
   }, [cases, videos, normalizedSearch]);
 
+  const orderedFilteredCases = useMemo(() => {
+    return [...filteredCases].sort((a, b) => {
+      const left = a.title || a.description || '';
+      const right = b.title || b.description || '';
+      return left.localeCompare(right, 'fr', { sensitivity: 'base' });
+    });
+  }, [filteredCases]);
+
   const filteredDiagrams = useMemo(() => {
     return diagrams.filter((diagram) => {
       const video = videos.find((v) => v.id === diagram.videoId);
@@ -1065,13 +1259,122 @@ export function AdminContentManager() {
     });
   }, [diagrams, videos, normalizedSearch]);
 
+  const orderedFilteredDiagrams = useMemo(() => {
+    return [...filteredDiagrams].sort((a, b) => (a.title || '').localeCompare(b.title || '', 'fr', { sensitivity: 'base' }));
+  }, [filteredDiagrams]);
+
+  const videoTitleById = useMemo(() => {
+    const titleMap = new Map<string, string>();
+    videos.forEach((video) => {
+      titleMap.set(video.id, video.title || 'Vidéo sans titre');
+    });
+    return titleMap;
+  }, [videos]);
+
+  const qcmListStats = useMemo(() => {
+    const uniqueVideoIds = new Set(filteredQcms.map((qcm) => qcm.videoId).filter(Boolean));
+    const multipleCount = filteredQcms.filter((qcm) => qcm.mode === 'multiple').length;
+    return {
+      total: filteredQcms.length,
+      videosLinked: uniqueVideoIds.size,
+      multipleCount,
+    };
+  }, [filteredQcms]);
+
+  const openQuestionListStats = useMemo(() => {
+    const withReference = filteredOpenQuestions.filter((item) => Boolean(item.reference?.trim())).length;
+    const uniqueVideoIds = new Set(filteredOpenQuestions.map((item) => item.videoId).filter(Boolean));
+    return {
+      total: filteredOpenQuestions.length,
+      videosLinked: uniqueVideoIds.size,
+      withReference,
+    };
+  }, [filteredOpenQuestions]);
+
+  const caseListStats = useMemo(() => {
+    const withQuestions = filteredCases.filter((entry) => Array.isArray(entry.questions) && entry.questions.length > 0).length;
+    const withImages = filteredCases.filter((entry) => Array.isArray(entry.images) && entry.images.length > 0).length;
+    return {
+      total: filteredCases.length,
+      withQuestions,
+      withImages,
+    };
+  }, [filteredCases]);
+
+  const diagramListStats = useMemo(() => {
+    const withImage = filteredDiagrams.filter((diagram) => Boolean(diagram.imageUrl)).length;
+    const totalMarkers = filteredDiagrams.reduce((sum, diagram) => sum + (Array.isArray(diagram.markers) ? diagram.markers.length : 0), 0);
+    return {
+      total: filteredDiagrams.length,
+      withImage,
+      totalMarkers,
+    };
+  }, [filteredDiagrams]);
+
   const tabItems = [
     { id: 'video' as const, label: 'Vidéos', icon: Video, count: videos.length, helper: 'Base du contenu' },
     { id: 'case' as const, label: 'Cas Cliniques', icon: FileText, count: cases.length, helper: 'Entraînement clinique' },
     { id: 'qcm' as const, label: 'QCM', icon: HelpCircle, count: qcms.length, helper: 'Evaluation rapide' },
-    { id: 'openQuestion' as const, label: 'Questions Ouvertes', icon: MessageSquare, count: openQuestions.length, helper: 'Réponses rédigées' },
+    { id: 'openQuestion' as const, label: 'QROC', icon: MessageSquare, count: openQuestions.length, helper: 'Réponses rédigées' },
     { id: 'diagram' as const, label: 'Schémas', icon: ImageIcon, count: diagrams.length, helper: 'Supports visuels' },
   ];
+
+  const hasVideoFormContent = Boolean(
+    videoData.title.trim()
+    || videoData.description.trim()
+    || videoData.url.trim()
+    || videoData.subspecialty !== 'otologie'
+    || videoData.section !== 'anatomie'
+    || videoData.isFreeDemo
+    || videoData.price > 0
+    || (Array.isArray(videoData.parts) && videoData.parts.length > 0)
+    || videoUploadPhase !== 'idle'
+    || videoUploadFileName
+    || videoUploadFileSize > 0,
+  );
+
+  const hasQcmFormContent = Boolean(
+    qcmData.videoId
+    || qcmData.question.trim()
+    || qcmData.options.some((option) => option.trim())
+    || qcmData.mode !== 'single'
+    || qcmData.correctOptionIndexes.length > 0
+    || qcmData.explanation.trim()
+    || qcmData.reference.trim(),
+  );
+
+  const hasQrocFormContent = Boolean(
+    openQuestionData.videoId
+    || openQuestionData.question.trim()
+    || openQuestionData.answer.trim()
+    || openQuestionData.reference.trim(),
+  );
+
+  const hasCaseFormContent = Boolean(
+    caseData.videoId
+    || caseData.title.trim()
+    || caseData.description.trim()
+    || caseData.patientHistory.trim()
+    || caseData.clinicalExamination.trim()
+    || caseData.additionalTests.trim()
+    || caseData.diagnosis.trim()
+    || caseData.treatment.trim()
+    || caseData.discussion.trim()
+    || caseData.reference.trim()
+    || caseData.images.length > 0
+    || caseData.questions.length > 0,
+  );
+
+  const hasDiagramFormContent = Boolean(
+    diagramData.videoId
+    || diagramData.title.trim()
+    || diagramData.imageUrl.trim()
+    || diagramData.reference.trim()
+    || diagramData.markers.length > 0
+    || diagramUploadPhase !== 'idle'
+    || diagramUploadFileName
+    || diagramUploadFileSize > 0,
+  );
 
   const renderSelectedVideoPreview = (videoId: string) => {
     if (!videoId) return null;
@@ -1087,10 +1390,7 @@ export function AdminContentManager() {
     }
 
     return (
-      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-2">
-        <p className="text-xs text-slate-600">
-          <span className="font-semibold">Vidéo sélectionnée :</span> {selectedVideo.title}
-        </p>
+      <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-alt)] p-3 space-y-2">
         {selectedVideo.url ? (
           <AdminVideoPreviewCard
             label="Vidéo sélectionnée"
@@ -1137,12 +1437,14 @@ export function AdminContentManager() {
     parts,
     isMultipart,
     totalParts,
+    videoId,
   }: {
     label: string;
     url: string;
     parts?: VideoPartModel[];
     isMultipart?: boolean;
     totalParts?: number;
+    videoId?: string;
   }) => {
     const previewSources = normalizePreviewSources(url, parts);
     const hasSources = previewSources.length > 0;
@@ -1152,23 +1454,25 @@ export function AdminContentManager() {
       : 1;
 
     return (
-      <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 space-y-3">
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          <span className="rounded-full bg-emerald-100 px-2 py-1 font-semibold text-emerald-700">{label}</span>
-          {shouldUseMultipart && (
-            <span className="rounded-full bg-emerald-100 px-2 py-1 font-semibold text-emerald-700">
-              {partsCount} partie{partsCount > 1 ? 's' : ''}
-            </span>
-          )}
-        </div>
+      <div className="rounded-xl">
 
         {hasSources ? (
-          <div className="overflow-hidden rounded-lg border border-emerald-200 bg-black/95">
-            <SeamlessPlayer
-              url={url}
-              parts={previewSources}
-              initialTime={0}
-            />
+          <div className="relative overflow-hidden rounded-lg border border-emerald-200 bg-black/95">
+            {videoId && (
+              <a
+                href={`/videos/${videoId}`}
+                className="absolute inset-0 z-10"
+                aria-label="Ouvrir le détail de la vidéo"
+                title="Ouvrir le détail de la vidéo"
+              />
+            )}
+            <div className={videoId ? 'pointer-events-none' : ''}>
+              <SeamlessPlayer
+                url={url}
+                parts={previewSources}
+                initialTime={0}
+              />
+            </div>
           </div>
         ) : (
           <p className="text-xs text-amber-700">Aucune source vidéo disponible pour la prévisualisation.</p>
@@ -1178,84 +1482,80 @@ export function AdminContentManager() {
   };
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-      <div className="border-b border-slate-200 bg-gradient-to-br from-slate-50 via-white to-medical-50/40 px-8 py-6 space-y-6">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+    <div className="rounded-2xl shadow-sm border border-[var(--app-border)] bg-[var(--app-surface)] text-[var(--app-text)] overflow-hidden">
+      <div className="border-b border-[var(--app-border)] bg-[var(--app-surface-alt)] px-8 py-6 space-y-5">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <h2 className="text-2xl font-bold text-slate-900">Gestion de contenu pédagogique</h2>
-            <p className="text-base text-slate-600">Organisez vos vidéos, cas cliniques, QCM, questions ouvertes et schémas depuis un seul espace.</p>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-2 w-full lg:w-auto">
-            {tabItems.map((tab) => (
-              <div key={`kpi-${tab.id}`} className="rounded-xl border border-slate-200 bg-white/80 px-4 py-3">
-                <p className="text-sm text-slate-500">{tab.label}</p>
-                <p className="text-2xl font-bold text-slate-900">{tab.count}</p>
-              </div>
-            ))}
+            <h2 className="text-2xl font-bold text-[var(--app-text)]">Gestion de contenu pédagogique</h2>
+            <p className="text-base text-[var(--app-muted)]">Organisez vos vidéos, cas cliniques, QCM, QROC et schémas depuis un seul espace.</p>
           </div>
         </div>
 
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="relative w-full lg:max-w-xl">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              value={contentSearch}
-              onChange={(e) => setContentSearch(e.target.value)}
-              placeholder="Rechercher par titre, question, description ou spécialité..."
-              className="w-full pl-9 pr-3 py-3 rounded-xl border border-slate-300 bg-white text-base focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none"
-            />
-          </div>
-          {activeTab === 'video' && (
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="inline-flex items-center rounded-xl border border-slate-300 bg-white p-1">
-                <button
-                  type="button"
-                  onClick={() => setVideoViewMode('editor')}
-                  className={`rounded-lg px-3.5 py-2 text-sm font-medium transition-colors ${
-                    videoViewMode === 'editor' ? 'bg-medical-100 text-medical-700' : 'text-slate-600 hover:bg-slate-100'
-                  }`}
-                >
-                  Formulaires
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setVideoViewMode('byVideo')}
-                  className={`rounded-lg px-3.5 py-2 text-sm font-medium transition-colors ${
-                    videoViewMode === 'byVideo' ? 'bg-medical-100 text-medical-700' : 'text-slate-600 hover:bg-slate-100'
-                  }`}
-                >
-                  Par vidéo
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
           {tabItems.map((tab) => {
             const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+
             return (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`rounded-xl border px-4 py-3.5 text-left transition-all ${
-                  activeTab === tab.id
+                className={`rounded-xl border px-4 py-3 text-left transition-all ${
+                  isActive
                     ? 'border-medical-300 bg-medical-50 shadow-sm'
-                    : 'border-slate-200 bg-white hover:bg-slate-50'
+                    : 'border-[var(--app-border)] bg-[var(--app-surface)] hover:bg-[var(--app-surface-2)]'
                 }`}
               >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="inline-flex items-center gap-2 text-base font-semibold text-slate-900">
-                    <Icon className="w-4 h-4" />
-                    {tab.label}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="space-y-1">
+                    <span className="inline-flex items-center gap-2 text-sm font-semibold text-[var(--app-text)]">
+                      <Icon className="h-4 w-4" />
+                      {tab.label}
+                    </span>
+                    <p className="text-xs text-[var(--app-muted)]">{tab.helper}</p>
+                  </div>
+                  <span className={`text-2xl font-bold ${isActive ? 'text-medical-700' : 'text-[var(--app-text)]'}`}>
+                    {tab.count}
                   </span>
-                  <span className="text-sm font-semibold text-slate-500">{tab.count}</span>
                 </div>
-                <p className="mt-1 text-sm text-slate-500">{tab.helper}</p>
               </button>
             );
           })}
+        </div>
+
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+          <div className="relative w-full xl:max-w-2xl">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--app-muted)]" />
+            <input
+              type="text"
+              value={contentSearch}
+              onChange={(e) => setContentSearch(e.target.value)}
+              placeholder="Rechercher vidéos, QCM, cas, QROC et schémas..."
+              className="w-full rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] py-3 pl-9 pr-3 text-base text-[var(--app-text)] placeholder:text-[var(--app-muted)] outline-none focus:border-transparent focus:ring-2 focus:ring-medical-500"
+            />
+          </div>
+          {activeTab === 'video' && (
+            <div className="inline-flex items-center rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] p-1 shadow-sm">
+              <button
+                type="button"
+                onClick={() => setVideoViewMode('editor')}
+                className={`rounded-lg px-3.5 py-2 text-sm font-medium transition-colors ${
+                  videoViewMode === 'editor' ? 'bg-medical-100 text-medical-700' : 'text-[var(--app-muted)] hover:bg-[var(--app-surface-2)]'
+                }`}
+              >
+                Formulaires
+              </button>
+              <button
+                type="button"
+                onClick={() => setVideoViewMode('byVideo')}
+                className={`rounded-lg px-3.5 py-2 text-sm font-medium transition-colors ${
+                  videoViewMode === 'byVideo' ? 'bg-medical-100 text-medical-700' : 'text-[var(--app-muted)] hover:bg-[var(--app-surface-2)]'
+                }`}
+              >
+                Bibliothèque vidéo
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1291,74 +1591,125 @@ export function AdminContentManager() {
         {activeTab === 'video' && (
           <div className="space-y-6">
             {videoViewMode === 'byVideo' && (
-              <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-5">
-                <div className="flex items-center justify-between gap-3 mb-4">
+              <div className="rounded-3xl border border-[var(--app-border)] bg-[var(--app-surface-alt)] p-5 shadow-sm space-y-4">
+                <div className="flex items-center justify-between gap-3">
                   <div>
-                    <h3 className="text-lg font-bold text-slate-900">Vue consolidée par vidéo</h3>
-                    <p className="text-sm text-slate-500">Pilotez chaque vidéo et complétez rapidement les extensions manquantes.</p>
+                    <h3 className="text-lg font-bold text-[var(--app-text)]">Vue consolidée par vidéo</h3>
+                    <p className="text-sm text-[var(--app-muted)]">Consultez votre bibliothèque vidéo, les extensions associées et les actions rapides de gestion.</p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setVideoViewMode('editor')}
-                    className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100"
-                  >
-                    Retour aux formulaires
-                  </button>
+                  <span className="inline-flex items-center rounded-full border border-[var(--app-border)] bg-[var(--app-surface)] px-2.5 py-1 text-xs font-semibold text-[var(--app-text)]">
+                    {filteredVideos.length} vidéo{filteredVideos.length > 1 ? 's' : ''}
+                  </span>
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-2">
-                  {filteredVideos.map((video) => {
-                    const stats = getVideoExtensionStats(video.id);
-                    return (
-                      <div key={`overview-${video.id}`} className="rounded-xl border border-slate-200 bg-white p-4">
-                        <h4 className="text-sm font-semibold text-slate-900 line-clamp-2">{video.title}</h4>
-                        <p className="text-xs text-slate-500 mt-1 capitalize">{video.subspecialty} - {video.section}</p>
-                        <div className="mt-3 flex flex-wrap gap-2 text-xs">
-                          <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-700">Cas: {stats.caseCount}</span>
-                          <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-700">QCM: {stats.qcmCount}</span>
-                          <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-700">Ouvertes: {stats.openQuestionCount}</span>
-                          <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-700">Schémas: {stats.diagramCount}</span>
+                {filteredVideos.length > 0 ? (
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    {filteredVideos.map((video) => {
+                      const stats = getVideoExtensionStats(video.id);
+
+                      return (
+                        <div key={`overview-${video.id}`} className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface)] p-4 shadow-sm space-y-4">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0 space-y-1">
+                              <h4 className="text-base font-semibold text-[var(--app-text)] line-clamp-2">{video.title || 'Vidéo sans titre'}</h4>
+                              <div className="flex flex-wrap gap-2 text-[11px]">
+                                <span className={existingItemMetaChipClass}>{formatDisplayLabel(video.subspecialty)}</span>
+                                <span className={existingItemMetaChipClass}>{formatDisplayLabel(video.section)}</span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <button
+                                onClick={() => handleEditVideo(video)}
+                                className="rounded-lg p-2 text-[var(--app-muted)] transition-colors hover:bg-[var(--app-surface-2)]"
+                                title="Modifier"
+                              >
+                                <Edit2 className="h-5 w-5" />
+                              </button>
+                              <button
+                                onClick={() => handleDelete('videos', video.id)}
+                                className="rounded-lg p-2 text-red-600 transition-colors hover:bg-red-50"
+                                title="Supprimer"
+                              >
+                                <Trash2 className="h-5 w-5" />
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                            <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-alt)] p-2 text-center">
+                              <p className="text-[11px] font-medium text-[var(--app-muted)]">Cas</p>
+                              <p className="text-lg font-bold text-[var(--app-text)]">{stats.caseCount}</p>
+                            </div>
+                            <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-alt)] p-2 text-center">
+                              <p className="text-[11px] font-medium text-[var(--app-muted)]">QCM</p>
+                              <p className="text-lg font-bold text-[var(--app-text)]">{stats.qcmCount}</p>
+                            </div>
+                            <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-alt)] p-2 text-center">
+                              <p className="text-[11px] font-medium text-[var(--app-muted)]">QROC</p>
+                              <p className="text-lg font-bold text-[var(--app-text)]">{stats.openQuestionCount}</p>
+                            </div>
+                            <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-alt)] p-2 text-center">
+                              <p className="text-[11px] font-medium text-[var(--app-muted)]">Schémas</p>
+                              <p className="text-lg font-bold text-[var(--app-text)]">{stats.diagramCount}</p>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2">
+                            <button
+                              type="button"
+                              onClick={() => openCreationFromVideo('case', video.id)}
+                              className="rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-xs font-medium text-[var(--app-text)] transition-colors hover:bg-[var(--app-surface-2)]"
+                            >
+                              Ajouter cas
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => openCreationFromVideo('qcm', video.id)}
+                              className="rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-xs font-medium text-[var(--app-text)] transition-colors hover:bg-[var(--app-surface-2)]"
+                            >
+                              Ajouter QCM
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => openCreationFromVideo('openQuestion', video.id)}
+                              className="rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-xs font-medium text-[var(--app-text)] transition-colors hover:bg-[var(--app-surface-2)]"
+                            >
+                              Ajouter QROC
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => openCreationFromVideo('diagram', video.id)}
+                              className="rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-xs font-medium text-[var(--app-text)] transition-colors hover:bg-[var(--app-surface-2)]"
+                            >
+                              Ajouter schéma
+                            </button>
+                          </div>
+
+                          <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-alt)] p-3 space-y-3">
+                            <AdminVideoPreviewCard
+                              label="Cliquer sur la vidéo pour ouvrir le détail"
+                              url={video.url || ''}
+                              isMultipart={video.isMultipart}
+                              parts={video.parts}
+                              totalParts={video.totalParts}
+                              videoId={video.id}
+                            />
+                          </div>
                         </div>
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            onClick={() => openCreationFromVideo('case', video.id)}
-                            className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-[11px] font-medium text-slate-700 hover:bg-slate-100"
-                          >
-                            Ajouter cas
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => openCreationFromVideo('qcm', video.id)}
-                            className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-[11px] font-medium text-slate-700 hover:bg-slate-100"
-                          >
-                            Ajouter QCM
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => openCreationFromVideo('openQuestion', video.id)}
-                            className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-[11px] font-medium text-slate-700 hover:bg-slate-100"
-                          >
-                            Ajouter ouverte
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => openCreationFromVideo('diagram', video.id)}
-                            className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-[11px] font-medium text-slate-700 hover:bg-slate-100"
-                          >
-                            Ajouter schéma
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface)] p-6 text-center text-sm text-[var(--app-muted)]">
+                    Aucune vidéo ne correspond à la recherche actuelle.
+                  </div>
+                )}
               </div>
             )}
 
             {videoViewMode === 'editor' && (
-              <div className="grid gap-6 xl:grid-cols-12">
-            <form onSubmit={handleVideoSubmit} className="space-y-6 xl:col-span-7 rounded-2xl border border-slate-200 bg-white p-5">
+              <div className={editorGridClass}>
+            <form onSubmit={handleVideoSubmit} className={formPanelClass}>
             <div className="flex justify-between items-center">
               <div>
                 <h3 className="text-lg font-bold text-slate-900 mb-1">{editingVideoId ? 'Modifier la vidéo' : 'Ajouter une nouvelle vidéo'}</h3>
@@ -1366,294 +1717,417 @@ export function AdminContentManager() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-2 md:col-span-2">
-                <label className="text-sm font-medium text-slate-700">Titre de la vidéo</label>
-                <input
-                  type="text"
-                  required
-                  value={videoData.title}
-                  onChange={(e) => setVideoData({...videoData, title: e.target.value})}
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all"
-                  placeholder="Ex: Anatomie de l'oreille moyenne"
-                />
-              </div>
-
-              <div className="space-y-2 md:col-span-2">
-                <label className="text-sm font-medium text-slate-700">Description</label>
-                <textarea
-                  required
-                  value={videoData.description}
-                  onChange={(e) => setVideoData({...videoData, description: e.target.value})}
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all min-h-[100px]"
-                  placeholder="Description détaillée du contenu de la vidéo..."
-                />
-              </div>
-
-              <div className="space-y-2 md:col-span-2">
-                <label className="text-sm font-medium text-slate-700">Vidéo (upload)</label>
-                <div className="flex flex-col gap-4">
-                  <div className="flex items-center gap-4">
-                    <span className="text-sm text-slate-500 font-medium">Uploader une vidéo :</span>
-                    <label className="cursor-pointer bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors border border-slate-300">
-                      {isUploading ? 'Téléchargement...' : 'Choisir un fichier'}
-                      <input 
-                        type="file" 
-                        accept="video/*" 
-                        className="hidden" 
-                        onChange={handleFileUpload}
-                        disabled={isUploading}
-                      />
-                    </label>
-                  </div>
-                  {videoData.url && !isUploading && (
-                    <AdminVideoPreviewCard
-                      label="Vidéo uploadée"
-                      url={videoData.url}
-                      isMultipart={videoData.isMultipart}
-                      parts={videoData.parts}
-                      totalParts={videoData.totalParts}
+            <div className="space-y-5">
+              <section className={sectionCardClass}>
+                <div className="space-y-1">
+                  <h4 className={sectionTitleClass}>Informations générales</h4>
+                  <p className={sectionHintClass}>Structurez le contenu de la vidéo et son classement médical.</p>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2 md:col-span-2">
+                    <label className="text-sm font-medium text-slate-700">Titre de la vidéo</label>
+                    <input
+                      type="text"
+                      required
+                      value={videoData.title}
+                      onChange={(e) => setVideoData({...videoData, title: e.target.value})}
+                      className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all"
+                      placeholder="Ex: Anatomie de l'oreille moyenne"
                     />
-                  )}
-                  {isUploading && (
-                    <div className="w-full bg-slate-200 rounded-full h-2.5 mt-2">
-                      <progress
-                        className="w-full h-2.5 rounded-full overflow-hidden"
-                        value={uploadProgress}
-                        max={100}
-                        aria-label="Progression du téléchargement"
+                  </div>
+
+                  <div className="space-y-2 md:col-span-2">
+                    <label className="text-sm font-medium text-slate-700">Description</label>
+                    <textarea
+                      required
+                      value={videoData.description}
+                      onChange={(e) => setVideoData({...videoData, description: e.target.value})}
+                      className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all resize-none overflow-y-auto min-h-[120px]"
+                      placeholder="Description détaillée du contenu de la vidéo..."
+                    />
+                    <p className="text-[11px] text-[var(--app-muted)]">
+                      Markdown accepté: `-`, `+`, `1.`, `*italique*`, `**gras**`.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700">Sous-spécialité</label>
+                    <select
+                      value={videoData.subspecialty}
+                      onChange={(e) => setVideoData({...videoData, subspecialty: e.target.value})}
+                      title="Sous-spécialité"
+                      aria-label="Sous-spécialité"
+                      className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all bg-white"
+                    >
+                      <option value="otologie">Otologie</option>
+                      <option value="rhinologie">Rhinologie</option>
+                      <option value="laryngologie">Laryngologie</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700">Section</label>
+                    <select
+                      value={videoData.section}
+                      onChange={(e) => setVideoData({...videoData, section: e.target.value})}
+                      title="Section"
+                      aria-label="Section"
+                      className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all bg-white"
+                    >
+                      <option value="anatomie">Anatomie</option>
+                      <option value="pathologie">Pathologie</option>
+                    </select>
+                  </div>
+                </div>
+              </section>
+
+              <section className={sectionCardClass}>
+                <div className="space-y-1">
+                  <h4 className={sectionTitleClass}>Média et prévisualisation</h4>
+                  <p className={sectionHintClass}>Chargez la vidéo source et contrôlez immédiatement le rendu final.</p>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-700">Vidéo (upload)</label>
+                  <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface)] p-4 space-y-4">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                      <div className="min-w-0 space-y-0.5">
+                        <p className="text-sm font-semibold text-slate-900 truncate">
+                          {videoUploadFileName || 'Aucun fichier sélectionné'}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          {videoUploadFileName
+                            ? `${formatFileSize(videoUploadFileSize)} - limite ${Math.round(BACKEND_UPLOAD_LIMIT / (1024 * 1024 * 1024))} GB`
+                            : 'Chargez un fichier vidéo source (MP4, MOV, MKV...)'}
+                        </p>
+                      </div>
+
+                      <label className={`cursor-pointer px-4 py-2 rounded-lg text-sm font-medium transition-colors border w-fit ${
+                        isVideoUploading
+                          ? 'bg-slate-100 text-slate-500 border-slate-300'
+                          : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
+                      }`}>
+                        {isVideoUploading
+                          ? (videoUploadPhase === 'processing' ? 'Traitement serveur...' : 'Transfert en cours...')
+                          : 'Choisir un fichier'}
+                        <input
+                          type="file"
+                          accept="video/*"
+                          className="hidden"
+                          onChange={handleFileUpload}
+                          disabled={isVideoUploading}
+                        />
+                      </label>
+                    </div>
+
+                    {videoUploadPhase !== 'idle' && (
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className={`font-medium ${
+                            videoUploadPhase === 'error'
+                              ? 'text-red-600'
+                              : videoUploadPhase === 'complete'
+                                ? 'text-emerald-700'
+                                : 'text-medical-700'
+                          }`}>
+                            {videoUploadPhase === 'uploading' && 'Transfert vers le serveur'}
+                            {videoUploadPhase === 'processing' && 'Traitement et publication Cloudinary'}
+                            {videoUploadPhase === 'complete' && 'Upload terminé'}
+                            {videoUploadPhase === 'error' && 'Échec du téléversement'}
+                          </span>
+                          <span className="font-semibold text-slate-700">{clampedVideoUploadProgress}%</span>
+                        </div>
+
+                        <div className="h-2.5 rounded-full bg-slate-200 overflow-hidden">
+                          <div
+                            className={`h-full transition-all duration-300 ${
+                              videoUploadPhase === 'error'
+                                ? 'bg-red-500'
+                                : videoUploadPhase === 'complete'
+                                  ? 'bg-emerald-500'
+                                  : 'bg-medical-600'
+                            } ${videoUploadProgressWidthClass}`}
+                          />
+                        </div>
+
+                        <div className="flex flex-wrap gap-2 text-[11px]">
+                          <span className={`rounded-full px-2 py-1 border ${
+                            videoUploadPhase === 'uploading' || videoUploadPhase === 'processing' || videoUploadPhase === 'complete'
+                              ? 'border-medical-300 bg-medical-50 text-medical-700'
+                              : 'border-slate-200 bg-white text-slate-500'
+                          }`}>1. Transfert</span>
+                          <span className={`rounded-full px-2 py-1 border ${
+                            videoUploadPhase === 'processing' || videoUploadPhase === 'complete'
+                              ? 'border-medical-300 bg-medical-50 text-medical-700'
+                              : 'border-slate-200 bg-white text-slate-500'
+                          }`}>2. Traitement</span>
+                          <span className={`rounded-full px-2 py-1 border ${
+                            videoUploadPhase === 'complete'
+                              ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
+                              : videoUploadPhase === 'error'
+                                ? 'border-red-300 bg-red-50 text-red-700'
+                                : 'border-slate-200 bg-white text-slate-500'
+                          }`}>3. Terminé</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {videoData.url && !isVideoUploading && (
+                      <AdminVideoPreviewCard
+                        label="Vidéo uploadée"
+                        url={videoData.url}
+                        isMultipart={videoData.isMultipart}
+                        parts={videoData.parts}
+                        totalParts={videoData.totalParts}
                       />
-                      <p className="text-xs text-slate-500 mt-1 text-right">{uploadProgress}%</p>
+                    )}
+                  </div>
+                </div>
+              </section>
+
+              <section className={sectionCardClass}>
+                <div className="space-y-1">
+                  <h4 className={sectionTitleClass}>Publication et tarification</h4>
+                  <p className={sectionHintClass}>Définissez le mode d’accès pour vos apprenants.</p>
+                </div>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-[var(--app-text)]">Type d'accès</label>
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                      <label
+                        className={`cursor-pointer rounded-2xl border p-4 transition-all ${
+                          videoData.isFreeDemo
+                            ? 'border-medical-300 bg-medical-50 shadow-sm'
+                            : 'border-[var(--app-border)] bg-[var(--app-surface)] hover:bg-[var(--app-surface-2)]'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          checked={videoData.isFreeDemo}
+                          onChange={() => setVideoData({ ...videoData, isFreeDemo: true })}
+                          className="sr-only"
+                        />
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="space-y-1">
+                            <p className="text-sm font-semibold text-[var(--app-text)]">Démo Gratuite</p>
+                            <p className="text-xs text-[var(--app-muted)]">Accès libre pour découvrir la vidéo.</p>
+                          </div>
+                          <span
+                            className={`mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full border ${
+                              videoData.isFreeDemo
+                                ? 'border-medical-600 bg-medical-600'
+                                : 'border-[var(--app-border)] bg-[var(--app-surface)]'
+                            }`}
+                          >
+                            <span className={`h-2 w-2 rounded-full ${videoData.isFreeDemo ? 'bg-white' : 'bg-transparent'}`} />
+                          </span>
+                        </div>
+                      </label>
+
+                      <label
+                        className={`cursor-pointer rounded-2xl border p-4 transition-all ${
+                          !videoData.isFreeDemo
+                            ? 'border-medical-300 bg-medical-50 shadow-sm'
+                            : 'border-[var(--app-border)] bg-[var(--app-surface)] hover:bg-[var(--app-surface-2)]'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          checked={!videoData.isFreeDemo}
+                          onChange={() => setVideoData({ ...videoData, isFreeDemo: false })}
+                          className="sr-only"
+                        />
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="space-y-1">
+                            <p className="text-sm font-semibold text-[var(--app-text)]">Premium (Payant)</p>
+                            <p className="text-xs text-[var(--app-muted)]">Contenu réservé aux apprenants premium.</p>
+                          </div>
+                          <span
+                            className={`mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full border ${
+                              !videoData.isFreeDemo
+                                ? 'border-medical-600 bg-medical-600'
+                                : 'border-[var(--app-border)] bg-[var(--app-surface)]'
+                            }`}
+                          >
+                            <span className={`h-2 w-2 rounded-full ${!videoData.isFreeDemo ? 'bg-white' : 'bg-transparent'}`} />
+                          </span>
+                        </div>
+                      </label>
+                    </div>
+                  </div>
+
+                  {!videoData.isFreeDemo && (
+                    <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface)] p-4 space-y-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <label className="text-sm font-medium text-[var(--app-text)]">Prix (DZD)</label>
+                        <span className="text-xs text-[var(--app-muted)]">Paiement unique</span>
+                      </div>
+
+                      <div className="relative">
+                        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold uppercase tracking-wide text-[var(--app-muted)]">
+                          DZD
+                        </span>
+                        <input
+                          type="number"
+                          required
+                          min={0}
+                          value={videoData.price}
+                          onChange={(e) => setVideoData({ ...videoData, price: Number(e.target.value) })}
+                          className="w-full rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] py-2.5 pl-14 pr-4 text-[var(--app-text)] outline-none transition-all focus:border-transparent focus:ring-2 focus:ring-medical-500"
+                          placeholder="Ex: 1500"
+                        />
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        {[1000, 1500, 2000].map((amount) => (
+                          <button
+                            key={amount}
+                            type="button"
+                            onClick={() => setVideoData({ ...videoData, price: amount })}
+                            className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                              videoData.price === amount
+                                ? 'border-medical-300 bg-medical-50 text-medical-700'
+                                : 'border-[var(--app-border)] bg-[var(--app-surface)] text-[var(--app-muted)] hover:bg-[var(--app-surface-2)]'
+                            }`}
+                          >
+                            {amount} DZD
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-700">Sous-spécialité</label>
-                <select
-                  value={videoData.subspecialty}
-                  onChange={(e) => setVideoData({...videoData, subspecialty: e.target.value})}
-                  title="Sous-spécialité"
-                  aria-label="Sous-spécialité"
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all bg-white"
-                >
-                  <option value="otologie">Otologie</option>
-                  <option value="rhinologie">Rhinologie</option>
-                  <option value="laryngologie">Laryngologie</option>
-                </select>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-700">Section</label>
-                <select
-                  value={videoData.section}
-                  onChange={(e) => setVideoData({...videoData, section: e.target.value})}
-                  title="Section"
-                  aria-label="Section"
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all bg-white"
-                >
-                  <option value="anatomie">Anatomie</option>
-                  <option value="pathologie">Pathologie</option>
-                </select>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-700">Type d'accès</label>
-                <div className="flex items-center gap-4 mt-2">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      checked={videoData.isFreeDemo}
-                      onChange={() => setVideoData({...videoData, isFreeDemo: true})}
-                      className="text-medical-600 focus:ring-medical-500"
-                    />
-                    <span className="text-sm text-slate-700">Démo Gratuite</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      checked={!videoData.isFreeDemo}
-                      onChange={() => setVideoData({...videoData, isFreeDemo: false})}
-                      className="text-medical-600 focus:ring-medical-500"
-                    />
-                    <span className="text-sm text-slate-700">Premium (Payant)</span>
-                  </label>
-                </div>
-              </div>
-
-              {!videoData.isFreeDemo && (
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700">Prix (DZD)</label>
-                  <input
-                    type="number"
-                    required
-                    min={0}
-                    value={videoData.price}
-                    onChange={(e) => setVideoData({...videoData, price: Number(e.target.value)})}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all"
-                    placeholder="Ex: 1500"
-                  />
-                </div>
-              )}
+              </section>
             </div>
 
             <div className="pt-4 border-t border-slate-200 flex justify-end gap-3">
-              {editingVideoId && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditingVideoId(null);
-                    setVideoData({
-                      title: '',
-                      description: '',
-                      url: '',
-                      subspecialty: 'otologie',
-                      section: 'anatomie',
-                      isFreeDemo: false,
-                      price: 0,
-                      isMultipart: false,
-                      totalParts: 1,
-                      parts: [],
-                    });
-                  }}
-                  className="flex items-center gap-2 border border-slate-300 text-slate-700 px-6 py-3 rounded-xl font-medium hover:bg-slate-100 transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                  Annuler l'édition
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={resetVideoForm}
+                disabled={!hasVideoFormContent}
+                className="flex items-center gap-2 border border-slate-300 text-slate-700 px-6 py-3 rounded-xl font-medium hover:bg-slate-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+              >
+                <X className="w-5 h-5" />
+                {editingVideoId ? "Annuler" : "Annuler"}
+              </button>
               <button
                 type="submit"
                 disabled={isSubmitting}
                 className="flex items-center gap-2 bg-medical-600 text-white px-6 py-3 rounded-xl font-medium hover:bg-medical-700 transition-colors disabled:opacity-70"
               >
                 {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
-                {editingVideoId ? 'Mettre à jour la vidéo' : 'Enregistrer la vidéo'}
+                {editingVideoId ? 'Mettre à jour' : 'Enregistrer'}
               </button>
             </div>
           </form>
           
-          <div className="xl:col-span-5 rounded-2xl border border-slate-200 bg-slate-50/60 p-5">
-            <h3 className="text-lg font-bold text-slate-900 mb-4">Vidéos existantes</h3>
-
-            <div className="grid gap-4">
-              {filteredVideos.map(video => (
-                <div key={video.id} className="p-4 bg-slate-50 rounded-xl border border-slate-200">
+          <div className={listPanelClass}>
+            <div className="space-y-4">
+              <div className={listSummaryCardClass}>
+                <div className="flex items-start justify-between gap-3">
                   <div>
-                    <h4 className="font-medium text-slate-900">{video.title}</h4>
-                    <p className="text-sm text-slate-500 capitalize">{video.subspecialty} - {video.section}</p>
-                    {(() => {
-                      const stats = getVideoExtensionStats(video.id);
-                      return (
-                        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                          <span className="px-2 py-1 rounded-full bg-slate-200 text-slate-700">Cas: {stats.caseCount}</span>
-                          <span className="px-2 py-1 rounded-full bg-slate-200 text-slate-700">QCM: {stats.qcmCount}</span>
-                          <span className="px-2 py-1 rounded-full bg-slate-200 text-slate-700">Questions ouvertes: {stats.openQuestionCount}</span>
-                          <span className="px-2 py-1 rounded-full bg-slate-200 text-slate-700">Schémas: {stats.diagramCount}</span>
-                          <span
-                            className={`px-2 py-1 rounded-full font-medium ${
-                              stats.isComplete
-                                ? 'bg-emerald-100 text-emerald-700'
-                                : 'bg-amber-100 text-amber-700'
-                            }`}
-                          >
-                            {stats.isComplete ? 'Extensions complètes' : 'Extensions manquantes'}
-                          </span>
-                          {!stats.isComplete && (
-                            <span className="px-2 py-1 rounded-full bg-red-100 text-red-700">
-                              Manquants: {stats.missingItems.join(', ')}
-                            </span>
-                          )}
-                        </div>
-                      );
-                    })()}
+                    <h3 className="text-lg font-bold text-slate-900">Vidéos existantes</h3>
+                    <p className="text-xs text-slate-500">Bibliothèque triée par état de complétude pédagogique.</p>
                   </div>
-
-                  <div className="mt-3 flex flex-col gap-2">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <button
-                        type="button"
-                        onClick={() => openCreationFromVideo('case', video.id)}
-                        className="px-3 py-1.5 text-xs rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100 transition-colors"
-                      >
-                        + Cas
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => openCreationFromVideo('qcm', video.id)}
-                        className="px-3 py-1.5 text-xs rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100 transition-colors"
-                      >
-                        + QCM
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => openCreationFromVideo('diagram', video.id)}
-                        className="px-3 py-1.5 text-xs rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100 transition-colors"
-                      >
-                        + Schéma
-                      </button>
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setPreviewVideoId((current) => (current === video.id ? null : video.id))}
-                        className="px-3 py-1.5 text-xs rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100 transition-colors"
-                      >
-                        {previewVideoId === video.id ? 'Masquer prévisualisation' : 'Prévisualiser'}
-                      </button>
-                      <a
-                        href={`/videos/${video.id}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="px-3 py-1.5 text-xs rounded-lg border border-medical-300 text-medical-700 hover:bg-medical-50 transition-colors"
-                      >
-                        Ouvrir la lecture
-                      </a>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => handleEditVideo(video)}
-                        className="p-2 text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
-                        title="Modifier"
-                      >
-                        <Edit2 className="w-5 h-5" />
-                      </button>
-                      <button
-                        onClick={() => handleDelete('videos', video.id)}
-                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                        title="Supprimer"
-                      >
-                        <Trash2 className="w-5 h-5" />
-                      </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {previewVideoId === video.id && (
-                    <div className="mt-3 rounded-lg border border-slate-200 bg-white p-3 text-sm">
-                      <p className="text-slate-700 mb-1"><span className="font-semibold">Prévisualisation:</span> {video.title}</p>
-                      <p className="text-slate-500 line-clamp-2">{video.description}</p>
-                      <div className="mt-2 text-xs text-slate-600">
-                        {(() => {
-                          const stats = getVideoExtensionStats(video.id);
-                          return stats.isComplete
-                            ? 'Contenu complet: prêt pour usage pédagogique.'
-                            : `Cohérence incomplète: ${stats.missingItems.join(', ')}`;
-                        })()}
-                      </div>
-                    </div>
-                  )}
+                  <span className="inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
+                    {filteredVideos.length} vidéo{filteredVideos.length > 1 ? 's' : ''}
+                  </span>
                 </div>
-              ))}
+              </div>
+
+              <div className={packGridClass}>
+                {filteredVideos.map((video) => {
+                  const stats = getVideoExtensionStats(video.id);
+                  return (
+                    <div key={video.id} className={`${existingItemCardClass} space-y-4`}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 space-y-1">
+                          <h5 className="font-semibold text-slate-900 line-clamp-1">{video.title || 'Vidéo sans titre'}</h5>
+                          <p className="text-xs text-slate-500">{formatDisplayLabel(video.subspecialty)} • {formatDisplayLabel(video.section)}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleEditVideo(video)}
+                            className="p-2 text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
+                            title="Modifier"
+                          >
+                            <Edit2 className="w-5 h-5" />
+                          </button>
+                          <button
+                            onClick={() => handleDelete('videos', video.id)}
+                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Supprimer"
+                          >
+                            <Trash2 className="w-5 h-5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2 text-xs">
+                        <span className={existingItemMetaChipClass}>Cas: {stats.caseCount}</span>
+                        <span className={existingItemMetaChipClass}>QCM: {stats.qcmCount}</span>
+                        <span className={existingItemMetaChipClass}>Questions: {stats.openQuestionCount}</span>
+                        <span className={existingItemMetaChipClass}>Schémas: {stats.diagramCount}</span>
+                        <span className={existingItemMetaChipClass}>Total: {stats.totalExtensions}</span>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => openCreationFromVideo('case', video.id)}
+                          className="px-3 py-1.5 text-xs rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100 transition-colors"
+                        >
+                          + Cas
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openCreationFromVideo('qcm', video.id)}
+                          className="px-3 py-1.5 text-xs rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100 transition-colors"
+                        >
+                          + QCM
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openCreationFromVideo('openQuestion', video.id)}
+                          className="px-3 py-1.5 text-xs rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100 transition-colors"
+                        >
+                            + QROC
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openCreationFromVideo('diagram', video.id)}
+                          className="px-3 py-1.5 text-xs rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100 transition-colors"
+                        >
+                          + Schéma
+                        </button>
+                      </div>
+
+                      <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] p-3 text-sm space-y-2">
+                        <AdminVideoPreviewCard
+                          label="Cliquer sur la vidéo pour ouvrir le détail"
+                          url={video.url || ''}
+                          isMultipart={video.isMultipart}
+                          parts={video.parts}
+                          totalParts={video.totalParts}
+                          videoId={video.id}
+                        />
+                        <MarkdownPreview
+                          content={video.description}
+                          emptyMessage="Aucune description disponible pour cette vidéo."
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
               {filteredVideos.length === 0 && (
-                <p className="text-slate-500 text-sm">
-                  {normalizedSearch
-                    ? 'Aucune vidéo ne correspond aux filtres actuels.'
-                    : 'Aucune vidéo trouvée.'}
-                </p>
+                <div className={listSummaryCardClass}>
+                  <p className="text-slate-500 text-sm">
+                    {normalizedSearch
+                      ? 'Aucune vidéo ne correspond aux filtres actuels.'
+                      : 'Aucune vidéo trouvée.'}
+                  </p>
+                </div>
               )}
             </div>
           </div>
@@ -1663,8 +2137,8 @@ export function AdminContentManager() {
         )}
 
         {activeTab === 'qcm' && (
-          <div className="grid gap-6 xl:grid-cols-12">
-            <form onSubmit={handleQcmSubmit} className="space-y-6 xl:col-span-7 rounded-2xl border border-slate-200 bg-white p-5">
+          <div className={editorGridClass}>
+            <form onSubmit={handleQcmSubmit} className={formPanelClass}>
               <div className="flex justify-between items-center">
                 <div>
                   <h3 className="text-lg font-bold text-slate-900 mb-1">{editingQcmId ? 'Modifier le QCM' : 'Ajouter un QCM'}</h3>
@@ -1672,386 +2146,481 @@ export function AdminContentManager() {
                 </div>
               </div>
 
-              <div className="space-y-6">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700">Vidéo associée</label>
-                  <select
-                    required
-                    value={qcmData.videoId}
-                    onChange={(e) => setQcmData({...qcmData, videoId: e.target.value})}
-                    title="Video associee au QCM"
-                    aria-label="Video associee au QCM"
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all bg-white"
-                  >
-                    <option value="" disabled>Sélectionner une vidéo...</option>
-                    {videos.map(v => (
-                      <option key={v.id} value={v.id}>{v.title}</option>
-                    ))}
-                  </select>
-                  {renderSelectedVideoPreview(qcmData.videoId)}
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700">Question</label>
-                  <textarea
-                    required
-                    value={qcmData.question}
-                    onChange={(e) => setQcmData({...qcmData, question: e.target.value})}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all min-h-[80px]"
-                    placeholder="Posez votre question ici..."
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700">Type de QCM</label>
-                  <select
-                    value={qcmData.mode}
-                    onChange={(e) => {
-                      const nextMode = e.target.value as 'single' | 'multiple';
-                      setQcmData((prev) => ({
-                        ...prev,
-                        mode: nextMode,
-                        correctOptionIndexes:
-                          nextMode === 'single'
-                            ? (prev.correctOptionIndexes.length > 0 ? [prev.correctOptionIndexes[0]] : [])
-                            : prev.correctOptionIndexes,
-                      }));
-                    }}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all bg-white text-sm"
-                    title="Type de QCM"
-                    aria-label="Type de QCM"
-                  >
-                    <option value="single">Choix unique</option>
-                    <option value="multiple">Choix multiple</option>
-                  </select>
-                  <p className="text-xs text-slate-500">
-                    Choix unique : une seule bonne réponse. Choix multiple : plusieurs réponses peuvent être correctes.
-                  </p>
-                </div>
-
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <label className="text-sm font-medium text-slate-700">Options de réponse</label>
-                    <button
-                      type="button"
-                      onClick={handleAddQcmOption}
-                      className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
-                    >
-                      <Plus className="h-3.5 w-3.5" />
-                      Ajouter une option
-                    </button>
+              <div className="space-y-5">
+                <section className={sectionCardClass}>
+                  <div className="space-y-1">
+                    <h4 className={sectionTitleClass}>Cadrage du QCM</h4>
+                    <p className={sectionHintClass}>Sélectionnez la vidéo cible et rédigez l’énoncé principal.</p>
                   </div>
-                  {qcmData.options.map((_, index) => {
-                    const optionLabel = getOptionLabel(index);
-                    return (
-                    <div key={optionLabel} className="flex items-center gap-4">
-                      {qcmData.mode === 'single' ? (
-                        <input
-                          type="radio"
-                          name="main-qcm-correct-option"
-                          checked={qcmData.correctOptionIndexes.includes(index)}
-                          onChange={() =>
-                            setQcmData((prev) => ({
-                              ...prev,
-                              correctOptionIndexes: [index],
-                            }))
-                          }
-                          className="text-medical-600 focus:ring-medical-500 mt-1 h-4 w-4 border-slate-300"
-                          title="Marquer comme bonne réponse"
-                        />
-                      ) : (
-                        <input
-                          type="checkbox"
-                          checked={qcmData.correctOptionIndexes.includes(index)}
-                          onChange={(e) => {
-                            const checked = e.target.checked;
-                            setQcmData((prev) => {
-                              let nextIndexes = Array.isArray(prev.correctOptionIndexes)
-                                ? [...prev.correctOptionIndexes]
-                                : [];
-
-                              if (checked) {
-                                if (!nextIndexes.includes(index)) {
-                                  nextIndexes.push(index);
-                                }
-                              } else {
-                                nextIndexes = nextIndexes.filter((i) => i !== index);
-                              }
-
-                              return {
-                                ...prev,
-                                correctOptionIndexes: nextIndexes,
-                              };
-                            });
-                          }}
-                          className="text-medical-600 focus:ring-medical-500 mt-1 h-4 w-4 rounded border-slate-300"
-                          title="Marquer comme bonne réponse"
-                        />
-                      )}
-                      <span className="w-8 shrink-0 text-center text-xs font-semibold text-slate-600 bg-slate-100 border border-slate-300 rounded-md py-1">
-                        {optionLabel}
-                      </span>
-                      <input
-                        type="text"
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-slate-700">Vidéo associée</label>
+                      <select
                         required
-                        value={qcmData.options[index] || ''}
-                        onChange={(e) => handleOptionChange(index, e.target.value)}
-                        className={`flex-1 px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all ${
-                          qcmData.correctOptionIndexes.includes(index) ? 'border-medical-500 bg-medical-50' : 'border-slate-300'
-                        }`}
-                        placeholder={`Option ${optionLabel}`}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveQcmOption(index)}
-                        disabled={qcmData.options.length <= 2}
-                        className="rounded-lg border border-slate-300 p-2 text-slate-600 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
-                        title="Supprimer cette option"
-                        aria-label="Supprimer cette option"
+                        value={qcmData.videoId}
+                        onChange={(e) => setQcmData({...qcmData, videoId: e.target.value})}
+                        title="Video associee au QCM"
+                        aria-label="Video associee au QCM"
+                        className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all bg-white"
                       >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
+                        <option value="" disabled>Sélectionner une vidéo...</option>
+                        {videos.map(v => (
+                          <option key={v.id} value={v.id}>{v.title}</option>
+                        ))}
+                      </select>
+                      {renderSelectedVideoPreview(qcmData.videoId)}
                     </div>
-                    );
-                  })}
-                  <p className="text-xs text-slate-500">
-                    Choix unique: boutons radio. Choix multiple: cases à cocher. Minimum 2 options.
-                  </p>
-                </div>
 
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700">Explication (optionnelle)</label>
-                  <textarea
-                    value={qcmData.explanation}
-                    onChange={(e) => setQcmData({...qcmData, explanation: e.target.value})}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all min-h-[80px]"
-                    placeholder="Explication affichée après la réponse..."
-                  />
-                </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-slate-700">Question</label>
+                      <textarea
+                        required
+                        value={qcmData.question}
+                        onChange={(e) => setQcmData({...qcmData, question: e.target.value})}
+                        className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all resize-none overflow-y-auto min-h-[90px]"
+                        placeholder="Posez votre question ici..."
+                      />
+                    </div>
+                  </div>
+                </section>
 
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700">Références (optionnelle)</label>
-                  <textarea
-                    value={qcmData.reference}
-                    onChange={(e) => setQcmData({ ...qcmData, reference: e.target.value })}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all min-h-[80px]"
-                    placeholder="Article, guide, source scientifique..."
-                  />
-                </div>
+                <section className={sectionCardClass}>
+                  <div className="space-y-1">
+                    <h4 className={sectionTitleClass}>Configuration et réponses</h4>
+                    <p className={sectionHintClass}>Définissez le mode de réponse et préparez le corrigé interactif.</p>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-slate-700">Type de QCM</label>
+                      <select
+                        value={qcmData.mode}
+                        onChange={(e) => {
+                          const nextMode = e.target.value as 'single' | 'multiple';
+                          setQcmData((prev) => ({
+                            ...prev,
+                            mode: nextMode,
+                            correctOptionIndexes:
+                              nextMode === 'single'
+                                ? (prev.correctOptionIndexes.length > 0 ? [prev.correctOptionIndexes[0]] : [])
+                                : prev.correctOptionIndexes,
+                          }));
+                        }}
+                        className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all bg-white text-sm"
+                        title="Type de QCM"
+                        aria-label="Type de QCM"
+                      >
+                        <option value="single">Choix unique</option>
+                        <option value="multiple">Choix multiple</option>
+                      </select>
+                      <p className="text-xs text-slate-500">
+                        Choix unique : une seule bonne réponse. Choix multiple : plusieurs réponses peuvent être correctes.
+                      </p>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <label className="text-sm font-medium text-slate-700">Options de réponse</label>
+                        <button
+                          type="button"
+                          onClick={handleAddQcmOption}
+                          className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                          Ajouter une option
+                        </button>
+                      </div>
+                      {qcmData.options.map((_, index) => {
+                        const optionLabel = getOptionLabel(index);
+                        return (
+                        <div key={optionLabel} className="flex items-center gap-4">
+                          {qcmData.mode === 'single' ? (
+                            <input
+                              type="radio"
+                              name="main-qcm-correct-option"
+                              checked={qcmData.correctOptionIndexes.includes(index)}
+                              onChange={() =>
+                                setQcmData((prev) => ({
+                                  ...prev,
+                                  correctOptionIndexes: [index],
+                                }))
+                              }
+                              className="text-medical-600 focus:ring-medical-500 mt-1 h-4 w-4 border-slate-300"
+                              title="Marquer comme bonne réponse"
+                            />
+                          ) : (
+                            <input
+                              type="checkbox"
+                              checked={qcmData.correctOptionIndexes.includes(index)}
+                              onChange={(e) => {
+                                const checked = e.target.checked;
+                                setQcmData((prev) => {
+                                  let nextIndexes = Array.isArray(prev.correctOptionIndexes)
+                                    ? [...prev.correctOptionIndexes]
+                                    : [];
+
+                                  if (checked) {
+                                    if (!nextIndexes.includes(index)) {
+                                      nextIndexes.push(index);
+                                    }
+                                  } else {
+                                    nextIndexes = nextIndexes.filter((i) => i !== index);
+                                  }
+
+                                  return {
+                                    ...prev,
+                                    correctOptionIndexes: nextIndexes,
+                                  };
+                                });
+                              }}
+                              className="text-medical-600 focus:ring-medical-500 mt-1 h-4 w-4 rounded border-slate-300"
+                              title="Marquer comme bonne réponse"
+                            />
+                          )}
+                          <span className="w-8 shrink-0 text-center text-xs font-semibold text-slate-600 bg-slate-100 border border-slate-300 rounded-md py-1">
+                            {optionLabel}
+                          </span>
+                          <input
+                            type="text"
+                            required
+                            value={qcmData.options[index] || ''}
+                            onChange={(e) => handleOptionChange(index, e.target.value)}
+                            className={`flex-1 px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all ${
+                              qcmData.correctOptionIndexes.includes(index) ? 'border-medical-500 bg-medical-50' : 'border-slate-300'
+                            }`}
+                            placeholder={`Option ${optionLabel}`}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveQcmOption(index)}
+                            disabled={qcmData.options.length <= 2}
+                            className="rounded-lg border border-slate-300 p-2 text-slate-600 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+                            title="Supprimer cette option"
+                            aria-label="Supprimer cette option"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                        );
+                      })}
+                      <p className="text-xs text-slate-500">
+                        Choix unique: boutons radio. Choix multiple: cases à cocher. Minimum 2 options.
+                      </p>
+                    </div>
+                  </div>
+                </section>
+
+                <section className={sectionCardClass}>
+                  <div className="space-y-1">
+                    <h4 className={sectionTitleClass}>Feedback pédagogique</h4>
+                    <p className={sectionHintClass}>Ajoutez des éléments de correction pour enrichir l’apprentissage.</p>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-slate-700">Explication (optionnelle)</label>
+                      <textarea
+                        value={qcmData.explanation}
+                        onChange={(e) => setQcmData({...qcmData, explanation: e.target.value})}
+                        className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all resize-none overflow-y-auto min-h-[80px]"
+                        placeholder="Explication affichée après la réponse..."
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-slate-700">Références (optionnelle)</label>
+                      <textarea
+                        value={qcmData.reference}
+                        onChange={(e) => setQcmData({ ...qcmData, reference: e.target.value })}
+                        className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all resize-none overflow-y-auto min-h-[80px]"
+                        placeholder="Article, guide, source scientifique..."
+                      />
+                    </div>
+                  </div>
+                </section>
               </div>
 
               <div className="pt-4 border-t border-slate-200 flex justify-end gap-3">
-                {editingQcmId && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingQcmId(null);
-                      setQcmData({
-                        videoId: '',
-                        question: '',
-                        options: getDefaultQcmOptions(),
-                        mode: 'single',
-                        correctOptionIndexes: [],
-                        explanation: '',
-                        reference: '',
-                      });
-                    }}
-                    className="flex items-center gap-2 border border-slate-300 text-slate-700 px-6 py-3 rounded-xl font-medium hover:bg-slate-100 transition-colors"
-                  >
-                    <X className="w-5 h-5" />
-                    Annuler l'édition
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => resetQcmForm()}
+                  disabled={!hasQcmFormContent}
+                  className="flex items-center gap-2 border border-slate-300 text-slate-700 px-6 py-3 rounded-xl font-medium hover:bg-slate-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                >
+                  <X className="w-5 h-5" />
+                  {editingQcmId ? "Annuler" : "Annuler"}
+                </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
                   className="flex items-center gap-2 bg-medical-600 text-white px-6 py-3 rounded-xl font-medium hover:bg-medical-700 transition-colors disabled:opacity-70"
                 >
                   {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
-                  {editingQcmId ? 'Mettre à jour le QCM' : 'Enregistrer le QCM'}
+                  {editingQcmId ? 'Mettre à jour' : 'Enregistrer'}
                 </button>
               </div>
             </form>
 
-            <div className="xl:col-span-5 rounded-2xl border border-slate-200 bg-slate-50/60 p-5">
-              <h3 className="text-lg font-bold text-slate-900 mb-4">QCMs existants</h3>
-              <div className="grid gap-4">
-                {filteredQcms.map(qcm => {
-                  const video = videos.find(v => v.id === qcm.videoId);
-                  return (
-                    <div key={qcm.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-200">
-                      <div>
-                        <h4 className="font-medium text-slate-900 line-clamp-1">{qcm.question}</h4>
-                        <p className="text-sm text-slate-500">Vidéo: {video?.title || 'Inconnue'}</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button 
-                          onClick={() => handleEditQcm(qcm)}
-                          className="p-2 text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
-                          title="Modifier"
-                        >
-                          <Edit2 className="w-5 h-5" />
-                        </button>
-                        <button 
-                          onClick={() => handleDelete('qcms', qcm.id)}
-                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                          title="Supprimer"
-                        >
-                          <Trash2 className="w-5 h-5" />
-                        </button>
-                      </div>
+            <div className={listPanelClass}>
+              <div className="space-y-4">
+                <div className={listSummaryCardClass}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="text-lg font-bold text-slate-900">QCMs existants</h3>
+                      <p className="text-xs text-slate-500">Vue organisée par libellé pour simplifier la maintenance pédagogique.</p>
                     </div>
-                  );
-                })}
-                {filteredQcms.length === 0 && (
-                  <p className="text-slate-500 text-sm">
-                    {normalizedSearch ? 'Aucun QCM ne correspond à la recherche.' : 'Aucun QCM trouvé.'}
-                  </p>
-                )}
+                    <span className="inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
+                      {qcmListStats.total}
+                    </span>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                    <span className={existingItemMetaChipClass}>Vidéos liées: {qcmListStats.videosLinked}</span>
+                    <span className={existingItemMetaChipClass}>Choix multiple: {qcmListStats.multipleCount}</span>
+                    <span className={existingItemMetaChipClass}>
+                      Choix unique: {Math.max(0, qcmListStats.total - qcmListStats.multipleCount)}
+                    </span>
+                  </div>
+                </div>
+
+                <div className={packGridClass}>
+                  {orderedFilteredQcms.map((qcm) => {
+                    const videoTitle = videoTitleById.get(qcm.videoId) || 'Vidéo inconnue';
+                    const optionCount = Array.isArray(qcm.options) ? qcm.options.length : 0;
+                    const correctCount = Array.isArray(qcm.correctOptionIndexes) ? qcm.correctOptionIndexes.length : 0;
+
+                    return (
+                      <div key={qcm.id} className={`${existingItemRowClass} flex-col gap-3 md:flex-row md:items-start`}>
+                        <div className="min-w-0 flex-1 space-y-2">
+                          <h4 className="font-semibold text-slate-900 line-clamp-2">{qcm.question || 'Question non renseignée'}</h4>
+                          <div className="flex flex-wrap gap-2">
+                            <span className={existingItemMetaChipClass}>Vidéo: {videoTitle}</span>
+                            <span className={existingItemMetaChipClass}>
+                              Mode: {qcm.mode === 'multiple' ? 'Choix multiple' : 'Choix unique'}
+                            </span>
+                            <span className={existingItemMetaChipClass}>Options: {optionCount}</span>
+                            <span className={existingItemMetaChipClass}>Bonnes réponses: {correctCount}</span>
+                          </div>
+                          <MarkdownPreview content={qcm.explanation} maxHeightClass="max-h-20" />
+                        </div>
+                        <div className="flex items-center gap-2 self-end md:self-start">
+                          <button
+                            onClick={() => handleEditQcm(qcm)}
+                            className="p-2 text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
+                            title="Modifier"
+                          >
+                            <Edit2 className="w-5 h-5" />
+                          </button>
+                          <button
+                            onClick={() => handleDelete('qcms', qcm.id)}
+                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Supprimer"
+                          >
+                            <Trash2 className="w-5 h-5" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {orderedFilteredQcms.length === 0 && (
+                    <div className={listSummaryCardClass}>
+                      <p className="text-slate-500 text-sm">
+                        {normalizedSearch ? 'Aucun QCM ne correspond à la recherche.' : 'Aucun QCM trouvé.'}
+                      </p>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
         )}
 
         {activeTab === 'openQuestion' && (
-          <div className="grid gap-6 xl:grid-cols-12">
-            <form onSubmit={handleOpenQuestionSubmit} className="space-y-6 xl:col-span-7 rounded-2xl border border-slate-200 bg-white p-5">
+          <div className={editorGridClass}>
+            <form onSubmit={handleOpenQuestionSubmit} className={formPanelClass}>
               <div className="flex justify-between items-center">
                 <div>
                   <h3 className="text-lg font-bold text-slate-900 mb-1">
-                    {editingOpenQuestionId ? 'Modifier la Question Ouverte' : 'Ajouter une Question Ouverte'}
+                    {editingOpenQuestionId ? 'Modifier le QROC' : 'Ajouter un QROC'}
                   </h3>
                   <p className="text-sm text-slate-500 mb-6">
-                    Ajoutez une question ouverte liée à une vidéo avec sa réponse et ses références.
+                    Ajoutez un QROC lié à une vidéo avec sa réponse et ses références.
                   </p>
                 </div>
               </div>
 
-              <div className="space-y-6">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700">Vidéo associée</label>
-                  <select
-                    required
-                    value={openQuestionData.videoId}
-                    onChange={(e) => setOpenQuestionData({ ...openQuestionData, videoId: e.target.value })}
-                    title="Video associee a la question ouverte"
-                    aria-label="Video associee a la question ouverte"
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all bg-white"
-                  >
-                    <option value="" disabled>Sélectionner une vidéo...</option>
-                    {videos.map(v => (
-                      <option key={v.id} value={v.id}>{v.title}</option>
-                    ))}
-                  </select>
-                  {renderSelectedVideoPreview(openQuestionData.videoId)}
-                </div>
+              <div className="space-y-5">
+                <section className={sectionCardClass}>
+                  <div className="space-y-1">
+                    <h4 className={sectionTitleClass}>Cadrage de la question</h4>
+                    <p className={sectionHintClass}>Associez le QROC à la vidéo concernée.</p>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700">Vidéo associée</label>
+                    <select
+                      required
+                      value={openQuestionData.videoId}
+                      onChange={(e) => setOpenQuestionData({ ...openQuestionData, videoId: e.target.value })}
+                      title="Video associee au QROC"
+                      aria-label="Video associee au QROC"
+                      className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all bg-white"
+                    >
+                      <option value="" disabled>Sélectionner une vidéo...</option>
+                      {videos.map(v => (
+                        <option key={v.id} value={v.id}>{v.title}</option>
+                      ))}
+                    </select>
+                    {renderSelectedVideoPreview(openQuestionData.videoId)}
+                  </div>
+                </section>
 
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700">Question</label>
-                  <textarea
-                    required
-                    value={openQuestionData.question}
-                    onChange={(e) => setOpenQuestionData({ ...openQuestionData, question: e.target.value })}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all min-h-[80px]"
-                    placeholder="Saisissez la question ouverte..."
-                  />
-                </div>
+                <section className={sectionCardClass}>
+                  <div className="space-y-1">
+                    <h4 className={sectionTitleClass}>Question et corrigé</h4>
+                    <p className={sectionHintClass}>Rédigez l’énoncé et la réponse attendue de manière structurée.</p>
+                  </div>
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-slate-700">Question</label>
+                      <textarea
+                        required
+                        value={openQuestionData.question}
+                        onChange={(e) => setOpenQuestionData({ ...openQuestionData, question: e.target.value })}
+                        className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all resize-none overflow-y-auto min-h-[90px]"
+                        placeholder="Saisissez le QROC..."
+                      />
+                    </div>
 
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700">Réponse</label>
-                  <textarea
-                    required
-                    value={openQuestionData.answer}
-                    onChange={(e) => setOpenQuestionData({ ...openQuestionData, answer: e.target.value })}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all min-h-[100px]"
-                    placeholder="Saisissez la réponse attendue..."
-                  />
-                </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-slate-700">Réponse</label>
+                      <textarea
+                        required
+                        value={openQuestionData.answer}
+                        onChange={(e) => setOpenQuestionData({ ...openQuestionData, answer: e.target.value })}
+                        className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all resize-none overflow-y-auto min-h-[120px]"
+                        placeholder="Saisissez la réponse attendue..."
+                      />
+                    </div>
+                  </div>
+                </section>
 
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700">Références (optionnelle)</label>
-                  <textarea
-                    value={openQuestionData.reference}
-                    onChange={(e) => setOpenQuestionData({ ...openQuestionData, reference: e.target.value })}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all min-h-[80px]"
-                    placeholder="Article, source scientifique, guideline..."
-                  />
-                </div>
+                <section className={sectionCardClass}>
+                  <div className="space-y-1">
+                    <h4 className={sectionTitleClass}>Références académiques</h4>
+                    <p className={sectionHintClass}>Ajoutez la source ou la guideline pour renforcer la fiabilité.</p>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700">Références (optionnelle)</label>
+                    <textarea
+                      value={openQuestionData.reference}
+                      onChange={(e) => setOpenQuestionData({ ...openQuestionData, reference: e.target.value })}
+                      className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all resize-none overflow-y-auto min-h-[80px]"
+                      placeholder="Article, source scientifique, guideline..."
+                    />
+                  </div>
+                </section>
               </div>
 
               <div className="pt-4 border-t border-slate-200 flex justify-end gap-3">
-                {editingOpenQuestionId && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingOpenQuestionId(null);
-                      setOpenQuestionData({
-                        videoId: '',
-                        question: '',
-                        answer: '',
-                        reference: '',
-                      });
-                    }}
-                    className="flex items-center gap-2 border border-slate-300 text-slate-700 px-6 py-3 rounded-xl font-medium hover:bg-slate-100 transition-colors"
-                  >
-                    <X className="w-5 h-5" />
-                    Annuler l'édition
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => resetQrocForm()}
+                  disabled={!hasQrocFormContent}
+                  className="flex items-center gap-2 border border-slate-300 text-slate-700 px-6 py-3 rounded-xl font-medium hover:bg-slate-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                >
+                  <X className="w-5 h-5" />
+                  {editingOpenQuestionId ? "Annuler" : "Annuler"}
+                </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
                   className="flex items-center gap-2 bg-medical-600 text-white px-6 py-3 rounded-xl font-medium hover:bg-medical-700 transition-colors disabled:opacity-70"
                 >
                   {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
-                  {editingOpenQuestionId ? 'Mettre à jour la question ouverte' : 'Enregistrer la question ouverte'}
+                  {editingOpenQuestionId ? 'Mettre à jour' : 'Enregistrer'}
                 </button>
               </div>
             </form>
 
-            <div className="xl:col-span-5 rounded-2xl border border-slate-200 bg-slate-50/60 p-5">
-              <h3 className="text-lg font-bold text-slate-900 mb-4">Questions ouvertes existantes</h3>
-              <div className="grid gap-4">
-                {filteredOpenQuestions.map((item) => {
-                  const video = videos.find(v => v.id === item.videoId);
-                  return (
-                    <div key={item.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-200">
-                      <div>
-                        <h4 className="font-medium text-slate-900 line-clamp-1">{item.question}</h4>
-                        <p className="text-sm text-slate-500">Vidéo: {video?.title || 'Inconnue'}</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => handleEditOpenQuestion(item)}
-                          className="p-2 text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
-                          title="Modifier"
-                        >
-                          <Edit2 className="w-5 h-5" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete('openQuestions', item.id)}
-                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                          title="Supprimer"
-                        >
-                          <Trash2 className="w-5 h-5" />
-                        </button>
-                      </div>
+            <div className={listPanelClass}>
+              <div className="space-y-4">
+                <div className={listSummaryCardClass}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="text-lg font-bold text-slate-900">QROC existants</h3>
+                      <p className="text-xs text-slate-500">Organisation par question pour retrouver rapidement les contenus rédactionnels.</p>
                     </div>
-                  );
-                })}
-                {filteredOpenQuestions.length === 0 && (
-                  <p className="text-slate-500 text-sm">
-                    {normalizedSearch ? 'Aucune question ouverte ne correspond à la recherche.' : 'Aucune question ouverte trouvée.'}
-                  </p>
-                )}
+                    <span className="inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
+                      {openQuestionListStats.total}
+                    </span>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                    <span className={existingItemMetaChipClass}>Vidéos liées: {openQuestionListStats.videosLinked}</span>
+                    <span className={existingItemMetaChipClass}>Avec référence: {openQuestionListStats.withReference}</span>
+                    <span className={existingItemMetaChipClass}>
+                      Sans référence: {Math.max(0, openQuestionListStats.total - openQuestionListStats.withReference)}
+                    </span>
+                  </div>
+                </div>
+
+                <div className={packGridClass}>
+                  {orderedFilteredOpenQuestions.map((item) => {
+                    const videoTitle = videoTitleById.get(item.videoId) || 'Vidéo inconnue';
+
+                    return (
+                      <div key={item.id} className={`${existingItemRowClass} flex-col gap-3 md:flex-row md:items-start`}>
+                        <div className="min-w-0 flex-1 space-y-2">
+                          <h4 className="font-semibold text-slate-900 line-clamp-2">{item.question || 'Question non renseignée'}</h4>
+                          <div className="flex flex-wrap gap-2">
+                            <span className={existingItemMetaChipClass}>Vidéo: {videoTitle}</span>
+                            {item.reference && (
+                              <span className="inline-flex items-center rounded-full border border-medical-200 bg-medical-50 px-2 py-1 text-[11px] font-medium text-medical-700">
+                                Référence incluse
+                              </span>
+                            )}
+                          </div>
+                          <MarkdownPreview
+                            content={item.answer}
+                            emptyMessage="Aucune réponse enregistrée pour cette question."
+                            maxHeightClass="max-h-20"
+                          />
+                        </div>
+                        <div className="flex items-center gap-2 self-end md:self-start">
+                          <button
+                            onClick={() => handleEditOpenQuestion(item)}
+                            className="p-2 text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
+                            title="Modifier"
+                          >
+                            <Edit2 className="w-5 h-5" />
+                          </button>
+                          <button
+                            onClick={() => handleDelete('openQuestions', item.id)}
+                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Supprimer"
+                          >
+                            <Trash2 className="w-5 h-5" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {orderedFilteredOpenQuestions.length === 0 && (
+                    <div className={listSummaryCardClass}>
+                      <p className="text-slate-500 text-sm">
+                        {normalizedSearch ? 'Aucun QROC ne correspond à la recherche.' : 'Aucun QROC trouvé.'}
+                      </p>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
         )}
 
         {activeTab === 'case' && (
-          <div className="grid gap-6 xl:grid-cols-12">
-            <form onSubmit={handleCaseSubmit} className="space-y-6 xl:col-span-7 rounded-2xl border border-slate-200 bg-white p-5">
+          <div className={editorGridClass}>
+            <form onSubmit={handleCaseSubmit} className={formPanelClass}>
               <div className="flex justify-between items-center">
                 <div>
                   <h3 className="text-lg font-bold text-slate-900 mb-1">{editingCaseId ? 'Modifier le Cas Clinique' : 'Ajouter un Cas Clinique'}</h3>
@@ -2059,8 +2628,15 @@ export function AdminContentManager() {
                 </div>
               </div>
 
-              <div className="space-y-6">
-                <div className="space-y-2">
+              <div className="space-y-5">
+                <section className={sectionCardClass}>
+                  <div className="space-y-1">
+                    <h4 className={sectionTitleClass}>Liaison vidéo et supports visuels</h4>
+                    <p className={sectionHintClass}>Associez le cas à la bonne vidéo et ajoutez les figures utiles.</p>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="space-y-2">
                   <label className="text-sm font-medium text-slate-700">Vidéo associée</label>
                   <select
                     required
@@ -2078,7 +2654,7 @@ export function AdminContentManager() {
                   {renderSelectedVideoPreview(caseData.videoId)}
                 </div>
 
-                <div className="space-y-2">
+                    <div className="space-y-2">
                   <label className="text-sm font-medium text-slate-700">Figures (upload d'images)</label>
                   <div className="space-y-3">
                     {caseData.images && caseData.images.length > 0 && (
@@ -2086,7 +2662,7 @@ export function AdminContentManager() {
                         {caseData.images.map((img, index) => (
                           <div
                             key={index}
-                            className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-100 border border-slate-200 text-xs text-slate-700 max-w-full"
+                            className={`${existingItemMetaChipClass} max-w-full`}
                           >
                             <span className="font-semibold">Figure {index + 1}</span>
                             <span className="truncate max-w-[160px]" title={img}>{img}</span>
@@ -2126,32 +2702,54 @@ export function AdminContentManager() {
                   </div>
                 </div>
 
-                <div className="space-y-2">
+                  </div>
+                </section>
+
+                <section className={sectionCardClass}>
+                  <div className="space-y-1">
+                    <h4 className={sectionTitleClass}>Narratif clinique</h4>
+                    <p className={sectionHintClass}>Rédigez un contexte précis et documentez vos références.</p>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="space-y-2">
                   <label className="text-sm font-medium text-slate-700">Description du cas clinique</label>
                   <textarea
                     value={caseData.description}
                     onChange={(e) => setCaseData({ ...caseData, description: e.target.value })}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all min-h-[120px]"
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all resize-none overflow-y-auto min-h-[120px]"
                     placeholder="Décrivez brièvement le cas clinique (contexte, symptômes, éléments clés)..."
                   />
+                  <p className="text-[11px] text-[var(--app-muted)]">
+                    Markdown accepté: `-`, `+`, `1.`, `*italique*`, `**gras**`.
+                  </p>
                 </div>
 
-                <div className="space-y-2">
+                    <div className="space-y-2">
                   <label className="text-sm font-medium text-slate-700">Référence (optionnelle)</label>
                   <textarea
                     value={caseData.reference || ''}
                     onChange={(e) => setCaseData({ ...caseData, reference: e.target.value })}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all min-h-[80px]"
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all resize-none overflow-y-auto min-h-[80px]"
                     placeholder="Article, ouvrage, lien ou source à citer..."
                   />
                 </div>
 
-                <div className="space-y-3">
+                  </div>
+                </section>
+
+                <section className={sectionCardClass}>
+                  <div className="space-y-1">
+                    <h4 className={sectionTitleClass}>Questions pédagogiques</h4>
+                    <p className={sectionHintClass}>Composez des interactions progressives pour guider le raisonnement.</p>
+                  </div>
+
+                  <div className="space-y-3">
                   <div className="flex items-center justify-between gap-4 flex-wrap">
                     <div>
                       <label className="text-sm font-medium text-slate-700">Questions pédagogiques (optionnel)</label>
                       <p className="text-xs text-slate-500">
-                        Ajoutez des QCM, sélecteurs ou questions ouvertes pour structurer le raisonnement clinique.
+                        Ajoutez des QCM, sélecteurs ou QROC pour structurer le raisonnement clinique.
                       </p>
                     </div>
                     <div className="flex flex-wrap gap-2">
@@ -2177,7 +2775,7 @@ export function AdminContentManager() {
                         className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-medium text-slate-700 hover:bg-slate-100"
                       >
                         <Plus className="w-3 h-3" />
-                        Question ouverte
+                        QROC
                       </button>
                     </div>
                   </div>
@@ -2195,7 +2793,7 @@ export function AdminContentManager() {
                         return (
                           <div
                             key={q.id || index}
-                            className="border border-slate-200 rounded-xl p-4 bg-slate-50 space-y-4"
+                            className="border border-[var(--app-border)] rounded-xl p-4 bg-[var(--app-surface-alt)] space-y-4"
                           >
                             <div className="flex items-center justify-between gap-3 flex-wrap">
                               <div className="flex items-center gap-3">
@@ -2211,7 +2809,7 @@ export function AdminContentManager() {
                                 >
                                   <option value="qcm">QCM (cases à cocher)</option>
                                   <option value="select">Sélecteur (liste déroulante)</option>
-                                  <option value="open">Question ouverte</option>
+                                  <option value="open">QROC</option>
                                 </select>
                               </div>
                               <button
@@ -2235,7 +2833,7 @@ export function AdminContentManager() {
                                       prompt: e.target.value
                                     }))
                                   }
-                                  className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all text-sm min-h-[60px]"
+                                  className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all resize-none overflow-y-auto text-sm min-h-[60px]"
                                   placeholder="Formulez la question que verra l'étudiant..."
                                 />
                               </div>
@@ -2453,7 +3051,7 @@ export function AdminContentManager() {
                                         answer: e.target.value
                                       }))
                                     }
-                                    className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all text-sm min-h-[60px]"
+                                    className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all resize-none overflow-y-auto text-sm min-h-[60px]"
                                     placeholder="Rédigez la réponse ou le corrigé qui pourra être affiché / masqué."
                                   />
                                 </div>
@@ -2470,7 +3068,7 @@ export function AdminContentManager() {
                                         explanation: e.target.value
                                       }))
                                     }
-                                    className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all text-sm min-h-[60px]"
+                                    className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all resize-none overflow-y-auto text-sm min-h-[60px]"
                                     placeholder="Détaillez le raisonnement ou les points clés à rappeler."
                                   />
                                 </div>
@@ -2486,7 +3084,7 @@ export function AdminContentManager() {
                                       {q.images.map((img: string, imgIndex: number) => (
                                         <div
                                           key={imgIndex}
-                                          className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-100 border border-slate-200 text-xs text-slate-700 max-w-full"
+                                          className={`${existingItemMetaChipClass} max-w-full`}
                                         >
                                           <span className="font-semibold">Figure {imgIndex + 1}</span>
                                           <span
@@ -2543,98 +3141,112 @@ export function AdminContentManager() {
                       })}
                     </div>
                   )}
-                </div>
+                  </div>
+                </section>
               </div>
 
               <div className="pt-4 border-t border-slate-200 flex justify-end gap-3">
-                {editingCaseId && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingCaseId(null);
-                      setCaseData({
-                        videoId: '',
-                        title: '',
-                        description: '',
-                        patientHistory: '',
-                        clinicalExamination: '',
-                        additionalTests: '',
-                        diagnosis: '',
-                        treatment: '',
-                        discussion: '',
-                        images: [],
-                        reference: '',
-                        questions: []
-                      });
-                    }}
-                    className="flex items-center gap-2 border border-slate-300 text-slate-700 px-6 py-3 rounded-xl font-medium hover:bg-slate-100 transition-colors"
-                  >
-                    <X className="w-5 h-5" />
-                    Annuler l'édition
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => resetCaseForm()}
+                  disabled={!hasCaseFormContent}
+                  className="flex items-center gap-2 border border-slate-300 text-slate-700 px-6 py-3 rounded-xl font-medium hover:bg-slate-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                >
+                  <X className="w-5 h-5" />
+                  {editingCaseId ? "Annuler" : "Annuler"}
+                </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
                   className="flex items-center gap-2 bg-medical-600 text-white px-6 py-3 rounded-xl font-medium hover:bg-medical-700 transition-colors disabled:opacity-70"
                 >
                   {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
-                  {editingCaseId ? 'Mettre à jour le cas clinique' : 'Enregistrer le cas clinique'}
+                  {editingCaseId ? 'Mettre à jour' : 'Enregistrer'}
                 </button>
               </div>
             </form>
 
-            <div className="xl:col-span-5 rounded-2xl border border-slate-200 bg-slate-50/60 p-5">
-              <h3 className="text-lg font-bold text-slate-900 mb-4">Cas cliniques existants</h3>
-              <div className="grid gap-4">
-                {filteredCases.map((c, index) => {
-                  const video = videos.find(v => v.id === c.videoId);
-                  return (
-                    <div key={c.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-200">
-                      <div>
-                        <h4 className="font-medium text-slate-900">Cas Clinique #{index + 1}</h4>
-                        <p className="text-sm text-slate-500">Vidéo: {video?.title || 'Inconnue'}</p>
-                        {c.description && (
-                          <p className="text-xs text-slate-400 mt-1 line-clamp-2 whitespace-pre-wrap">
-                            {c.description}
-                          </p>
-                        )}
-                        <p className="text-xs text-slate-400 mt-1">
-                          Questions pédagogiques : {Array.isArray(c.questions) ? c.questions.length : 0}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button 
-                          onClick={() => handleEditCase(c)}
-                          className="p-2 text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
-                          title="Modifier"
-                        >
-                          <Edit2 className="w-5 h-5" />
-                        </button>
-                        <button 
-                          onClick={() => handleDelete('clinicalCases', c.id)}
-                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                          title="Supprimer"
-                        >
-                          <Trash2 className="w-5 h-5" />
-                        </button>
-                      </div>
+            <div className={listPanelClass}>
+              <div className="space-y-4">
+                <div className={listSummaryCardClass}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="text-lg font-bold text-slate-900">Cas cliniques existants</h3>
+                      <p className="text-xs text-slate-500">Réorganisation orientée pratique clinique et supports disponibles.</p>
                     </div>
-                  );
-                })}
-                {filteredCases.length === 0 && (
-                  <p className="text-slate-500 text-sm">
-                    {normalizedSearch ? 'Aucun cas clinique ne correspond à la recherche.' : 'Aucun cas clinique trouvé.'}
-                  </p>
-                )}
+                    <span className="inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
+                      {caseListStats.total}
+                    </span>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                    <span className={existingItemMetaChipClass}>Avec questions: {caseListStats.withQuestions}</span>
+                    <span className={existingItemMetaChipClass}>Avec figures: {caseListStats.withImages}</span>
+                    <span className={existingItemMetaChipClass}>
+                      Sans figures: {Math.max(0, caseListStats.total - caseListStats.withImages)}
+                    </span>
+                  </div>
+                </div>
+
+                <div className={packGridClass}>
+                  {orderedFilteredCases.map((c, index) => {
+                    const videoTitle = videoTitleById.get(c.videoId) || 'Vidéo inconnue';
+                    const questionCount = Array.isArray(c.questions) ? c.questions.length : 0;
+                    const imageCount = Array.isArray(c.images) ? c.images.length : 0;
+
+                    return (
+                      <div key={c.id} className={`${existingItemRowClass} flex-col gap-3 md:flex-row md:items-start`}>
+                        <div className="min-w-0 flex-1 space-y-2">
+                          <h4 className="font-semibold text-slate-900 line-clamp-1">{c.title || `Cas clinique #${index + 1}`}</h4>
+                          <div className="flex flex-wrap gap-2">
+                            <span className={existingItemMetaChipClass}>Vidéo: {videoTitle}</span>
+                            <span className={existingItemMetaChipClass}>Questions: {questionCount}</span>
+                            <span className={existingItemMetaChipClass}>Figures: {imageCount}</span>
+                            {c.reference && (
+                              <span className="inline-flex items-center rounded-full border border-medical-200 bg-medical-50 px-2 py-1 text-[11px] font-medium text-medical-700">
+                                Référence incluse
+                              </span>
+                            )}
+                          </div>
+                          {c.description && (
+                            <MarkdownPreview content={c.description} />
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 self-end md:self-start">
+                          <button
+                            onClick={() => handleEditCase(c)}
+                            className="p-2 text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
+                            title="Modifier"
+                          >
+                            <Edit2 className="w-5 h-5" />
+                          </button>
+                          <button
+                            onClick={() => handleDelete('clinicalCases', c.id)}
+                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Supprimer"
+                          >
+                            <Trash2 className="w-5 h-5" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {orderedFilteredCases.length === 0 && (
+                    <div className={listSummaryCardClass}>
+                      <p className="text-slate-500 text-sm">
+                        {normalizedSearch ? 'Aucun cas clinique ne correspond à la recherche.' : 'Aucun cas clinique trouvé.'}
+                      </p>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
         )}
 
         {activeTab === 'diagram' && (
-          <div className="grid gap-6 xl:grid-cols-12">
-            <form onSubmit={handleDiagramSubmit} className="space-y-6 xl:col-span-7 rounded-2xl border border-slate-200 bg-white p-5">
+          <div className={editorGridClass}>
+            <form onSubmit={handleDiagramSubmit} className={formPanelClass}>
               <div className="flex justify-between items-center">
                 <div>
                   <h3 className="text-lg font-bold text-slate-900 mb-1">{editingDiagramId ? 'Modifier le Schéma' : 'Ajouter un Schéma'}</h3>
@@ -2642,8 +3254,15 @@ export function AdminContentManager() {
                 </div>
               </div>
 
-              <div className="space-y-6">
-                <div className="space-y-2">
+              <div className="space-y-5">
+                <section className={sectionCardClass}>
+                  <div className="space-y-1">
+                    <h4 className={sectionTitleClass}>Cadrage du schéma</h4>
+                    <p className={sectionHintClass}>Rattachez le visuel à une vidéo et renseignez les informations de contexte.</p>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="space-y-2">
                   <label className="text-sm font-medium text-slate-700">Vidéo associée</label>
                   <select
                     required
@@ -2661,7 +3280,7 @@ export function AdminContentManager() {
                   {renderSelectedVideoPreview(diagramData.videoId)}
                 </div>
 
-                <div className="space-y-2">
+                    <div className="space-y-2">
                   <label className="text-sm font-medium text-slate-700">Titre du schéma</label>
                   <input
                     type="text"
@@ -2673,7 +3292,7 @@ export function AdminContentManager() {
                   />
                 </div>
 
-                <div className="space-y-2">
+                    <div className="space-y-2">
                   <label className="text-sm font-medium text-slate-700">Référence (optionnel)</label>
                   <input
                     type="text"
@@ -2682,52 +3301,155 @@ export function AdminContentManager() {
                     className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all"
                     placeholder="Ex: TDM ORL - Article / Page / DOI"
                   />
-                </div>
+                    </div>
 
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700">Schéma (upload d'image)</label>
-                  <div className="space-y-3">
-                    {diagramData.imageUrl && (
-                      <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-100 border border-slate-200 text-xs text-slate-700 max-w-full">
-                        <span className="font-semibold">Schéma actuel</span>
-                        <span className="truncate max-w-[200px]" title={diagramData.imageUrl}>{diagramData.imageUrl}</span>
-                        <button
-                          type="button"
-                          onClick={() => setDiagramData(prev => ({ ...prev, imageUrl: '' }))}
-                          className="ml-1 text-red-600 hover:text-red-800"
-                          title="Supprimer le schéma"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
+                  </div>
+                </section>
+
+                <section className={sectionCardClass}>
+                  <div className="space-y-1">
+                    <h4 className={sectionTitleClass}>Image principale</h4>
+                    <p className={sectionHintClass}>Téléversez le schéma source qui recevra les annotations.</p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700">Schéma (upload d'image)</label>
+
+                    <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface)] p-4 space-y-4">
+                      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                        <div className="min-w-0 space-y-0.5">
+                          <p className="text-sm font-semibold text-slate-900 truncate">
+                            {diagramUploadFileName || (diagramData.imageUrl ? 'Schéma prêt pour annotation' : 'Aucun fichier sélectionné')}
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            {diagramUploadFileName
+                              ? `${formatFileSize(diagramUploadFileSize)} - fichier source`
+                              : diagramData.imageUrl
+                                ? 'Le schéma source est disponible. Vous pouvez le remplacer à tout moment.'
+                                : 'Formats recommandés: PNG, JPG, WEBP.'}
+                          </p>
+                        </div>
+
+                        <label className={`cursor-pointer px-4 py-2 rounded-lg text-sm font-medium transition-colors border w-fit ${
+                          isDiagramUploading
+                            ? 'bg-slate-100 text-slate-500 border-slate-300'
+                            : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
+                        }`}>
+                          {isDiagramUploading
+                            ? (diagramUploadPhase === 'processing' ? 'Traitement serveur...' : 'Téléversement en cours...')
+                            : (diagramData.imageUrl ? 'Remplacer le schéma' : 'Importer un schéma')}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={handleDiagramImageUpload}
+                            disabled={isDiagramUploading}
+                          />
+                        </label>
                       </div>
-                    )}
 
-                    <div className="flex flex-col gap-2">
-                      <label className="cursor-pointer inline-flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors border border-slate-300 w-fit">
-                        {isUploading ? 'Téléchargement...' : (diagramData.imageUrl ? 'Remplacer le schéma' : 'Uploader un schéma')}
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={handleDiagramImageUpload}
-                          disabled={isUploading}
-                        />
-                      </label>
-                      {isUploading && (
-                        <p className="text-xs text-slate-500">Téléchargement du schéma : {uploadProgress}%</p>
+                      {diagramUploadPhase !== 'idle' && (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className={`font-medium ${
+                              diagramUploadPhase === 'error'
+                                ? 'text-red-600'
+                                : diagramUploadPhase === 'complete'
+                                  ? 'text-emerald-700'
+                                  : 'text-medical-700'
+                            }`}>
+                              {diagramUploadPhase === 'uploading' && 'Téléversement de l’image'}
+                              {diagramUploadPhase === 'processing' && 'Traitement et enregistrement'}
+                              {diagramUploadPhase === 'complete' && 'Image principale mise à jour'}
+                              {diagramUploadPhase === 'error' && 'Échec du téléversement'}
+                            </span>
+                            <span className="font-semibold text-slate-700">{clampedDiagramUploadProgress}%</span>
+                          </div>
+
+                          <div className="h-2.5 rounded-full bg-slate-200 overflow-hidden">
+                            <div
+                              className={`h-full transition-all duration-300 ${
+                                diagramUploadPhase === 'error'
+                                  ? 'bg-red-500'
+                                  : diagramUploadPhase === 'complete'
+                                    ? 'bg-emerald-500'
+                                    : 'bg-medical-600'
+                              } ${diagramUploadProgressWidthClass}`}
+                            />
+                          </div>
+
+                          <div className="flex flex-wrap gap-2 text-[11px]">
+                            <span className={`rounded-full px-2 py-1 border ${
+                              diagramUploadPhase === 'uploading' || diagramUploadPhase === 'processing' || diagramUploadPhase === 'complete'
+                                ? 'border-medical-300 bg-medical-50 text-medical-700'
+                                : 'border-slate-200 bg-white text-slate-500'
+                            }`}>1. Téléversement</span>
+                            <span className={`rounded-full px-2 py-1 border ${
+                              diagramUploadPhase === 'processing' || diagramUploadPhase === 'complete'
+                                ? 'border-medical-300 bg-medical-50 text-medical-700'
+                                : 'border-slate-200 bg-white text-slate-500'
+                            }`}>2. Traitement</span>
+                            <span className={`rounded-full px-2 py-1 border ${
+                              diagramUploadPhase === 'complete'
+                                ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
+                                : diagramUploadPhase === 'error'
+                                  ? 'border-red-300 bg-red-50 text-red-700'
+                                  : 'border-slate-200 bg-white text-slate-500'
+                            }`}>3. Terminé</span>
+                          </div>
+                        </div>
+                      )}
+
+                      {diagramData.imageUrl ? (
+                        <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-alt)] p-3">
+                          <div className="flex items-start gap-3">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={diagramData.imageUrl}
+                              alt={diagramData.title || 'Schéma principal'}
+                              className="h-20 w-20 rounded-lg border border-[var(--app-border)] object-cover bg-[var(--app-surface)]"
+                            />
+                            <div className="min-w-0 flex-1 space-y-1">
+                              <p className="text-xs font-semibold text-slate-700">Schéma actuel</p>
+                              <p className="text-xs text-slate-500 truncate" title={diagramData.imageUrl}>{diagramData.imageUrl}</p>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setDiagramData(prev => ({ ...prev, imageUrl: '' }));
+                                  resetDiagramUploadState();
+                                }}
+                                className="inline-flex items-center gap-1 text-xs text-red-600 hover:text-red-700 font-medium"
+                              >
+                                <X className="w-3 h-3" />
+                                Supprimer le schéma
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-4 text-xs text-slate-500">
+                          Aucun schéma importé pour le moment.
+                        </div>
                       )}
                     </div>
                   </div>
-                </div>
 
-                <div className="space-y-2">
+                </section>
+
+                <section className={sectionCardClass}>
+                  <div className="space-y-1">
+                    <h4 className={sectionTitleClass}>Annotations et légendes</h4>
+                    <p className={sectionHintClass}>Créez des marqueurs lisibles et des descriptions pédagogiques précises.</p>
+                  </div>
+
+                  <div className="space-y-2">
                   <label className="text-sm font-medium text-slate-700">Marqueurs (Légendes numérotées)</label>
                   <div className="space-y-4">
                     {diagramData.markers.map((marker, index) => (
-                      <div key={index} className="flex gap-4 items-start p-4 bg-slate-50 border border-slate-200 rounded-xl">
+                      <div key={index} className="flex gap-4 items-start p-4 bg-[var(--app-surface-alt)] border border-[var(--app-border)] rounded-xl">
                         <div className="flex-1 space-y-4">
                           <div className="flex gap-4 items-center">
-                            <div className="w-24 px-4 py-2.5 rounded-xl bg-slate-100 border border-slate-300 text-xs font-semibold text-slate-700 text-center">
+                            <div className="w-24 px-4 py-2.5 rounded-xl bg-[var(--app-surface-2)] border border-[var(--app-border)] text-xs font-semibold text-[var(--app-text)] text-center">
                               N° {index + 1}
                             </div>
                             <input
@@ -2750,7 +3472,7 @@ export function AdminContentManager() {
                               newMarkers[index].description = e.target.value;
                               setDiagramData({...diagramData, markers: newMarkers});
                             }}
-                            className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all min-h-[80px]"
+                            className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all resize-none overflow-y-auto min-h-[80px]"
                           />
                         </div>
                         <button
@@ -2787,75 +3509,113 @@ export function AdminContentManager() {
                       Ajouter un marqueur
                     </button>
                   </div>
-                </div>
+                  </div>
+                </section>
               </div>
 
               <div className="pt-4 border-t border-slate-200 flex justify-end gap-3">
-                {editingDiagramId && (
-                      <button
-                    type="button"
-                    onClick={() => {
-                      setEditingDiagramId(null);
-                      setDiagramData({
-                        videoId: '',
-                        title: '',
-                        imageUrl: '',
-                        markers: [],
-                        reference: '',
-                      });
-                    }}
-                    className="flex items-center gap-2 border border-slate-300 text-slate-700 px-6 py-3 rounded-xl font-medium hover:bg-slate-100 transition-colors"
-                  >
-                    <X className="w-5 h-5" />
-                    Annuler l'édition
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => resetDiagramForm()}
+                  disabled={!hasDiagramFormContent}
+                  className="flex items-center gap-2 border border-slate-300 text-slate-700 px-6 py-3 rounded-xl font-medium hover:bg-slate-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                >
+                  <X className="w-5 h-5" />
+                  {editingDiagramId ? "Annuler" : "Annuler"}
+                </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
                   className="flex items-center gap-2 bg-medical-600 text-white px-6 py-3 rounded-xl font-medium hover:bg-medical-700 transition-colors disabled:opacity-70"
                 >
                   {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
-                  {editingDiagramId ? 'Mettre à jour le schéma' : 'Enregistrer le schéma'}
+                  {editingDiagramId ? 'Mettre à jour' : 'Enregistrer'}
                 </button>
               </div>
             </form>
 
-            <div className="xl:col-span-5 rounded-2xl border border-slate-200 bg-slate-50/60 p-5">
-              <h3 className="text-lg font-bold text-slate-900 mb-4">Schémas existants</h3>
-              <div className="grid gap-4">
-                {filteredDiagrams.map(d => {
-                  const video = videos.find(v => v.id === d.videoId);
-                  return (
-                    <div key={d.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-200">
-                      <div>
-                        <h4 className="font-medium text-slate-900">{d.title}</h4>
-                        <p className="text-sm text-slate-500">Vidéo: {video?.title || 'Inconnue'}</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button 
-                          onClick={() => handleEditDiagram(d)}
-                          className="p-2 text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
-                          title="Modifier"
-                        >
-                          <Edit2 className="w-5 h-5" />
-                        </button>
-                        <button 
-                          onClick={() => handleDelete('diagrams', d.id)}
-                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                          title="Supprimer"
-                        >
-                          <Trash2 className="w-5 h-5" />
-                        </button>
-                      </div>
+            <div className={listPanelClass}>
+              <div className="space-y-4">
+                <div className={listSummaryCardClass}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="text-lg font-bold text-slate-900">Schémas existants</h3>
+                      <p className="text-xs text-slate-500">Catalogue visuel organisé par titre avec aperçu et densité d’annotations.</p>
                     </div>
-                  );
-                })}
-                {filteredDiagrams.length === 0 && (
-                  <p className="text-slate-500 text-sm">
-                    {normalizedSearch ? 'Aucun schéma ne correspond à la recherche.' : 'Aucun schéma trouvé.'}
-                  </p>
-                )}
+                    <span className="inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
+                      {diagramListStats.total}
+                    </span>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                    <span className={existingItemMetaChipClass}>Avec image: {diagramListStats.withImage}</span>
+                    <span className={existingItemMetaChipClass}>
+                      Sans image: {Math.max(0, diagramListStats.total - diagramListStats.withImage)}
+                    </span>
+                    <span className={existingItemMetaChipClass}>Total marqueurs: {diagramListStats.totalMarkers}</span>
+                  </div>
+                </div>
+
+                <div className={packGridClass}>
+                  {orderedFilteredDiagrams.map((d) => {
+                    const videoTitle = videoTitleById.get(d.videoId) || 'Vidéo inconnue';
+                    const markerCount = Array.isArray(d.markers) ? d.markers.length : 0;
+
+                    return (
+                      <div key={d.id} className={`${existingItemRowClass} flex-col gap-3 md:flex-row md:items-start`}>
+                        <div className="min-w-0 flex-1 space-y-2">
+                          <div className="flex items-start gap-3">
+                            {d.imageUrl ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={d.imageUrl}
+                                alt={d.title || 'Schéma'}
+                                className="h-14 w-14 rounded-lg border border-[var(--app-border)] object-cover bg-[var(--app-surface-2)]"
+                              />
+                            ) : (
+                              <div className="h-14 w-14 rounded-lg border border-dashed border-[var(--app-border)] bg-[var(--app-surface-alt)]" />
+                            )}
+                            <div className="min-w-0 space-y-1">
+                              <h4 className="font-semibold text-slate-900 line-clamp-1">{d.title || 'Schéma sans titre'}</h4>
+                              <div className="flex flex-wrap gap-2">
+                                <span className={existingItemMetaChipClass}>Vidéo: {videoTitle}</span>
+                                <span className={existingItemMetaChipClass}>Marqueurs: {markerCount}</span>
+                                {d.reference && (
+                                  <span className="inline-flex items-center rounded-full border border-medical-200 bg-medical-50 px-2 py-1 text-[11px] font-medium text-medical-700">
+                                    Référence incluse
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 self-end md:self-start">
+                          <button
+                            onClick={() => handleEditDiagram(d)}
+                            className="p-2 text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
+                            title="Modifier"
+                          >
+                            <Edit2 className="w-5 h-5" />
+                          </button>
+                          <button
+                            onClick={() => handleDelete('diagrams', d.id)}
+                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Supprimer"
+                          >
+                            <Trash2 className="w-5 h-5" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {orderedFilteredDiagrams.length === 0 && (
+                    <div className={listSummaryCardClass}>
+                      <p className="text-slate-500 text-sm">
+                        {normalizedSearch ? 'Aucun schéma ne correspond à la recherche.' : 'Aucun schéma trouvé.'}
+                      </p>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
