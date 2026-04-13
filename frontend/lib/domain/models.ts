@@ -1,5 +1,20 @@
 export type QcmMode = 'single' | 'multiple';
 
+export interface VideoPartModel {
+  publicId: string;
+  secureUrl: string;
+  format?: string;
+  duration?: number;
+  width?: number;
+  height?: number;
+  aspectRatio?: string;
+  bitRate?: number;
+  frameRate?: number;
+  videoCodec?: string;
+  audioCodec?: string;
+  fileSize?: number;
+}
+
 export interface VideoModel {
   id: string;
   title: string;
@@ -10,6 +25,9 @@ export interface VideoModel {
   isFreeDemo: boolean;
   price: number;
   packId?: string;
+  isMultipart?: boolean;
+  totalParts?: number;
+  parts?: VideoPartModel[];
   createdAt?: string;
   updatedAt?: string;
 }

@@ -1,10 +1,6 @@
 type Primitive = string | number | boolean | null;
 type LocalDocumentData = Record<string, any>;
 
-interface LocalDbState {
-  collections: Record<string, Record<string, LocalDocumentData>>;
-}
-
 interface CollectionReference {
   kind: 'collection';
   name: string;
@@ -55,6 +51,16 @@ interface ArrayRemoveMarker {
   values: unknown[];
 }
 
+interface ApiCollectionDocument {
+  id: string;
+  data: LocalDocumentData;
+}
+
+interface ApiSessionPayload {
+  token: string;
+  user: LocalAuthUser;
+}
+
 export interface LocalAuthUser {
   uid: string;
   email: string;
@@ -62,64 +68,22 @@ export interface LocalAuthUser {
   photoURL: string;
 }
 
-interface LocalAuthAccount extends LocalAuthUser {
-  password: string;
-}
-
-const DB_STORAGE_KEY = 'dems-local-db-v2';
-const AUTH_ACCOUNTS_KEY = 'dems-local-auth-accounts-v2';
-const AUTH_SESSION_KEY = 'dems-local-auth-session-v2';
-const AUTH_SESSION_TEMP_KEY = 'dems-local-auth-session-temp-v2';
-
-const DEMO_AUTH_ACCOUNTS: Array<
-  LocalAuthAccount & {
-    role: 'admin' | 'user' | 'vip' | 'vip_plus';
-    subscriptionApprovalStatus: 'none' | 'pending' | 'approved' | 'rejected';
-    subscriptionEndDate?: string;
-    doctorSpecialty?: string;
+const resolveApiBaseUrl = () => {
+  const fromEnv = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '');
+  if (fromEnv) {
+    return fromEnv;
   }
-> = [
-  {
-    uid: 'demo-admin-uid',
-    email: 'admin@dems.local',
-    password: 'Admin123!',
-    displayName: 'Admin DEMS',
-    photoURL: '',
-    role: 'admin',
-    subscriptionApprovalStatus: 'none',
-  },
-  {
-    uid: 'demo-user-uid',
-    email: 'user@dems.local',
-    password: 'User123!',
-    displayName: 'User DEMS',
-    photoURL: '',
-    role: 'user',
-    subscriptionApprovalStatus: 'none',
-    doctorSpecialty: 'ORL',
-  },
-  {
-    uid: 'demo-vip-uid',
-    email: 'vip@dems.local',
-    password: 'Vip123!',
-    displayName: 'VIP DEMS',
-    photoURL: '',
-    role: 'vip',
-    subscriptionApprovalStatus: 'none',
-    doctorSpecialty: 'ORL',
-  },
-  {
-    uid: 'demo-vipplus-uid',
-    email: 'vipplus@dems.local',
-    password: 'VipPlus123!',
-    displayName: 'VIP Plus DEMS',
-    photoURL: '',
-    role: 'vip_plus',
-    subscriptionApprovalStatus: 'approved',
-    subscriptionEndDate: '2099-12-31T23:59:59.999Z',
-    doctorSpecialty: 'ORL',
-  },
-];
+
+  if (isBrowser()) {
+    const host = window.location.hostname || 'localhost';
+    return `http://${host}:4000/api`;
+  }
+
+  return 'http://localhost:4000/api';
+};
+
+const AUTH_SESSION_KEY = 'dems-auth-session-v1';
+const AUTH_SESSION_TEMP_KEY = 'dems-auth-session-temp-v1';
 
 const authListeners = new Set<(user: LocalAuthUser | null) => void>();
 
@@ -132,228 +96,119 @@ const normalizeCollectionName = (collectionName: string) => {
   return collectionName;
 };
 
-const createEmptyState = (): LocalDbState => ({
-  collections: {
-    users: {},
-    videos: {},
-    qcms: {},
-    clinicalCases: {},
-    openQuestions: {},
-    diagrams: {},
-    payments: {},
-  },
-});
-
-let inMemoryState = createEmptyState();
-let inMemoryAccounts: LocalAuthAccount[] = [];
-let inMemorySession: LocalAuthUser | null = null;
-
 const safeClone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
-const createId = () => {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID();
-  }
-  return `id-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-};
-
-const readDbState = (): LocalDbState => {
+const getStoredSession = (): ApiSessionPayload | null => {
   if (!isBrowser()) {
-    return inMemoryState;
-  }
-
-  const raw = window.localStorage.getItem(DB_STORAGE_KEY);
-  if (!raw) {
-    const initial = createEmptyState();
-    window.localStorage.setItem(DB_STORAGE_KEY, JSON.stringify(initial));
-    inMemoryState = initial;
-    return initial;
-  }
-
-  try {
-    const parsed = JSON.parse(raw) as LocalDbState;
-    if (!parsed.collections || typeof parsed.collections !== 'object') {
-      throw new Error('Invalid DB state');
-    }
-
-    const merged: LocalDbState = {
-      collections: {
-        ...createEmptyState().collections,
-        ...parsed.collections,
-      },
-    };
-
-    inMemoryState = merged;
-    return merged;
-  } catch {
-    const fallback = createEmptyState();
-    window.localStorage.setItem(DB_STORAGE_KEY, JSON.stringify(fallback));
-    inMemoryState = fallback;
-    return fallback;
-  }
-};
-
-const writeDbState = (state: LocalDbState) => {
-  inMemoryState = state;
-  if (isBrowser()) {
-    window.localStorage.setItem(DB_STORAGE_KEY, JSON.stringify(state));
-  }
-};
-
-const ensureCollection = (state: LocalDbState, collectionName: string) => {
-  const normalized = normalizeCollectionName(collectionName);
-  if (!state.collections[normalized]) {
-    state.collections[normalized] = {};
-  }
-  return normalized;
-};
-
-const readAuthAccounts = () => {
-  if (!isBrowser()) {
-    return inMemoryAccounts;
-  }
-
-  const raw = window.localStorage.getItem(AUTH_ACCOUNTS_KEY);
-  if (!raw) {
-    window.localStorage.setItem(AUTH_ACCOUNTS_KEY, JSON.stringify([]));
-    inMemoryAccounts = [];
-    return [];
-  }
-
-  try {
-    const parsed = JSON.parse(raw) as LocalAuthAccount[];
-    inMemoryAccounts = parsed;
-    return parsed;
-  } catch {
-    window.localStorage.setItem(AUTH_ACCOUNTS_KEY, JSON.stringify([]));
-    inMemoryAccounts = [];
-    return [];
-  }
-};
-
-const writeAuthAccounts = (accounts: LocalAuthAccount[]) => {
-  inMemoryAccounts = accounts;
-  if (isBrowser()) {
-    window.localStorage.setItem(AUTH_ACCOUNTS_KEY, JSON.stringify(accounts));
-  }
-};
-
-const readAuthSession = (): LocalAuthUser | null => {
-  if (!isBrowser()) {
-    return inMemorySession;
+    return null;
   }
 
   const raw =
     window.localStorage.getItem(AUTH_SESSION_KEY) ??
     window.sessionStorage.getItem(AUTH_SESSION_TEMP_KEY);
+
   if (!raw) {
-    inMemorySession = null;
     return null;
   }
 
   try {
-    const parsed = JSON.parse(raw) as LocalAuthUser;
-    inMemorySession = parsed;
-    return parsed;
+    return JSON.parse(raw) as ApiSessionPayload;
   } catch {
     window.localStorage.removeItem(AUTH_SESSION_KEY);
     window.sessionStorage.removeItem(AUTH_SESSION_TEMP_KEY);
-    inMemorySession = null;
     return null;
   }
 };
 
-const getSessionPersistence = (): 'local' | 'session' => {
+const writeSession = (session: ApiSessionPayload | null, persistence: 'local' | 'session' = 'local') => {
   if (!isBrowser()) {
-    return 'local';
+    return;
   }
 
-  if (window.localStorage.getItem(AUTH_SESSION_KEY)) {
-    return 'local';
+  window.localStorage.removeItem(AUTH_SESSION_KEY);
+  window.sessionStorage.removeItem(AUTH_SESSION_TEMP_KEY);
+
+  if (!session) {
+    return;
   }
 
-  if (window.sessionStorage.getItem(AUTH_SESSION_TEMP_KEY)) {
-    return 'session';
+  const serialized = JSON.stringify(session);
+  if (persistence === 'session') {
+    window.sessionStorage.setItem(AUTH_SESSION_TEMP_KEY, serialized);
+    return;
   }
 
-  return 'local';
+  window.localStorage.setItem(AUTH_SESSION_KEY, serialized);
 };
 
-const writeAuthSession = (session: LocalAuthUser | null, persistence?: 'local' | 'session') => {
-  inMemorySession = session;
-  if (isBrowser()) {
-    window.localStorage.removeItem(AUTH_SESSION_KEY);
-    window.sessionStorage.removeItem(AUTH_SESSION_TEMP_KEY);
+const notifyAuthListeners = (user: LocalAuthUser | null) => {
+  authListeners.forEach((listener) => listener(user));
+};
 
-    if (session) {
-      const target = persistence ?? getSessionPersistence();
-      if (target === 'session') {
-        window.sessionStorage.setItem(AUTH_SESSION_TEMP_KEY, JSON.stringify(session));
-      } else {
-        window.localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(session));
-      }
+const getAuthToken = () => getStoredSession()?.token || '';
+
+const resolveMessage = async (response: Response) => {
+  try {
+    const payload = await response.json();
+    return String(payload?.message || 'Request failed.');
+  } catch {
+    try {
+      const text = await response.text();
+      return text || 'Request failed.';
+    } catch {
+      return 'Request failed.';
     }
   }
 };
 
-const notifyAuthListeners = (session: LocalAuthUser | null) => {
-  authListeners.forEach((listener) => listener(session));
-};
+const apiRequest = async <TResponse>(
+  path: string,
+  options: RequestInit = {},
+  authRequired = false,
+): Promise<TResponse> => {
+  const headers = new Headers(options.headers || {});
+  const token = getAuthToken();
 
-const isArrayUnionMarker = (value: unknown): value is ArrayUnionMarker => {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    '__op' in value &&
-    (value as { __op?: string }).__op === 'arrayUnion'
-  );
-};
+  if (options.body && !(options.body instanceof FormData)) {
+    headers.set('Content-Type', 'application/json');
+  }
 
-const isArrayRemoveMarker = (value: unknown): value is ArrayRemoveMarker => {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    '__op' in value &&
-    (value as { __op?: string }).__op === 'arrayRemove'
-  );
-};
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
 
-const isEqual = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+  if (authRequired && !token) {
+    throw new Error('Authentication required.');
+  }
 
-const applyFieldUpdate = (currentValue: unknown, updateValue: unknown) => {
-  if (isArrayUnionMarker(updateValue)) {
-    const currentArray = Array.isArray(currentValue) ? [...currentValue] : [];
-    updateValue.values.forEach((value) => {
-      if (!currentArray.some((entry) => isEqual(entry, value))) {
-        currentArray.push(value);
-      }
+  const apiBaseUrl = resolveApiBaseUrl();
+
+  let response: Response;
+  try {
+    response = await fetch(`${apiBaseUrl}${path}`, {
+      ...options,
+      headers,
     });
-    return currentArray;
+  } catch (error) {
+    const details = error instanceof Error ? error.message : 'Network error';
+    throw new Error(`Failed to reach API (${apiBaseUrl}). ${details}`);
   }
 
-  if (isArrayRemoveMarker(updateValue)) {
-    const currentArray = Array.isArray(currentValue) ? [...currentValue] : [];
-    return currentArray.filter((entry) => !updateValue.values.some((value) => isEqual(entry, value)));
+  if (!response.ok) {
+    const message = await resolveMessage(response);
+    throw new Error(`HTTP ${response.status}: ${message}`);
   }
 
-  return updateValue;
+  if (response.status === 204) {
+    return {} as TResponse;
+  }
+
+  return (await response.json()) as TResponse;
 };
 
-const docMatchesConstraints = (docData: LocalDocumentData, constraints: WhereConstraint[]) => {
-  return constraints.every((constraint) => {
-    const value = docData[constraint.fieldPath];
-
-    if (constraint.operator === 'array-contains') {
-      return Array.isArray(value) && value.includes(constraint.value);
-    }
-
-    return value === constraint.value;
-  });
-};
-
-export const app = { name: 'local-app' };
-export const db = { name: 'local-db' };
-export const auth = { name: 'local-auth' };
+export const app = { name: 'api-app' };
+export const db = { name: 'api-db' };
+export const auth = { name: 'api-auth' };
 
 export const collection = (_db: typeof db, collectionName: string): CollectionReference => {
   return {
@@ -394,23 +249,13 @@ export const query = (
   };
 };
 
-export const getDocs = async <TData extends LocalDocumentData = LocalDocumentData>(
-  source: CollectionReference | QueryReference,
-): Promise<QuerySnapshot<TData>> => {
-  const state = readDbState();
-  const collectionName = source.kind === 'query' ? source.collection : source.name;
-  const normalizedCollection = ensureCollection(state, collectionName);
-  const documents = Object.entries(state.collections[normalizedCollection]);
-
-  const filtered =
-    source.kind === 'query'
-      ? documents.filter(([, data]) => docMatchesConstraints(data, source.constraints))
-      : documents;
-
-  const docs = filtered.map(([id, data]) => {
-    const cloned = safeClone(data) as TData;
+const mapDocs = <TData extends LocalDocumentData = LocalDocumentData>(
+  source: ApiCollectionDocument[],
+): QuerySnapshot<TData> => {
+  const docs = source.map((entry) => {
+    const cloned = safeClone(entry.data) as TData;
     return {
-      id,
+      id: entry.id,
       data: () => safeClone(cloned),
     };
   });
@@ -423,39 +268,67 @@ export const getDocs = async <TData extends LocalDocumentData = LocalDocumentDat
   };
 };
 
+export const getDocs = async <TData extends LocalDocumentData = LocalDocumentData>(
+  source: CollectionReference | QueryReference,
+): Promise<QuerySnapshot<TData>> => {
+  if (source.kind === 'query') {
+    const payload = await apiRequest<{ docs: ApiCollectionDocument[] }>(
+      '/data/query',
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          collection: source.collection,
+          constraints: source.constraints,
+        }),
+      },
+      false,
+    );
+    return mapDocs<TData>(payload.docs || []);
+  }
+
+  const payload = await apiRequest<{ docs: ApiCollectionDocument[] }>(
+    `/data/${encodeURIComponent(source.name)}`,
+    { method: 'GET' },
+    false,
+  );
+  return mapDocs<TData>(payload.docs || []);
+};
+
 export const addDoc = async <TData extends LocalDocumentData = LocalDocumentData>(
   collectionRef: CollectionReference,
   data: TData,
 ): Promise<{ id: string }> => {
-  const state = readDbState();
-  const normalizedCollection = ensureCollection(state, collectionRef.name);
-  const id = createId();
-
-  state.collections[normalizedCollection][id] = safeClone(data);
-  writeDbState(state);
-
-  return { id };
+  return apiRequest<{ id: string }>(
+    `/data/${encodeURIComponent(collectionRef.name)}`,
+    {
+      method: 'POST',
+      body: JSON.stringify(data),
+    },
+    false,
+  );
 };
 
 export const deleteDoc = async (docRef: DocReference): Promise<void> => {
-  const state = readDbState();
-  const normalizedCollection = ensureCollection(state, docRef.collection);
-
-  delete state.collections[normalizedCollection][docRef.id];
-  writeDbState(state);
+  await apiRequest(
+    `/data/${encodeURIComponent(docRef.collection)}/${encodeURIComponent(docRef.id)}`,
+    { method: 'DELETE' },
+    false,
+  );
 };
 
 export const getDoc = async <TData extends LocalDocumentData = LocalDocumentData>(
   docRef: DocReference,
 ): Promise<DocumentSnapshot<TData>> => {
-  const state = readDbState();
-  const normalizedCollection = ensureCollection(state, docRef.collection);
-  const found = state.collections[normalizedCollection][docRef.id];
+  const payload = await apiRequest<{ exists: boolean; data?: TData }>(
+    `/data/${encodeURIComponent(docRef.collection)}/${encodeURIComponent(docRef.id)}`,
+    { method: 'GET' },
+    false,
+  );
 
   return {
     id: docRef.id,
-    exists: () => Boolean(found),
-    data: () => (found ? (safeClone(found) as TData) : undefined),
+    exists: () => Boolean(payload.exists),
+    data: () => (payload.exists && payload.data ? safeClone(payload.data) : undefined),
   };
 };
 
@@ -463,33 +336,28 @@ export const setDoc = async <TData extends LocalDocumentData = LocalDocumentData
   docRef: DocReference,
   data: TData,
 ): Promise<void> => {
-  const state = readDbState();
-  const normalizedCollection = ensureCollection(state, docRef.collection);
-
-  state.collections[normalizedCollection][docRef.id] = safeClone(data);
-  writeDbState(state);
+  await apiRequest(
+    `/data/${encodeURIComponent(docRef.collection)}/${encodeURIComponent(docRef.id)}`,
+    {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    },
+    false,
+  );
 };
 
 export const updateDoc = async (
   docRef: DocReference,
   updates: Record<string, unknown>,
 ): Promise<void> => {
-  const state = readDbState();
-  const normalizedCollection = ensureCollection(state, docRef.collection);
-  const current = state.collections[normalizedCollection][docRef.id];
-
-  if (!current) {
-    throw new Error(`Document ${docRef.collection}/${docRef.id} does not exist.`);
-  }
-
-  const next = { ...current };
-
-  Object.entries(updates).forEach(([key, value]) => {
-    next[key] = applyFieldUpdate(next[key], value);
-  });
-
-  state.collections[normalizedCollection][docRef.id] = next;
-  writeDbState(state);
+  await apiRequest(
+    `/data/${encodeURIComponent(docRef.collection)}/${encodeURIComponent(docRef.id)}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(updates),
+    },
+    false,
+  );
 };
 
 export const arrayUnion = (...values: unknown[]): ArrayUnionMarker => {
@@ -510,7 +378,7 @@ export const onAuthStateChanged = (
   _auth: typeof auth,
   callback: (user: LocalAuthUser | null) => void,
 ) => {
-  callback(readAuthSession());
+  callback(getStoredSession()?.user || null);
   authListeners.add(callback);
 
   return () => {
@@ -519,253 +387,287 @@ export const onAuthStateChanged = (
 };
 
 export const signOut = async (_auth: typeof auth) => {
-  writeAuthSession(null);
+  writeSession(null);
   notifyAuthListeners(null);
 };
 
-export const ensureDemoAccountsSeeded = () => {
+export const ensureDemoAccountsSeeded = async () => {
   if (!isBrowser()) {
     return;
   }
 
-  const accounts = readAuthAccounts();
-  let hasChanges = false;
-
-  DEMO_AUTH_ACCOUNTS.forEach((demo) => {
-    const existing = accounts.find(
-      (account) => account.email.toLowerCase() === demo.email.toLowerCase(),
-    );
-
-    if (!existing) {
-      accounts.push({
-        uid: demo.uid,
-        email: demo.email,
-        password: demo.password,
-        displayName: demo.displayName,
-        photoURL: demo.photoURL,
-      });
-      hasChanges = true;
-    }
-  });
-
-  if (hasChanges) {
-    writeAuthAccounts(accounts);
+  try {
+    await apiRequest('/auth/seed-demo', { method: 'POST' }, false);
+  } catch {
+    // Non-blocking by design to keep app usable when seed endpoint is unavailable.
   }
-
-  const state = readDbState();
-  const usersCollection = ensureCollection(state, 'users');
-  const now = new Date().toISOString();
-
-  DEMO_AUTH_ACCOUNTS.forEach((account) => {
-    state.collections[usersCollection][account.uid] = {
-      uid: account.uid,
-      email: account.email,
-      displayName: account.displayName,
-      photoURL: account.photoURL,
-      role: account.role,
-      subscriptionApprovalStatus: account.subscriptionApprovalStatus,
-      subscriptionEndDate: account.subscriptionEndDate,
-      doctorSpecialty: account.doctorSpecialty,
-      purchasedVideos: [],
-      purchasedPacks: [],
-      createdAt: now,
-    };
-  });
-
-  writeDbState(state);
 };
 
-export const createAuthAccount = (payload: {
+export const createAuthAccount = async (payload: {
   email: string;
   password: string;
   displayName: string;
   photoURL?: string;
-}): LocalAuthUser => {
-  const normalizedEmail = payload.email.trim().toLowerCase();
-  const accounts = readAuthAccounts();
-  const existing = accounts.find((account) => account.email.toLowerCase() === normalizedEmail);
-
-  if (existing) {
-    throw new Error('Un compte existe deja avec cet email.');
-  }
-
-  const account: LocalAuthAccount = {
-    uid: createId(),
-    email: normalizedEmail,
-    password: payload.password,
-    displayName: payload.displayName.trim() || 'Utilisateur',
-    photoURL: payload.photoURL || '',
-  };
-
-  const nextAccounts = [...accounts, account];
-  writeAuthAccounts(nextAccounts);
-
-  const session: LocalAuthUser = {
-    uid: account.uid,
-    email: account.email,
-    displayName: account.displayName,
-    photoURL: account.photoURL,
-  };
-
-  writeAuthSession(session);
-  notifyAuthListeners(session);
-
-  return session;
-};
-
-export const createAuthAccountByAdmin = (payload: {
-  email: string;
-  password: string;
-  displayName: string;
-  photoURL?: string;
-}): LocalAuthUser | null => {
-  const normalizedEmail = payload.email.trim().toLowerCase();
-  const accounts = readAuthAccounts();
-  const existing = accounts.find((account) => account.email.toLowerCase() === normalizedEmail);
-
-  if (existing) {
-    return null;
-  }
-
-  const account: LocalAuthAccount = {
-    uid: createId(),
-    email: normalizedEmail,
-    password: payload.password,
-    displayName: payload.displayName.trim() || 'Utilisateur',
-    photoURL: payload.photoURL || '',
-  };
-
-  writeAuthAccounts([...accounts, account]);
-
-  return {
-    uid: account.uid,
-    email: account.email,
-    displayName: account.displayName,
-    photoURL: account.photoURL,
-  };
-};
-
-export const signInWithEmail = (email: string, password: string, rememberMe = false): LocalAuthUser => {
-  const normalizedEmail = email.trim().toLowerCase();
-  const accounts = readAuthAccounts();
-  const found = accounts.find(
-    (account) => account.email.toLowerCase() === normalizedEmail && account.password === password,
+}): Promise<LocalAuthUser> => {
+  const response = await apiRequest<{ token: string; user: LocalAuthUser }>(
+    '/auth/signup',
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    },
+    false,
   );
 
-  if (!found) {
-    throw new Error('Email ou mot de passe invalide.');
-  }
-
-  const session: LocalAuthUser = {
-    uid: found.uid,
-    email: found.email,
-    displayName: found.displayName,
-    photoURL: found.photoURL,
-  };
-
-  writeAuthSession(session, rememberMe ? 'local' : 'session');
-  notifyAuthListeners(session);
-
-  return session;
+  writeSession({ token: response.token, user: response.user }, 'local');
+  notifyAuthListeners(response.user);
+  return response.user;
 };
 
-export const updateAuthDisplayName = (uid: string, displayName: string) => {
-  const accounts = readAuthAccounts();
-  const nextAccounts = accounts.map((account) => {
-    if (account.uid === uid) {
-      return {
-        ...account,
-        displayName,
-      };
+export const createAuthAccountByAdmin = async (payload: {
+  email: string;
+  password: string;
+  displayName: string;
+  photoURL?: string;
+  role?: 'admin' | 'user' | 'vip' | 'vip_plus';
+}): Promise<LocalAuthUser | null> => {
+  try {
+    const response = await apiRequest<{ user: LocalAuthUser }>(
+      '/auth/admin-create',
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      },
+      true,
+    );
+    return response.user;
+  } catch (error) {
+    if (error instanceof Error && error.message.toLowerCase().includes('existe deja')) {
+      return null;
     }
-
-    return account;
-  });
-
-  writeAuthAccounts(nextAccounts);
-
-  const currentSession = readAuthSession();
-  if (currentSession && currentSession.uid === uid) {
-    const nextSession = {
-      ...currentSession,
-      displayName,
-    };
-
-    writeAuthSession(nextSession);
-    notifyAuthListeners(nextSession);
+    throw error;
   }
 };
 
-export const updateAuthPhotoURL = (uid: string, photoURL: string) => {
-  const accounts = readAuthAccounts();
-  const nextAccounts = accounts.map((account) => {
-    if (account.uid === uid) {
-      return {
-        ...account,
-        photoURL,
-      };
-    }
+export const signInWithEmail = async (
+  email: string,
+  password: string,
+  rememberMe = false,
+): Promise<LocalAuthUser> => {
+  const response = await apiRequest<{ token: string; user: LocalAuthUser }>(
+    '/auth/signin',
+    {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    },
+    false,
+  );
 
-    return account;
-  });
+  writeSession({ token: response.token, user: response.user }, rememberMe ? 'local' : 'session');
+  notifyAuthListeners(response.user);
 
-  writeAuthAccounts(nextAccounts);
+  return response.user;
+};
 
-  const currentSession = readAuthSession();
-  if (currentSession && currentSession.uid === uid) {
+export const updateAuthDisplayName = async (uid: string, displayName: string) => {
+  const response = await apiRequest<{ user: LocalAuthUser }>(
+    '/auth/profile',
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ uid, displayName }),
+    },
+    true,
+  );
+
+  const session = getStoredSession();
+  if (session && session.user.uid === uid) {
     const nextSession = {
-      ...currentSession,
-      photoURL,
+      ...session,
+      user: {
+        ...session.user,
+        displayName: response.user.displayName,
+      },
     };
-
-    writeAuthSession(nextSession);
-    notifyAuthListeners(nextSession);
+    writeSession(nextSession);
+    notifyAuthListeners(nextSession.user);
   }
 };
 
-export const updateAuthPassword = (
+export const updateAuthPhotoURL = async (uid: string, photoURL: string) => {
+  const response = await apiRequest<{ user: LocalAuthUser }>(
+    '/auth/profile',
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ uid, photoURL }),
+    },
+    true,
+  );
+
+  const session = getStoredSession();
+  if (session && session.user.uid === uid) {
+    const nextSession = {
+      ...session,
+      user: {
+        ...session.user,
+        photoURL: response.user.photoURL,
+      },
+    };
+    writeSession(nextSession);
+    notifyAuthListeners(nextSession.user);
+  }
+};
+
+export const updateAuthPassword = async (
   uid: string,
   currentPassword: string,
   newPassword: string,
 ) => {
-  const accounts = readAuthAccounts();
-  const account = accounts.find((a) => a.uid === uid);
-
-  if (!account) {
-    throw new Error('Compte introuvable.');
-  }
-
-  if (account.password !== currentPassword) {
-    throw new Error('Mot de passe actuel incorrect.');
-  }
-
-  const nextAccounts = accounts.map((a) =>
-    a.uid === uid
-      ? {
-          ...a,
-          password: newPassword,
-        }
-      : a,
+  await apiRequest(
+    '/auth/change-password',
+    {
+      method: 'POST',
+      body: JSON.stringify({ uid, currentPassword, newPassword }),
+    },
+    true,
   );
-
-  writeAuthAccounts(nextAccounts);
 };
 
-export const deleteAuthAccountByUid = (uid: string) => {
-  const accounts = readAuthAccounts();
-  const nextAccounts = accounts.filter((account) => account.uid !== uid);
+export const deleteAuthAccountByUid = async (uid: string) => {
+  const response = await apiRequest<{ deleted: boolean }>(
+    `/auth/users/${encodeURIComponent(uid)}`,
+    { method: 'DELETE' },
+    true,
+  );
 
-  if (nextAccounts.length === accounts.length) {
-    return false;
-  }
-
-  writeAuthAccounts(nextAccounts);
-
-  const currentSession = readAuthSession();
-  if (currentSession && currentSession.uid === uid) {
-    writeAuthSession(null);
+  const session = getStoredSession();
+  if (response.deleted && session?.user.uid === uid) {
+    writeSession(null);
     notifyAuthListeners(null);
   }
 
-  return true;
+  return Boolean(response.deleted);
+};
+
+export const uploadCloudinaryAsset = async (
+  file: File,
+  options: {
+    resourceType?: 'image' | 'video';
+    folder?: string;
+    onProgress?: (percentage: number) => void;
+  } = {},
+): Promise<{
+  secureUrl: string;
+  publicId: string;
+  isMultipart?: boolean;
+  totalParts?: number;
+  parts?: Array<{ publicId: string; secureUrl: string; duration?: number; fileSize?: number }>;
+}> => {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const resourceType = options.resourceType === 'video' ? 'video' : 'image';
+  const folder = options.folder || 'orl-platform';
+
+  const params = new URLSearchParams({
+    resourceType,
+    folder,
+  });
+
+  const token = getAuthToken();
+  if (!token) {
+    throw new Error('Authentication required.');
+  }
+
+  if (!isBrowser() || typeof XMLHttpRequest === 'undefined') {
+    return apiRequest<{
+      secureUrl: string;
+      publicId: string;
+      isMultipart?: boolean;
+      totalParts?: number;
+      parts?: Array<{ publicId: string; secureUrl: string; duration?: number; fileSize?: number }>;
+    }>(
+      `/uploads/cloudinary?${params.toString()}`,
+      {
+        method: 'POST',
+        body: formData,
+      },
+      true,
+    );
+  }
+
+  return new Promise((resolve, reject) => {
+    const apiBaseUrl = resolveApiBaseUrl();
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `${apiBaseUrl}/uploads/cloudinary?${params.toString()}`);
+    xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+
+    if (options.onProgress) {
+      xhr.upload.onprogress = (event) => {
+        if (!event.lengthComputable) {
+          return;
+        }
+        const percentage = Math.min(100, Math.round((event.loaded / event.total) * 100));
+        options.onProgress?.(percentage);
+      };
+    }
+
+    xhr.onload = () => {
+      let payload: Record<string, any> = {};
+      try {
+        payload = xhr.responseText ? (JSON.parse(xhr.responseText) as Record<string, any>) : {};
+      } catch {
+        payload = {};
+      }
+
+      if (xhr.status >= 200 && xhr.status < 300) {
+        const secureUrl = String(payload.secureUrl || '');
+        const publicId = String(payload.publicId || '');
+        if (!secureUrl || !publicId) {
+          reject(new Error('Upload completed but response is invalid.'));
+          return;
+        }
+        resolve({
+          secureUrl,
+          publicId,
+          isMultipart: Boolean(payload.isMultipart),
+          totalParts: Number(payload.totalParts || 0) || undefined,
+          parts: Array.isArray(payload.parts)
+            ? payload.parts
+                .map((part) => ({
+                  publicId: String(part?.publicId || ''),
+                  secureUrl: String(part?.secureUrl || ''),
+                  duration: Number(part?.duration || 0) || undefined,
+                  fileSize: Number(part?.fileSize || 0) || undefined,
+                }))
+                .filter((part) => part.publicId && part.secureUrl)
+            : undefined,
+        });
+        return;
+      }
+
+      const message = String(payload.message || payload.error || xhr.statusText || 'Upload failed.');
+      reject(new Error(`HTTP ${xhr.status}: ${message}`));
+    };
+
+    xhr.onerror = () => {
+      reject(new Error(`Network error during upload to API (${apiBaseUrl}).`));
+    };
+
+    xhr.send(formData);
+  });
+};
+
+export const uploadAvatarImage = async (
+  file: File,
+): Promise<{ secureUrl: string; publicId: string }> => {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  return apiRequest<{ secureUrl: string; publicId: string }>(
+    '/uploads/avatar',
+    {
+      method: 'POST',
+      body: formData,
+    },
+    true,
+  );
 };

@@ -712,7 +712,7 @@ export default function AdminDashboard() {
       await Promise.all(userPayments.docs.map((paymentDoc) => deleteDoc(doc(db, 'payments', paymentDoc.id))));
 
       await deleteDoc(doc(db, 'users', userId));
-      deleteAuthAccountByUid(userId);
+      await deleteAuthAccountByUid(userId);
 
       setUsers((prev) => prev.filter((user) => user.id !== userId));
       setAllPayments((prev) => prev.filter((payment) => payment.userId !== userId));
@@ -1024,10 +1024,11 @@ export default function AdminDashboard() {
 
     setIsCreatingUser(true);
     try {
-      const authUser = createAuthAccountByAdmin({
+      const authUser = await createAuthAccountByAdmin({
         displayName,
         email,
         password,
+        role: newUserForm.role,
       });
 
       if (!authUser) {
@@ -1242,12 +1243,12 @@ export default function AdminDashboard() {
   if (profile?.role !== 'admin') return null;
 
   return (
-    <div className="flex-1 bg-gradient-to-br from-slate-100 via-stone-50 to-slate-100">
-      <main className="p-6 md:p-10 overflow-y-auto">
-        <div className="max-w-6xl mx-auto">
+    <div className="flex-1 bg-gradient-to-br from-slate-100 via-stone-50 to-slate-100 text-[15px] md:text-base">
+      <main className="p-8 md:p-12 overflow-y-auto">
+        <div className="max-w-[1500px] mx-auto">
           <div className="mb-6">
-            <div className="min-w-0 rounded-full border border-[rgba(68,25,6,0.08)] bg-[rgba(68,25,6,0.04)] p-1">
-              <nav className="flex items-center justify-between gap-1.5 rounded-full">
+            <div className="min-w-0 rounded-full border border-[rgba(68,25,6,0.08)] bg-[rgba(68,25,6,0.04)] p-1.5">
+              <nav className="flex items-center justify-between gap-2 rounded-full">
                   {adminTabs.map((item) => {
                     const isActive = activeTab === item.id;
 
@@ -1256,13 +1257,13 @@ export default function AdminDashboard() {
                         key={item.id}
                         type="button"
                         onClick={() => setActiveTab(item.id)}
-                        className={`inline-flex flex-1 items-center justify-center gap-2 px-4 py-2.5 rounded-full whitespace-nowrap text-sm font-semibold border transition-all ${
+                        className={`inline-flex flex-1 items-center justify-center gap-2 px-5 py-3 rounded-full whitespace-nowrap text-base font-semibold border transition-all ${
                           isActive
                             ? 'bg-white text-slate-900 border-white shadow-[0_0_0_1px_rgba(0,0,0,0.04),0_1px_1px_rgba(0,0,0,0.04),0_3px_3px_1px_rgba(0,0,0,0.04),0_12px_12px_-8px_rgba(0,0,0,0.08)]'
                             : 'bg-transparent text-slate-500 border-transparent hover:text-slate-700'
                         }`}
                       >
-                        <item.icon className={`w-4 h-4 ${isActive ? 'text-blue-600' : 'text-slate-500'}`} />
+                        <item.icon className={`w-5 h-5 ${isActive ? 'text-blue-600' : 'text-slate-500'}`} />
                         <span>{item.label}</span>
                         {item.count !== undefined && item.count > 0 && (
                           <span className={`inline-flex items-center justify-center min-w-5 h-5 px-1 rounded-full text-[11px] font-bold ${
@@ -1278,14 +1279,14 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
-            <h1 className="text-3xl font-bold text-slate-900">{activeTabLabel}</h1>
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-10">
+            <h1 className="text-4xl md:text-5xl font-bold text-slate-900">{activeTabLabel}</h1>
             <div className="flex items-center gap-2">
               {activeTab === 'users' && (
                 <button
                   type="button"
                   onClick={() => setIsCreateUserModalOpen(true)}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-medical-600 text-white text-sm font-semibold hover:bg-medical-700 transition-colors"
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-medical-600 text-white text-base font-semibold hover:bg-medical-700 transition-colors"
                 >
                   <Plus className="w-4 h-4" /> Ajouter un compte
                 </button>
@@ -1294,22 +1295,22 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 mb-8">
-            <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-              <p className="text-xs uppercase tracking-[0.14em] text-slate-500">Paiements en attente</p>
-              <p className="text-2xl font-bold text-slate-900 mt-1">{payments.length}</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-10">
+            <div className="rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
+              <p className="text-sm uppercase tracking-[0.14em] text-slate-500">Paiements en attente</p>
+              <p className="text-3xl font-bold text-slate-900 mt-1">{payments.length}</p>
             </div>
-            <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-              <p className="text-xs uppercase tracking-[0.14em] text-slate-500">Paiements approuvés</p>
-              <p className="text-2xl font-bold text-emerald-700 mt-1">{approvedPaymentsCount}</p>
+            <div className="rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
+              <p className="text-sm uppercase tracking-[0.14em] text-slate-500">Paiements approuvés</p>
+              <p className="text-3xl font-bold text-emerald-700 mt-1">{approvedPaymentsCount}</p>
             </div>
-            <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-              <p className="text-xs uppercase tracking-[0.14em] text-slate-500">Comptes en attente</p>
-              <p className="text-2xl font-bold text-amber-700 mt-1">{pendingApprovalsCount}</p>
+            <div className="rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
+              <p className="text-sm uppercase tracking-[0.14em] text-slate-500">Comptes en attente</p>
+              <p className="text-3xl font-bold text-amber-700 mt-1">{pendingApprovalsCount}</p>
             </div>
-            <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-              <p className="text-xs uppercase tracking-[0.14em] text-slate-500">Comptes bloqués</p>
-              <p className="text-2xl font-bold text-rose-700 mt-1">{blockedUsersCount}</p>
+            <div className="rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
+              <p className="text-sm uppercase tracking-[0.14em] text-slate-500">Comptes bloqués</p>
+              <p className="text-3xl font-bold text-rose-700 mt-1">{blockedUsersCount}</p>
             </div>
           </div>
 

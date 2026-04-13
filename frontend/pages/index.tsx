@@ -648,6 +648,8 @@ export default function HomePage() {
             src="https://picsum.photos/seed/surgery/1920/1080?blur=2"
             alt="Medical Background"
             fill
+            sizes="100vw"
+            loading="eager"
             className="object-cover opacity-20"
             referrerPolicy="no-referrer"
           />

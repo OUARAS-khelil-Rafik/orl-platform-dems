@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Video, FileText, HelpCircle, Image as ImageIcon, MessageSquare, Plus, Save, X, Loader2, Trash2, Edit2 } from 'lucide-react';
-import { db, collection, addDoc, getDocs, deleteDoc, doc, updateDoc } from '@/lib/data/local-data';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { Video, FileText, HelpCircle, Image as ImageIcon, MessageSquare, Plus, Save, X, Loader2, Trash2, Edit2, Search } from 'lucide-react';
+import { db, collection, addDoc, getDocs, deleteDoc, doc, updateDoc, uploadCloudinaryAsset } from '@/lib/data/local-data';
+import SeamlessPlayer from '@/components/features/video/seamless-player';
 import type {
   CaseQuestionModel,
   ClinicalCaseModel,
@@ -11,6 +12,7 @@ import type {
   OpenQuestionModel,
   QcmModel,
   QcmMode,
+  VideoPartModel,
   VideoModel,
 } from '@/lib/domain/models';
 
@@ -35,6 +37,9 @@ interface VideoFormData {
   section: string;
   isFreeDemo: boolean;
   price: number;
+  isMultipart?: boolean;
+  totalParts?: number;
+  parts?: VideoPartModel[];
 }
 
 interface QcmFormData {
@@ -76,6 +81,15 @@ interface DiagramFormData {
   markers: DiagramMarkerModel[];
 }
 
+type PreviewSource = {
+  secureUrl: string;
+  duration?: number;
+};
+
+const CLOUDINARY_LIMIT = 100 * 1024 * 1024; // 100MB
+const BACKEND_UPLOAD_LIMIT = 1024 * 1024 * 1024; // 1GB
+const UPLOAD_FOLDER = 'orl-platform';
+
 const getErrorMessage = (error: unknown, fallback: string) => {
   if (error instanceof Error && error.message) {
     return error.message;
@@ -106,9 +120,11 @@ const logAdminAction = (action: 'create' | 'update' | 'delete', entity: string, 
 
 export function AdminContentManager() {
   const [activeTab, setActiveTab] = useState<'video' | 'qcm' | 'case' | 'openQuestion' | 'diagram'>('video');
+  const [videoViewMode, setVideoViewMode] = useState<'editor' | 'byVideo'>('editor');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+  const [contentSearch, setContentSearch] = useState('');
   
   const [videos, setVideos] = useState<VideoModel[]>([]);
   const [qcms, setQcms] = useState<QcmModel[]>([]);
@@ -201,49 +217,43 @@ export function AdminContentManager() {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // The backend now performs chunked single-video upload, but we keep a guardrail here.
+    if (file.size > BACKEND_UPLOAD_LIMIT) {
+      setErrorMessage('Fichier trop volumineux. La limite actuelle est 1GB par video.');
+      return;
+    }
+
     setIsUploading(true);
     setUploadProgress(0);
     setErrorMessage('');
 
-    const formData = new FormData();
-    formData.append('file', file);
-    // Replace 'YOUR_UPLOAD_PRESET' and 'YOUR_CLOUD_NAME' with actual values or env vars
-    // For this demo, we'll assume the user has set up an unsigned upload preset named 'dems_ent_videos'
-    formData.append('upload_preset', process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET || 'dems_ent_videos'); 
-
     try {
-      const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME || 'demo';
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', `https://api.cloudinary.com/v1_1/${cloudName}/video/upload`);
+      const response = await uploadCloudinaryAsset(file, {
+        resourceType: 'video',
+        folder: `${UPLOAD_FOLDER}/videos`,
+        onProgress: (percentage) => {
+          setUploadProgress(percentage);
+        },
+      });
 
-      xhr.upload.onprogress = (event) => {
-        if (event.lengthComputable) {
-          const progress = Math.round((event.loaded / event.total) * 100);
-          setUploadProgress(progress);
-        }
-      };
-
-      xhr.onload = () => {
-        if (xhr.status === 200) {
-          const response = JSON.parse(xhr.responseText);
-          setVideoData(prev => ({ ...prev, url: response.secure_url }));
-          setSuccessMessage('Vidéo téléchargée avec succès sur Cloudinary !');
-        } else {
-          const error = JSON.parse(xhr.responseText);
-          setErrorMessage(`Erreur de téléchargement: ${error.error?.message || 'Inconnue'}`);
-        }
-        setIsUploading(false);
-      };
-
-      xhr.onerror = () => {
-        setErrorMessage('Erreur réseau lors du téléchargement.');
-        setIsUploading(false);
-      };
-
-      xhr.send(formData);
+      setUploadProgress(100);
+      setVideoData((prev) => ({
+        ...prev,
+        url: response.secureUrl,
+        isMultipart: Boolean(response.isMultipart),
+        totalParts: response.totalParts,
+        parts: response.parts,
+      }));
+      setSuccessMessage('Video telechargee avec succes sur Cloudinary.');
+      setIsUploading(false);
     } catch (error) {
       console.error('Upload error:', error);
-      setErrorMessage('Une erreur inattendue est survenue lors du téléchargement.');
+      const details = getErrorMessage(error, 'Une erreur inattendue est survenue lors du telechargement.');
+      if (details.toLowerCase().includes('413') || details.toLowerCase().includes('volumineux')) {
+        setErrorMessage(`Le fichier video depasse la limite de chunk Cloudinary (${Math.round(CLOUDINARY_LIMIT / (1024 * 1024))}MB). Essayez une compression ou un autre fichier.`);
+      } else {
+        setErrorMessage(details);
+      }
       setIsUploading(false);
     }
   };
@@ -315,7 +325,10 @@ export function AdminContentManager() {
         subspecialty: 'otologie',
         section: 'anatomie',
         isFreeDemo: false,
-        price: 0
+        price: 0,
+        isMultipart: false,
+        totalParts: 1,
+        parts: [],
       });
     } catch (error: unknown) {
       console.error('Error adding/updating video:', error);
@@ -327,6 +340,7 @@ export function AdminContentManager() {
 
   const handleEditVideo = (video: VideoModel) => {
     setEditingVideoId(video.id);
+    setVideoViewMode('editor');
     setVideoData({
       title: video.title || '',
       description: video.description || '',
@@ -334,8 +348,69 @@ export function AdminContentManager() {
       subspecialty: video.subspecialty || 'otologie',
       section: video.section || 'anatomie',
       isFreeDemo: video.isFreeDemo || false,
-      price: video.price || 0
+      price: video.price || 0,
+      isMultipart: Boolean(video.isMultipart),
+      totalParts: video.totalParts || (Array.isArray(video.parts) ? video.parts.length : 1),
+      parts: Array.isArray(video.parts) ? video.parts : [],
     });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const openCreationFromVideo = (target: 'qcm' | 'case' | 'openQuestion' | 'diagram', videoId: string) => {
+    setActiveTab(target);
+
+    if (target === 'qcm') {
+      setEditingQcmId(null);
+      setQcmData({
+        videoId,
+        question: '',
+        options: getDefaultQcmOptions(),
+        mode: 'single',
+        correctOptionIndexes: [],
+        explanation: '',
+        reference: '',
+      });
+    }
+
+    if (target === 'case') {
+      setEditingCaseId(null);
+      setCaseData({
+        videoId,
+        title: '',
+        description: '',
+        patientHistory: '',
+        clinicalExamination: '',
+        additionalTests: '',
+        diagnosis: '',
+        treatment: '',
+        discussion: '',
+        images: [],
+        reference: '',
+        questions: [],
+      });
+    }
+
+    if (target === 'openQuestion') {
+      setEditingOpenQuestionId(null);
+      setOpenQuestionData({
+        videoId,
+        question: '',
+        answer: '',
+        reference: '',
+      });
+    }
+
+    if (target === 'diagram') {
+      setEditingDiagramId(null);
+      setDiagramData({
+        videoId,
+        title: '',
+        imageUrl: '',
+        markers: [],
+        reference: '',
+      });
+    }
+
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -632,43 +707,18 @@ export function AdminContentManager() {
     setUploadProgress(0);
     setErrorMessage('');
 
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('upload_preset', process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET || 'dems_ent_videos');
-
     try {
-      const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME || 'demo';
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`);
-
-      xhr.upload.onprogress = (event) => {
-        if (event.lengthComputable) {
-          const progress = Math.round((event.loaded / event.total) * 100);
-          setUploadProgress(progress);
-        }
-      };
-
-      xhr.onload = () => {
-        if (xhr.status === 200) {
-          const response = JSON.parse(xhr.responseText);
-          setCaseData(prev => ({
-            ...prev,
-            images: [...(prev.images || []), response.secure_url],
-          }));
-          setSuccessMessage('Figure ajoutée avec succès !');
-        } else {
-          const error = JSON.parse(xhr.responseText);
-          setErrorMessage(`Erreur de téléchargement de la figure: ${error.error?.message || 'Inconnue'}`);
-        }
-        setIsUploading(false);
-      };
-
-      xhr.onerror = () => {
-        setErrorMessage('Erreur réseau lors du téléchargement de la figure.');
-        setIsUploading(false);
-      };
-
-      xhr.send(formData);
+      const response = await uploadCloudinaryAsset(file, {
+        resourceType: 'image',
+        folder: 'orl-platform/case-images',
+      });
+      setUploadProgress(100);
+      setCaseData((prev) => ({
+        ...prev,
+        images: [...(prev.images || []), response.secureUrl],
+      }));
+      setSuccessMessage('Figure ajoutee avec succes.');
+      setIsUploading(false);
     } catch (error) {
       console.error('Upload figure error:', error);
       setErrorMessage('Une erreur inattendue est survenue lors du téléchargement de la figure.');
@@ -809,56 +859,29 @@ export function AdminContentManager() {
     setUploadProgress(0);
     setErrorMessage('');
 
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('upload_preset', process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET || 'dems_ent_videos');
-
     try {
-      const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME || 'demo';
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`);
-
-      xhr.upload.onprogress = (event) => {
-        if (event.lengthComputable) {
-          const progress = Math.round((event.loaded / event.total) * 100);
-          setUploadProgress(progress);
-        }
-      };
-
-      xhr.onload = () => {
-        if (xhr.status === 200) {
-          const response = JSON.parse(xhr.responseText);
-          setCaseData((prev) => {
-            const questions = [...(prev.questions || [])];
-            const current = questions[questionIndex] || {};
-            const currentImages: string[] = Array.isArray(current.images)
-              ? current.images
-              : [];
-            questions[questionIndex] = {
-              ...current,
-              images: [...currentImages, response.secure_url],
-            };
-            return {
-              ...prev,
-              questions,
-            };
-          });
-          setSuccessMessage('Figure de question ajoutée avec succès !');
-        } else {
-          const error = JSON.parse(xhr.responseText);
-          setErrorMessage(
-            `Erreur de téléchargement de la figure de question: ${error.error?.message || 'Inconnue'}`,
-          );
-        }
-        setIsUploading(false);
-      };
-
-      xhr.onerror = () => {
-        setErrorMessage('Erreur réseau lors du téléchargement de la figure de question.');
-        setIsUploading(false);
-      };
-
-      xhr.send(formData);
+      const response = await uploadCloudinaryAsset(file, {
+        resourceType: 'image',
+        folder: 'orl-platform/case-question-images',
+      });
+      setUploadProgress(100);
+      setCaseData((prev) => {
+        const questions = [...(prev.questions || [])];
+        const current = questions[questionIndex] || {};
+        const currentImages: string[] = Array.isArray(current.images)
+          ? current.images
+          : [];
+        questions[questionIndex] = {
+          ...current,
+          images: [...currentImages, response.secureUrl],
+        };
+        return {
+          ...prev,
+          questions,
+        };
+      });
+      setSuccessMessage('Figure de question ajoutee avec succes.');
+      setIsUploading(false);
     } catch (error) {
       console.error('Upload case question figure error:', error);
       setErrorMessage(
@@ -947,43 +970,18 @@ export function AdminContentManager() {
     setUploadProgress(0);
     setErrorMessage('');
 
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('upload_preset', process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET || 'dems_ent_videos');
-
     try {
-      const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME || 'demo';
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`);
-
-      xhr.upload.onprogress = (event) => {
-        if (event.lengthComputable) {
-          const progress = Math.round((event.loaded / event.total) * 100);
-          setUploadProgress(progress);
-        }
-      };
-
-      xhr.onload = () => {
-        if (xhr.status === 200) {
-          const response = JSON.parse(xhr.responseText);
-          setDiagramData(prev => ({
-            ...prev,
-            imageUrl: response.secure_url,
-          }));
-          setSuccessMessage('Schéma téléversé avec succès !');
-        } else {
-          const error = JSON.parse(xhr.responseText);
-          setErrorMessage(`Erreur de téléchargement du schéma: ${error.error?.message || 'Inconnue'}`);
-        }
-        setIsUploading(false);
-      };
-
-      xhr.onerror = () => {
-        setErrorMessage('Erreur réseau lors du téléchargement du schéma.');
-        setIsUploading(false);
-      };
-
-      xhr.send(formData);
+      const response = await uploadCloudinaryAsset(file, {
+        resourceType: 'image',
+        folder: 'orl-platform/diagrams',
+      });
+      setUploadProgress(100);
+      setDiagramData((prev) => ({
+        ...prev,
+        imageUrl: response.secureUrl,
+      }));
+      setSuccessMessage('Schema televerse avec succes.');
+      setIsUploading(false);
     } catch (error) {
       console.error('Upload diagram error:', error);
       setErrorMessage('Une erreur inattendue est survenue lors du téléchargement du schéma.');
@@ -995,7 +993,7 @@ export function AdminContentManager() {
     }
   };
 
-  const getVideoExtensionStats = (videoId: string) => {
+  const getVideoExtensionStats = useCallback((videoId: string) => {
     const caseCount = cases.filter((entry) => entry.videoId === videoId).length;
     const qcmCount = qcms.filter((entry) => entry.videoId === videoId).length;
     const openQuestionCount = openQuestions.filter((entry) => entry.videoId === videoId).length;
@@ -1015,7 +1013,65 @@ export function AdminContentManager() {
       missingItems,
       isComplete: missingItems.length === 0,
     };
-  };
+  }, [cases, qcms, openQuestions, diagrams]);
+
+  const normalizedSearch = contentSearch.trim().toLowerCase();
+
+  const filteredVideos = useMemo(() => {
+    return videos.filter((video) => {
+      return !normalizedSearch
+        || video.title?.toLowerCase().includes(normalizedSearch)
+        || video.description?.toLowerCase().includes(normalizedSearch)
+        || video.subspecialty?.toLowerCase().includes(normalizedSearch)
+        || video.section?.toLowerCase().includes(normalizedSearch);
+    });
+  }, [videos, normalizedSearch]);
+
+  const filteredQcms = useMemo(() => {
+    return qcms.filter((qcm) => {
+      const video = videos.find((v) => v.id === qcm.videoId);
+      return !normalizedSearch
+        || qcm.question?.toLowerCase().includes(normalizedSearch)
+        || video?.title?.toLowerCase().includes(normalizedSearch);
+    });
+  }, [qcms, videos, normalizedSearch]);
+
+  const filteredOpenQuestions = useMemo(() => {
+    return openQuestions.filter((item) => {
+      const video = videos.find((v) => v.id === item.videoId);
+      return !normalizedSearch
+        || item.question?.toLowerCase().includes(normalizedSearch)
+        || item.answer?.toLowerCase().includes(normalizedSearch)
+        || video?.title?.toLowerCase().includes(normalizedSearch);
+    });
+  }, [openQuestions, videos, normalizedSearch]);
+
+  const filteredCases = useMemo(() => {
+    return cases.filter((entry) => {
+      const video = videos.find((v) => v.id === entry.videoId);
+      return !normalizedSearch
+        || entry.title?.toLowerCase().includes(normalizedSearch)
+        || entry.description?.toLowerCase().includes(normalizedSearch)
+        || video?.title?.toLowerCase().includes(normalizedSearch);
+    });
+  }, [cases, videos, normalizedSearch]);
+
+  const filteredDiagrams = useMemo(() => {
+    return diagrams.filter((diagram) => {
+      const video = videos.find((v) => v.id === diagram.videoId);
+      return !normalizedSearch
+        || diagram.title?.toLowerCase().includes(normalizedSearch)
+        || video?.title?.toLowerCase().includes(normalizedSearch);
+    });
+  }, [diagrams, videos, normalizedSearch]);
+
+  const tabItems = [
+    { id: 'video' as const, label: 'Vidéos', icon: Video, count: videos.length, helper: 'Base du contenu' },
+    { id: 'case' as const, label: 'Cas Cliniques', icon: FileText, count: cases.length, helper: 'Entraînement clinique' },
+    { id: 'qcm' as const, label: 'QCM', icon: HelpCircle, count: qcms.length, helper: 'Evaluation rapide' },
+    { id: 'openQuestion' as const, label: 'Questions Ouvertes', icon: MessageSquare, count: openQuestions.length, helper: 'Réponses rédigées' },
+    { id: 'diagram' as const, label: 'Schémas', icon: ImageIcon, count: diagrams.length, helper: 'Supports visuels' },
+  ];
 
   const renderSelectedVideoPreview = (videoId: string) => {
     if (!videoId) return null;
@@ -1036,14 +1092,13 @@ export function AdminContentManager() {
           <span className="font-semibold">Vidéo sélectionnée :</span> {selectedVideo.title}
         </p>
         {selectedVideo.url ? (
-          <video
-            controls
-            preload="metadata"
-            src={selectedVideo.url}
-            className="w-full rounded-lg border border-slate-200 bg-black/90 max-h-52"
-          >
-            Votre navigateur ne supporte pas la lecture vidéo.
-          </video>
+          <AdminVideoPreviewCard
+            label="Vidéo sélectionnée"
+            url={selectedVideo.url}
+            isMultipart={selectedVideo.isMultipart}
+            parts={selectedVideo.parts}
+            totalParts={selectedVideo.totalParts}
+          />
         ) : (
           <p className="text-xs text-amber-700">Cette vidéo n'a pas encore d'URL de lecture.</p>
         )}
@@ -1051,57 +1106,160 @@ export function AdminContentManager() {
     );
   };
 
+  const normalizePreviewSources = (
+    sourceUrl: string,
+    sourceParts?: VideoPartModel[],
+  ): PreviewSource[] => {
+    const normalizedParts = Array.isArray(sourceParts)
+      ? sourceParts
+          .map((part) => ({
+            secureUrl: String(part?.secureUrl || '').trim(),
+            duration: Number(part?.duration || 0),
+          }))
+          .filter((part) => part.secureUrl)
+      : [];
+
+    if (normalizedParts.length > 0) {
+      return normalizedParts;
+    }
+
+    const normalizedUrl = String(sourceUrl || '').trim();
+    if (!normalizedUrl) {
+      return [];
+    }
+
+    return [{ secureUrl: normalizedUrl }];
+  };
+
+  const AdminVideoPreviewCard = ({
+    label,
+    url,
+    parts,
+    isMultipart,
+    totalParts,
+  }: {
+    label: string;
+    url: string;
+    parts?: VideoPartModel[];
+    isMultipart?: boolean;
+    totalParts?: number;
+  }) => {
+    const previewSources = normalizePreviewSources(url, parts);
+    const hasSources = previewSources.length > 0;
+    const shouldUseMultipart = Boolean(isMultipart) || previewSources.length > 1;
+    const partsCount = shouldUseMultipart
+      ? Number(totalParts || previewSources.length || 1)
+      : 1;
+
+    return (
+      <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 space-y-3">
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="rounded-full bg-emerald-100 px-2 py-1 font-semibold text-emerald-700">{label}</span>
+          {shouldUseMultipart && (
+            <span className="rounded-full bg-emerald-100 px-2 py-1 font-semibold text-emerald-700">
+              {partsCount} partie{partsCount > 1 ? 's' : ''}
+            </span>
+          )}
+        </div>
+
+        {hasSources ? (
+          <div className="overflow-hidden rounded-lg border border-emerald-200 bg-black/95">
+            <SeamlessPlayer
+              url={url}
+              parts={previewSources}
+              initialTime={0}
+            />
+          </div>
+        ) : (
+          <p className="text-xs text-amber-700">Aucune source vidéo disponible pour la prévisualisation.</p>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-      <div className="flex border-b border-slate-200 overflow-x-auto">
-        <button
-          onClick={() => setActiveTab('video')}
-          className={`flex items-center gap-2 px-6 py-4 text-sm font-medium transition-colors whitespace-nowrap ${
-            activeTab === 'video' ? 'text-medical-600 border-b-2 border-medical-600 bg-medical-50' : 'text-slate-600 hover:bg-slate-50'
-          }`}
-        >
-          <Video className="w-4 h-4" />
-          Vidéos
-        </button>
-        <button
-          onClick={() => setActiveTab('case')}
-          className={`flex items-center gap-2 px-6 py-4 text-sm font-medium transition-colors whitespace-nowrap ${
-            activeTab === 'case' ? 'text-medical-600 border-b-2 border-medical-600 bg-medical-50' : 'text-slate-600 hover:bg-slate-50'
-          }`}
-        >
-          <FileText className="w-4 h-4" />
-          Cas Cliniques
-        </button>
-        <button
-          onClick={() => setActiveTab('qcm')}
-          className={`flex items-center gap-2 px-6 py-4 text-sm font-medium transition-colors whitespace-nowrap ${
-            activeTab === 'qcm' ? 'text-medical-600 border-b-2 border-medical-600 bg-medical-50' : 'text-slate-600 hover:bg-slate-50'
-          }`}
-        >
-          <HelpCircle className="w-4 h-4" />
-          QCMs
-        </button>
-        <button
-          onClick={() => setActiveTab('openQuestion')}
-          className={`flex items-center gap-2 px-6 py-4 text-sm font-medium transition-colors whitespace-nowrap ${
-            activeTab === 'openQuestion' ? 'text-medical-600 border-b-2 border-medical-600 bg-medical-50' : 'text-slate-600 hover:bg-slate-50'
-          }`}
-        >
-          <MessageSquare className="w-4 h-4" />
-          Questions Ouvertes
-        </button>
-        <button
-          onClick={() => setActiveTab('diagram')}
-          className={`flex items-center gap-2 px-6 py-4 text-sm font-medium transition-colors whitespace-nowrap ${
-            activeTab === 'diagram' ? 'text-medical-600 border-b-2 border-medical-600 bg-medical-50' : 'text-slate-600 hover:bg-slate-50'
-          }`}
-        >
-          <ImageIcon className="w-4 h-4" />
-          Schémas
-        </button>
+      <div className="border-b border-slate-200 bg-gradient-to-br from-slate-50 via-white to-medical-50/40 px-8 py-6 space-y-6">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h2 className="text-2xl font-bold text-slate-900">Gestion de contenu pédagogique</h2>
+            <p className="text-base text-slate-600">Organisez vos vidéos, cas cliniques, QCM, questions ouvertes et schémas depuis un seul espace.</p>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-2 w-full lg:w-auto">
+            {tabItems.map((tab) => (
+              <div key={`kpi-${tab.id}`} className="rounded-xl border border-slate-200 bg-white/80 px-4 py-3">
+                <p className="text-sm text-slate-500">{tab.label}</p>
+                <p className="text-2xl font-bold text-slate-900">{tab.count}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="relative w-full lg:max-w-xl">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              value={contentSearch}
+              onChange={(e) => setContentSearch(e.target.value)}
+              placeholder="Rechercher par titre, question, description ou spécialité..."
+              className="w-full pl-9 pr-3 py-3 rounded-xl border border-slate-300 bg-white text-base focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none"
+            />
+          </div>
+          {activeTab === 'video' && (
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="inline-flex items-center rounded-xl border border-slate-300 bg-white p-1">
+                <button
+                  type="button"
+                  onClick={() => setVideoViewMode('editor')}
+                  className={`rounded-lg px-3.5 py-2 text-sm font-medium transition-colors ${
+                    videoViewMode === 'editor' ? 'bg-medical-100 text-medical-700' : 'text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  Formulaires
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setVideoViewMode('byVideo')}
+                  className={`rounded-lg px-3.5 py-2 text-sm font-medium transition-colors ${
+                    videoViewMode === 'byVideo' ? 'bg-medical-100 text-medical-700' : 'text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  Par vidéo
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+          {tabItems.map((tab) => {
+            const Icon = tab.icon;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`rounded-xl border px-4 py-3.5 text-left transition-all ${
+                  activeTab === tab.id
+                    ? 'border-medical-300 bg-medical-50 shadow-sm'
+                    : 'border-slate-200 bg-white hover:bg-slate-50'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="inline-flex items-center gap-2 text-base font-semibold text-slate-900">
+                    <Icon className="w-4 h-4" />
+                    {tab.label}
+                  </span>
+                  <span className="text-sm font-semibold text-slate-500">{tab.count}</span>
+                </div>
+                <p className="mt-1 text-sm text-slate-500">{tab.helper}</p>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      <div className="p-6">
+      <div className="p-8">
         {successMessage && (
           <div className="mb-6 p-4 bg-emerald-50 text-emerald-800 rounded-xl border border-emerald-200 flex items-center justify-between">
             <span>{successMessage}</span>
@@ -1131,8 +1289,76 @@ export function AdminContentManager() {
         )}
 
         {activeTab === 'video' && (
-          <div className="space-y-10">
-            <form onSubmit={handleVideoSubmit} className="space-y-6 max-w-2xl">
+          <div className="space-y-6">
+            {videoViewMode === 'byVideo' && (
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-5">
+                <div className="flex items-center justify-between gap-3 mb-4">
+                  <div>
+                    <h3 className="text-lg font-bold text-slate-900">Vue consolidée par vidéo</h3>
+                    <p className="text-sm text-slate-500">Pilotez chaque vidéo et complétez rapidement les extensions manquantes.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setVideoViewMode('editor')}
+                    className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100"
+                  >
+                    Retour aux formulaires
+                  </button>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  {filteredVideos.map((video) => {
+                    const stats = getVideoExtensionStats(video.id);
+                    return (
+                      <div key={`overview-${video.id}`} className="rounded-xl border border-slate-200 bg-white p-4">
+                        <h4 className="text-sm font-semibold text-slate-900 line-clamp-2">{video.title}</h4>
+                        <p className="text-xs text-slate-500 mt-1 capitalize">{video.subspecialty} - {video.section}</p>
+                        <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                          <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-700">Cas: {stats.caseCount}</span>
+                          <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-700">QCM: {stats.qcmCount}</span>
+                          <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-700">Ouvertes: {stats.openQuestionCount}</span>
+                          <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-700">Schémas: {stats.diagramCount}</span>
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => openCreationFromVideo('case', video.id)}
+                            className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-[11px] font-medium text-slate-700 hover:bg-slate-100"
+                          >
+                            Ajouter cas
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openCreationFromVideo('qcm', video.id)}
+                            className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-[11px] font-medium text-slate-700 hover:bg-slate-100"
+                          >
+                            Ajouter QCM
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openCreationFromVideo('openQuestion', video.id)}
+                            className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-[11px] font-medium text-slate-700 hover:bg-slate-100"
+                          >
+                            Ajouter ouverte
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openCreationFromVideo('diagram', video.id)}
+                            className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-[11px] font-medium text-slate-700 hover:bg-slate-100"
+                          >
+                            Ajouter schéma
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {videoViewMode === 'editor' && (
+              <div className="grid gap-6 xl:grid-cols-12">
+            <form onSubmit={handleVideoSubmit} className="space-y-6 xl:col-span-7 rounded-2xl border border-slate-200 bg-white p-5">
             <div className="flex justify-between items-center">
               <div>
                 <h3 className="text-lg font-bold text-slate-900 mb-1">{editingVideoId ? 'Modifier la vidéo' : 'Ajouter une nouvelle vidéo'}</h3>
@@ -1181,17 +1407,13 @@ export function AdminContentManager() {
                     </label>
                   </div>
                   {videoData.url && !isUploading && (
-                    <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 space-y-2">
-                      <p className="text-xs text-emerald-700 font-medium">Vidéo uploadée avec succès.</p>
-                      <video
-                        controls
-                        preload="metadata"
-                        src={videoData.url}
-                        className="w-full rounded-lg border border-emerald-200 bg-black/90 max-h-56"
-                      >
-                        Votre navigateur ne supporte pas la lecture vidéo.
-                      </video>
-                    </div>
+                    <AdminVideoPreviewCard
+                      label="Vidéo uploadée"
+                      url={videoData.url}
+                      isMultipart={videoData.isMultipart}
+                      parts={videoData.parts}
+                      totalParts={videoData.totalParts}
+                    />
                   )}
                   {isUploading && (
                     <div className="w-full bg-slate-200 rounded-full h-2.5 mt-2">
@@ -1289,7 +1511,10 @@ export function AdminContentManager() {
                       subspecialty: 'otologie',
                       section: 'anatomie',
                       isFreeDemo: false,
-                      price: 0
+                      price: 0,
+                      isMultipart: false,
+                      totalParts: 1,
+                      parts: [],
                     });
                   }}
                   className="flex items-center gap-2 border border-slate-300 text-slate-700 px-6 py-3 rounded-xl font-medium hover:bg-slate-100 transition-colors"
@@ -1309,11 +1534,11 @@ export function AdminContentManager() {
             </div>
           </form>
           
-          <div className="mt-12 border-t border-slate-200 pt-8">
+          <div className="xl:col-span-5 rounded-2xl border border-slate-200 bg-slate-50/60 p-5">
             <h3 className="text-lg font-bold text-slate-900 mb-4">Vidéos existantes</h3>
 
             <div className="grid gap-4">
-              {videos.map(video => (
+              {filteredVideos.map(video => (
                 <div key={video.id} className="p-4 bg-slate-50 rounded-xl border border-slate-200">
                   <div>
                     <h4 className="font-medium text-slate-900">{video.title}</h4>
@@ -1345,8 +1570,32 @@ export function AdminContentManager() {
                     })()}
                   </div>
 
-                  <div className="mt-3 flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
+                  <div className="mt-3 flex flex-col gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => openCreationFromVideo('case', video.id)}
+                        className="px-3 py-1.5 text-xs rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100 transition-colors"
+                      >
+                        + Cas
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openCreationFromVideo('qcm', video.id)}
+                        className="px-3 py-1.5 text-xs rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100 transition-colors"
+                      >
+                        + QCM
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openCreationFromVideo('diagram', video.id)}
+                        className="px-3 py-1.5 text-xs rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100 transition-colors"
+                      >
+                        + Schéma
+                      </button>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
                       <button
                         type="button"
                         onClick={() => setPreviewVideoId((current) => (current === video.id ? null : video.id))}
@@ -1362,9 +1611,9 @@ export function AdminContentManager() {
                       >
                         Ouvrir la lecture
                       </a>
-                    </div>
+                      </div>
 
-                    <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2">
                       <button
                         onClick={() => handleEditVideo(video)}
                         className="p-2 text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
@@ -1379,6 +1628,7 @@ export function AdminContentManager() {
                       >
                         <Trash2 className="w-5 h-5" />
                       </button>
+                      </div>
                     </div>
                   </div>
 
@@ -1398,17 +1648,23 @@ export function AdminContentManager() {
                   )}
                 </div>
               ))}
-              {videos.length === 0 && (
-                <p className="text-slate-500 text-sm">Aucune vidéo trouvée.</p>
+              {filteredVideos.length === 0 && (
+                <p className="text-slate-500 text-sm">
+                  {normalizedSearch
+                    ? 'Aucune vidéo ne correspond aux filtres actuels.'
+                    : 'Aucune vidéo trouvée.'}
+                </p>
               )}
             </div>
           </div>
+          </div>
+          )}
         </div>
         )}
 
         {activeTab === 'qcm' && (
-          <div className="space-y-10">
-            <form onSubmit={handleQcmSubmit} className="space-y-6 max-w-2xl">
+          <div className="grid gap-6 xl:grid-cols-12">
+            <form onSubmit={handleQcmSubmit} className="space-y-6 xl:col-span-7 rounded-2xl border border-slate-200 bg-white p-5">
               <div className="flex justify-between items-center">
                 <div>
                   <h3 className="text-lg font-bold text-slate-900 mb-1">{editingQcmId ? 'Modifier le QCM' : 'Ajouter un QCM'}</h3>
@@ -1617,10 +1873,10 @@ export function AdminContentManager() {
               </div>
             </form>
 
-            <div className="mt-12 border-t border-slate-200 pt-8">
+            <div className="xl:col-span-5 rounded-2xl border border-slate-200 bg-slate-50/60 p-5">
               <h3 className="text-lg font-bold text-slate-900 mb-4">QCMs existants</h3>
               <div className="grid gap-4">
-                {qcms.map(qcm => {
+                {filteredQcms.map(qcm => {
                   const video = videos.find(v => v.id === qcm.videoId);
                   return (
                     <div key={qcm.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-200">
@@ -1647,8 +1903,10 @@ export function AdminContentManager() {
                     </div>
                   );
                 })}
-                {qcms.length === 0 && (
-                  <p className="text-slate-500 text-sm">Aucun QCM trouvé.</p>
+                {filteredQcms.length === 0 && (
+                  <p className="text-slate-500 text-sm">
+                    {normalizedSearch ? 'Aucun QCM ne correspond à la recherche.' : 'Aucun QCM trouvé.'}
+                  </p>
                 )}
               </div>
             </div>
@@ -1656,8 +1914,8 @@ export function AdminContentManager() {
         )}
 
         {activeTab === 'openQuestion' && (
-          <div className="space-y-10">
-            <form onSubmit={handleOpenQuestionSubmit} className="space-y-6 max-w-2xl">
+          <div className="grid gap-6 xl:grid-cols-12">
+            <form onSubmit={handleOpenQuestionSubmit} className="space-y-6 xl:col-span-7 rounded-2xl border border-slate-200 bg-white p-5">
               <div className="flex justify-between items-center">
                 <div>
                   <h3 className="text-lg font-bold text-slate-900 mb-1">
@@ -1751,10 +2009,10 @@ export function AdminContentManager() {
               </div>
             </form>
 
-            <div className="mt-12 border-t border-slate-200 pt-8">
+            <div className="xl:col-span-5 rounded-2xl border border-slate-200 bg-slate-50/60 p-5">
               <h3 className="text-lg font-bold text-slate-900 mb-4">Questions ouvertes existantes</h3>
               <div className="grid gap-4">
-                {openQuestions.map((item) => {
+                {filteredOpenQuestions.map((item) => {
                   const video = videos.find(v => v.id === item.videoId);
                   return (
                     <div key={item.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-200">
@@ -1781,8 +2039,10 @@ export function AdminContentManager() {
                     </div>
                   );
                 })}
-                {openQuestions.length === 0 && (
-                  <p className="text-slate-500 text-sm">Aucune question ouverte trouvée.</p>
+                {filteredOpenQuestions.length === 0 && (
+                  <p className="text-slate-500 text-sm">
+                    {normalizedSearch ? 'Aucune question ouverte ne correspond à la recherche.' : 'Aucune question ouverte trouvée.'}
+                  </p>
                 )}
               </div>
             </div>
@@ -1790,8 +2050,8 @@ export function AdminContentManager() {
         )}
 
         {activeTab === 'case' && (
-          <div className="space-y-10">
-            <form onSubmit={handleCaseSubmit} className="space-y-6 max-w-2xl">
+          <div className="grid gap-6 xl:grid-cols-12">
+            <form onSubmit={handleCaseSubmit} className="space-y-6 xl:col-span-7 rounded-2xl border border-slate-200 bg-white p-5">
               <div className="flex justify-between items-center">
                 <div>
                   <h3 className="text-lg font-bold text-slate-900 mb-1">{editingCaseId ? 'Modifier le Cas Clinique' : 'Ajouter un Cas Clinique'}</h3>
@@ -2324,10 +2584,10 @@ export function AdminContentManager() {
               </div>
             </form>
 
-            <div className="mt-12 border-t border-slate-200 pt-8">
+            <div className="xl:col-span-5 rounded-2xl border border-slate-200 bg-slate-50/60 p-5">
               <h3 className="text-lg font-bold text-slate-900 mb-4">Cas cliniques existants</h3>
               <div className="grid gap-4">
-                {cases.map((c, index) => {
+                {filteredCases.map((c, index) => {
                   const video = videos.find(v => v.id === c.videoId);
                   return (
                     <div key={c.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-200">
@@ -2362,8 +2622,10 @@ export function AdminContentManager() {
                     </div>
                   );
                 })}
-                {cases.length === 0 && (
-                  <p className="text-slate-500 text-sm">Aucun cas clinique trouvé.</p>
+                {filteredCases.length === 0 && (
+                  <p className="text-slate-500 text-sm">
+                    {normalizedSearch ? 'Aucun cas clinique ne correspond à la recherche.' : 'Aucun cas clinique trouvé.'}
+                  </p>
                 )}
               </div>
             </div>
@@ -2371,8 +2633,8 @@ export function AdminContentManager() {
         )}
 
         {activeTab === 'diagram' && (
-          <div className="space-y-10">
-            <form onSubmit={handleDiagramSubmit} className="space-y-6 max-w-2xl">
+          <div className="grid gap-6 xl:grid-cols-12">
+            <form onSubmit={handleDiagramSubmit} className="space-y-6 xl:col-span-7 rounded-2xl border border-slate-200 bg-white p-5">
               <div className="flex justify-between items-center">
                 <div>
                   <h3 className="text-lg font-bold text-slate-900 mb-1">{editingDiagramId ? 'Modifier le Schéma' : 'Ajouter un Schéma'}</h3>
@@ -2559,10 +2821,10 @@ export function AdminContentManager() {
               </div>
             </form>
 
-            <div className="mt-12 border-t border-slate-200 pt-8">
+            <div className="xl:col-span-5 rounded-2xl border border-slate-200 bg-slate-50/60 p-5">
               <h3 className="text-lg font-bold text-slate-900 mb-4">Schémas existants</h3>
               <div className="grid gap-4">
-                {diagrams.map(d => {
+                {filteredDiagrams.map(d => {
                   const video = videos.find(v => v.id === d.videoId);
                   return (
                     <div key={d.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-200">
@@ -2589,8 +2851,10 @@ export function AdminContentManager() {
                     </div>
                   );
                 })}
-                {diagrams.length === 0 && (
-                  <p className="text-slate-500 text-sm">Aucun schéma trouvé.</p>
+                {filteredDiagrams.length === 0 && (
+                  <p className="text-slate-500 text-sm">
+                    {normalizedSearch ? 'Aucun schéma ne correspond à la recherche.' : 'Aucun schéma trouvé.'}
+                  </p>
                 )}
               </div>
             </div>

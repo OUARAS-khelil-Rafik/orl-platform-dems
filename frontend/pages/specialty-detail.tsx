@@ -650,6 +650,7 @@ function VideoCard({
           src={`https://picsum.photos/seed/thumbnail-${video.subspecialty}-${video.section}/640/360`}
           alt={video.title}
           fill
+          sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
           className={`object-cover transition-opacity duration-300 ${
             isPreviewPlaying ? 'opacity-0' : 'opacity-60 group-hover:opacity-80'
           }`}

@@ -150,7 +150,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    ensureDemoAccountsSeeded();
+    void ensureDemoAccountsSeeded();
 
     const unsubscribe = onAuthStateChanged(auth, async (authUser) => {
       setUser(authUser);
@@ -175,7 +175,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [ensureUserProfile]);
 
   const signIn = async (email: string, password: string, rememberMe = false) => {
-    const signedInUser = signInWithEmail(email, password, rememberMe);
+    const signedInUser = await signInWithEmail(email, password, rememberMe);
     setUser(signedInUser);
     const resolvedProfile = await ensureUserProfile(signedInUser);
     setProfile(resolvedProfile);
@@ -191,7 +191,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const normalizedNames = normalizeNameParts(payload.lastName, payload.firstName);
     const displayName = formatFullName(normalizedNames.lastName, normalizedNames.firstName);
 
-    const createdUser = createAuthAccount({
+    const createdUser = await createAuthAccount({
       email: payload.email,
       password: payload.password,
       displayName,
@@ -223,7 +223,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     if (profile.displayName !== user.displayName) {
-      updateAuthDisplayName(user.uid, profile.displayName);
+      void updateAuthDisplayName(user.uid, profile.displayName);
     }
   }, [profile, user]);
 

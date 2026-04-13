@@ -1,10 +1,11 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import { db, doc, getDoc, collection, query, where, getDocs, addDoc } from '@/lib/data/local-data';
 import { useAuth } from '@/components/providers/auth-provider';
 import { useCart } from '@/components/providers/cart-provider';
+import SeamlessPlayer from '@/components/features/video/seamless-player';
 import { canAccessVideo } from '@/lib/security/access-control';
 import type {
   CaseQuestionModel,
@@ -13,6 +14,7 @@ import type {
   DiagramModel,
   OpenQuestionModel,
   QcmModel,
+  VideoPartModel,
   VideoModel,
 } from '@/lib/domain/models';
 import { motion, AnimatePresence } from 'motion/react';
@@ -133,8 +135,62 @@ export default function VideoPage() {
 
   // Lightbox state
   const [selectedImage, setSelectedImage] = useState<{ url: string, title: string } | null>(null);
-  const playerRef = useRef<HTMLVideoElement | null>(null);
   const lastPersistedSecondRef = useRef(0);
+  const [initialPlaybackTime, setInitialPlaybackTime] = useState(0);
+
+  const orderedPlaybackParts = useMemo(() => {
+    const toPartIndex = (part: VideoPartModel, fallbackIndex: number) => {
+      const rawId = String(part.publicId || '');
+      const match = rawId.match(/-part-(\d+)$/i);
+      if (!match?.[1]) {
+        return fallbackIndex;
+      }
+      const parsed = Number(match[1]);
+      return Number.isFinite(parsed) ? parsed : fallbackIndex;
+    };
+
+    const seenUrls = new Set<string>();
+    const normalizedParts: Array<{ secureUrl: string; duration: number }> = [];
+    const sourceParts = Array.isArray(video?.parts)
+      ? [...video.parts].sort((a, b) => toPartIndex(a, 0) - toPartIndex(b, 0))
+      : [];
+
+    for (const part of sourceParts) {
+      const url = String(part?.secureUrl || '').trim();
+      if (url) {
+        if (!seenUrls.has(url)) {
+          seenUrls.add(url);
+          normalizedParts.push({
+            secureUrl: url,
+            duration: Number(part?.duration || 0),
+          });
+        }
+      }
+    }
+
+    const mainUrl = String(video?.url || '').trim();
+    if (mainUrl && normalizedParts.length === 0) {
+      if (!seenUrls.has(mainUrl)) {
+        seenUrls.add(mainUrl);
+        normalizedParts.push({
+          secureUrl: mainUrl,
+          duration: 0,
+        });
+      }
+    }
+
+    return normalizedParts;
+  }, [video?.parts, video?.url]);
+
+  const totalPlaybackDuration = useMemo(() => {
+    const fromParts = orderedPlaybackParts.reduce((sum, part) => sum + Math.max(0, Number(part.duration || 0)), 0);
+    const fromVideoDoc = Number((video as unknown as { duration?: number; durationSeconds?: number })?.durationSeconds
+      || (video as unknown as { duration?: number; durationSeconds?: number })?.duration
+      || 0);
+    return Math.max(fromParts, Number.isFinite(fromVideoDoc) ? fromVideoDoc : 0, 1);
+  }, [orderedPlaybackParts, video]);
+
+  const primaryPlaybackUrl = orderedPlaybackParts[0]?.secureUrl || String(video?.url || '').trim();
 
   useEffect(() => {
     if (!router.isReady) {
@@ -323,70 +379,65 @@ export default function VideoPage() {
   }, [video?.id, hasAccess]);
 
   useEffect(() => {
-    if (!video?.id || !hasAccess) {
-      return;
-    }
+    lastPersistedSecondRef.current = 0;
+    setInitialPlaybackTime(0);
+  }, [video?.id]);
 
-    const player = playerRef.current;
-    if (!player || typeof window === 'undefined') {
+  useEffect(() => {
+    if (typeof window === 'undefined' || !video?.id || !hasAccess) {
       return;
     }
 
     const storageKey = `${WATCH_PROGRESS_KEY}:${user?.uid ?? 'guest'}`;
-
-    const persistProgress = (force = false) => {
-      const duration = Number.isFinite(player.duration) && player.duration > 0 ? player.duration : 0;
-      if (duration <= 0) {
+    try {
+      const raw = window.localStorage.getItem(storageKey);
+      const parsed = raw ? (JSON.parse(raw) as Record<string, WatchProgressEntry>) : {};
+      const saved = parsed[video.id];
+      if (!saved) {
         return;
       }
 
-      const currentTime = Number.isFinite(player.currentTime) ? player.currentTime : 0;
-      const roundedCurrent = Math.floor(currentTime);
-
-      if (!force && Math.abs(roundedCurrent - lastPersistedSecondRef.current) < 2) {
-        return;
+      const savedTime = Number(saved.currentTime || 0);
+      if (Number.isFinite(savedTime) && savedTime > 0) {
+        setInitialPlaybackTime(savedTime);
       }
-      lastPersistedSecondRef.current = roundedCurrent;
+    } catch {
+      // Ignore malformed storage entries.
+    }
+  }, [hasAccess, user?.uid, video?.id]);
 
-      const completed = duration > 0 && currentTime / duration >= 0.98;
-      const entry: WatchProgressEntry = {
-        currentTime,
-        duration,
-        completed,
-        updatedAt: new Date().toISOString(),
-      };
+  const handlePlaybackProgress = useCallback((payload: WatchProgressEntry) => {
+    if (!video?.id || !hasAccess) {
+      return;
+    }
 
-      try {
-        const raw = window.localStorage.getItem(storageKey);
-        const parsed = raw ? (JSON.parse(raw) as Record<string, WatchProgressEntry>) : {};
-        parsed[video.id] = entry;
-        window.localStorage.setItem(storageKey, JSON.stringify(parsed));
-      } catch {
-        window.localStorage.setItem(storageKey, JSON.stringify({ [video.id]: entry }));
-      }
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const storageKey = `${WATCH_PROGRESS_KEY}:${user?.uid ?? 'guest'}`;
+    const roundedCurrent = Math.floor(payload.currentTime);
+    if (Math.abs(roundedCurrent - lastPersistedSecondRef.current) < 2 && !payload.completed) {
+      return;
+    }
+    lastPersistedSecondRef.current = roundedCurrent;
+
+    const entry: WatchProgressEntry = {
+      currentTime: Math.max(0, payload.currentTime),
+      duration: Math.max(payload.duration, totalPlaybackDuration),
+      completed: payload.completed,
+      updatedAt: new Date().toISOString(),
     };
 
-    const handleLoadedMetadata = () => {
-      persistProgress(true);
-    };
-    const handleTimeUpdate = () => {
-      persistProgress(false);
-    };
-    const handleEnded = () => {
-      persistProgress(true);
-    };
-
-    player.addEventListener('loadedmetadata', handleLoadedMetadata);
-    player.addEventListener('timeupdate', handleTimeUpdate);
-    player.addEventListener('ended', handleEnded);
-
-    return () => {
-      player.removeEventListener('loadedmetadata', handleLoadedMetadata);
-      player.removeEventListener('timeupdate', handleTimeUpdate);
-      player.removeEventListener('ended', handleEnded);
-      persistProgress(true);
-    };
-  }, [video?.id, hasAccess, user?.uid]);
+    try {
+      const raw = window.localStorage.getItem(storageKey);
+      const parsed = raw ? (JSON.parse(raw) as Record<string, WatchProgressEntry>) : {};
+      parsed[video.id] = entry;
+      window.localStorage.setItem(storageKey, JSON.stringify(parsed));
+    } catch {
+      window.localStorage.setItem(storageKey, JSON.stringify({ [video.id]: entry }));
+    }
+  }, [hasAccess, totalPlaybackDuration, user?.uid, video?.id]);
 
   if (!router.isReady || loading || authLoading) {
     return (
@@ -617,7 +668,7 @@ export default function VideoPage() {
       <div className="video-player-shell w-full relative aspect-video max-h-[70vh] flex justify-center">
         {/* Anti-download overlay */}
         <div className="absolute inset-0 z-10 pointer-events-none" />
-        
+
         {/* Video Element (Simulated with iframe or video tag) */}
         {youtubeVideoId ? (
           <iframe
@@ -628,14 +679,12 @@ export default function VideoPage() {
             allowFullScreen
           />
         ) : (
-          <video 
-            ref={playerRef}
-            src={video.url || "https://www.w3schools.com/html/mov_bbb.mp4"} 
-            controls 
-            controlsList="nodownload"
-            preload="metadata"
-            className="w-full h-full object-contain"
-            onContextMenu={(e) => e.preventDefault()}
+          <SeamlessPlayer
+            url={primaryPlaybackUrl || 'https://www.w3schools.com/html/mov_bbb.mp4'}
+            parts={orderedPlaybackParts}
+            totalDuration={totalPlaybackDuration}
+            initialTime={initialPlaybackTime}
+            onProgress={handlePlaybackProgress}
           />
         )}
       </div>
@@ -795,6 +844,7 @@ export default function VideoPage() {
                                             src={imgUrl}
                                             alt={`Figure ${String(imgIndex + 1).padStart(2, '0')}`}
                                             fill
+                                            sizes="(max-width: 768px) 100vw, (max-width: 1280px) 50vw, 33vw"
                                             className="object-cover transition-transform duration-500 group-hover:scale-110"
                                             referrerPolicy="no-referrer"
                                           />
@@ -1125,6 +1175,7 @@ export default function VideoPage() {
                                                         src={imgUrl}
                                                         alt={`Figure ${String(imgIndex + 1).padStart(2, '0')}`}
                                                         fill
+                                                        sizes="(max-width: 640px) 100vw, 50vw"
                                                         className="object-cover transition-transform duration-500 group-hover:scale-110"
                                                         referrerPolicy="no-referrer"
                                                       />
@@ -1765,7 +1816,14 @@ export default function VideoPage() {
                               </div>
 
                               <div className="video-schema-figure relative aspect-video w-full rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-alt)] overflow-hidden">
-                                <Image src={d.imageUrl} alt={d.title} fill className="object-contain" referrerPolicy="no-referrer" />
+                                <Image
+                                  src={d.imageUrl}
+                                  alt={d.title}
+                                  fill
+                                  sizes="(max-width: 1024px) 100vw, 80vw"
+                                  className="object-contain"
+                                  referrerPolicy="no-referrer"
+                                />
                                 {/* plus de calque SVG sur l'image : les marqueurs sont uniquement listés en dessous */}
                               </div>
 
@@ -1932,6 +1990,7 @@ export default function VideoPage() {
                 src={selectedImage.url} 
                 alt={selectedImage.title} 
                 fill 
+                sizes="100vw"
                 className="object-contain" 
                 referrerPolicy="no-referrer" 
               />

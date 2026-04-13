@@ -5,7 +5,8 @@ import { useRouter } from 'next/router';
 import Image from 'next/image';
 import Link from 'next/link';
 import { motion } from 'motion/react';
-import { User, Star, Camera, LockKeyhole, Moon, Sun, Trash2 } from 'lucide-react';
+import { User, Star, Camera, LockKeyhole, Moon, Sun, Trash2, Crop, RotateCcw, RotateCw, Square } from 'lucide-react';
+import Cropper, { type Area } from 'react-easy-crop';
 import { useAuth } from '@/components/providers/auth-provider';
 import {
   db,
@@ -21,6 +22,7 @@ import {
   deleteAuthAccountByUid,
   updateAuthPhotoURL,
   updateAuthPassword,
+  uploadAvatarImage,
 } from '@/lib/data/local-data';
 import { isSubscriptionActive } from '@/lib/security/access-control';
 import { formatFullName, normalizeNameParts, splitFullName } from '@/lib/utils/name-utils';
@@ -37,6 +39,13 @@ export default function UserDashboard() {
   const [defaultMode, setDefaultMode] = useState<'light' | 'dark'>('light');
   const [isSavingDefaultMode, setIsSavingDefaultMode] = useState(false);
   const [avatarUploading, setAvatarUploading] = useState(false);
+  const [avatarEditorOpen, setAvatarEditorOpen] = useState(false);
+  const [avatarSource, setAvatarSource] = useState<string | null>(null);
+  const [avatarCrop, setAvatarCrop] = useState({ x: 0, y: 0 });
+  const [avatarZoom, setAvatarZoom] = useState(1);
+  const [avatarRotation, setAvatarRotation] = useState(0);
+  const [avatarAspectMode, setAvatarAspectMode] = useState<'square' | 'free'>('square');
+  const [avatarCroppedAreaPixels, setAvatarCroppedAreaPixels] = useState<Area | null>(null);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -84,6 +93,84 @@ export default function UserDashboard() {
   };
 
   const subtleText = { color: 'color-mix(in oklab, var(--app-text) 78%, var(--app-muted) 22%)' };
+
+  const createImage = (url: string) =>
+    new Promise<HTMLImageElement>((resolve, reject) => {
+      const image = new window.Image();
+      image.addEventListener('load', () => resolve(image));
+      image.addEventListener('error', (error) => reject(error));
+      image.setAttribute('crossOrigin', 'anonymous');
+      image.src = url;
+    });
+
+  const getRadianAngle = (degreeValue: number) => (degreeValue * Math.PI) / 180;
+
+  const rotateSize = (width: number, height: number, rotation: number) => {
+    const rotRad = getRadianAngle(rotation);
+    return {
+      width: Math.abs(Math.cos(rotRad) * width) + Math.abs(Math.sin(rotRad) * height),
+      height: Math.abs(Math.sin(rotRad) * width) + Math.abs(Math.cos(rotRad) * height),
+    };
+  };
+
+  const getCroppedAvatarBlob = async (imageSrc: string, pixelCrop: Area, rotation = 0): Promise<Blob> => {
+    const image = await createImage(imageSrc);
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+
+    if (!ctx) {
+      throw new Error('Canvas context not available');
+    }
+
+    const rotatedSize = rotateSize(image.width, image.height, rotation);
+    canvas.width = Math.floor(rotatedSize.width);
+    canvas.height = Math.floor(rotatedSize.height);
+
+    ctx.translate(canvas.width / 2, canvas.height / 2);
+    ctx.rotate(getRadianAngle(rotation));
+    ctx.translate(-image.width / 2, -image.height / 2);
+    ctx.drawImage(image, 0, 0);
+
+    const data = ctx.getImageData(
+      Math.floor(pixelCrop.x),
+      Math.floor(pixelCrop.y),
+      Math.floor(pixelCrop.width),
+      Math.floor(pixelCrop.height),
+    );
+
+    const outputCanvas = document.createElement('canvas');
+    outputCanvas.width = Math.floor(pixelCrop.width);
+    outputCanvas.height = Math.floor(pixelCrop.height);
+
+    const outputCtx = outputCanvas.getContext('2d');
+    if (!outputCtx) {
+      throw new Error('Canvas output context not available');
+    }
+    outputCtx.putImageData(data, 0, 0);
+
+    return await new Promise<Blob>((resolve, reject) => {
+      outputCanvas.toBlob((blob) => {
+        if (blob) {
+          resolve(blob);
+          return;
+        }
+        reject(new Error('Image conversion failed'));
+      }, 'image/jpeg', 0.92);
+    });
+  };
+
+  const resetAvatarEditor = () => {
+    if (avatarSource) {
+      URL.revokeObjectURL(avatarSource);
+    }
+    setAvatarEditorOpen(false);
+    setAvatarSource(null);
+    setAvatarCrop({ x: 0, y: 0 });
+    setAvatarZoom(1);
+    setAvatarRotation(0);
+    setAvatarAspectMode('square');
+    setAvatarCroppedAreaPixels(null);
+  };
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -187,45 +274,53 @@ export default function UserDashboard() {
     }
   };
 
-  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!user) return;
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    e.target.value = '';
+    if (!file || !file.type.startsWith('image/')) return;
 
-    const uploadPreset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
-    const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
-
-    if (!uploadPreset || !cloudName) {
-      alert('Configuration Cloudinary manquante.');
-      return;
+    const localUrl = URL.createObjectURL(file);
+    if (avatarSource) {
+      URL.revokeObjectURL(avatarSource);
     }
+
+    setAvatarSource(localUrl);
+    setAvatarCrop({ x: 0, y: 0 });
+    setAvatarZoom(1);
+    setAvatarRotation(0);
+    setAvatarAspectMode('square');
+    setAvatarEditorOpen(true);
+  };
+
+  const handleAvatarCropComplete = (_croppedArea: Area, croppedAreaPixels: Area) => {
+    setAvatarCroppedAreaPixels(croppedAreaPixels);
+  };
+
+  const handleAvatarSave = async () => {
+    if (!user || !avatarSource || !avatarCroppedAreaPixels) return;
 
     try {
       setAvatarUploading(true);
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('upload_preset', uploadPreset);
-
-      const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
-        method: 'POST',
-        body: formData,
+      const croppedBlob = await getCroppedAvatarBlob(
+        avatarSource,
+        avatarCroppedAreaPixels,
+        avatarRotation,
+      );
+      const croppedFile = new File([croppedBlob], `avatar-${Date.now()}.jpg`, {
+        type: 'image/jpeg',
       });
 
-      if (!res.ok) {
-        throw new Error("Erreur lors du téléversement de l'image.");
-      }
-
-      const data = await res.json();
-      const url = data.secure_url as string;
+      const data = await uploadAvatarImage(croppedFile);
+      const url = data.secureUrl;
 
       await updateDoc(doc(db, 'users', user.uid), { photoURL: url });
-      updateAuthPhotoURL(user.uid, url);
+      await updateAuthPhotoURL(user.uid, url);
+      resetAvatarEditor();
     } catch (error) {
       console.error('Error updating avatar:', error);
       alert('Erreur lors du changement de la photo.');
     } finally {
       setAvatarUploading(false);
-      e.target.value = '';
     }
   };
 
@@ -242,7 +337,7 @@ export default function UserDashboard() {
 
     try {
       setIsUpdatingPassword(true);
-      updateAuthPassword(user.uid, currentPassword, newPassword);
+      await updateAuthPassword(user.uid, currentPassword, newPassword);
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
@@ -320,7 +415,7 @@ export default function UserDashboard() {
       ]);
 
       await deleteDoc(doc(db, 'users', user.uid));
-      deleteAuthAccountByUid(user.uid);
+      await deleteAuthAccountByUid(user.uid);
       await signOut();
       router.push('/');
     } catch (error) {
@@ -362,7 +457,14 @@ export default function UserDashboard() {
                 <div className="p-4 rounded-2xl flex flex-col items-center text-center min-w-[220px]">
                   <div className="relative w-24 h-24 rounded-full overflow-hidden bg-slate-100 mb-3 border-4 border-white shadow-md">
                     {profile.photoURL ? (
-                      <Image src={profile.photoURL} alt={profile.displayName} fill className="object-cover" referrerPolicy="no-referrer" />
+                      <Image
+                        src={profile.photoURL}
+                        alt={profile.displayName}
+                        fill
+                        sizes="96px"
+                        className="object-cover"
+                        referrerPolicy="no-referrer"
+                      />
                     ) : (
                       <User className="w-12 h-12 text-[var(--app-muted)] absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
                     )}
@@ -384,7 +486,7 @@ export default function UserDashboard() {
                         accept="image/*"
                         className="hidden"
                         onChange={handleAvatarChange}
-                        disabled={avatarUploading}
+                        disabled={avatarUploading || avatarEditorOpen}
                       />
                     </label>
                   </div>
@@ -640,6 +742,144 @@ export default function UserDashboard() {
 
         </div>
       </main>
+
+      {avatarEditorOpen && avatarSource && (
+        <div
+          className="fixed inset-0 z-[90] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Editeur de photo de profil"
+        >
+          <div className="w-full max-w-3xl rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface)] shadow-2xl overflow-hidden">
+            <div className="px-5 py-4 border-b border-[var(--app-border)] flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-bold text-[var(--app-text)]">Modifier la photo de profil</h3>
+                <p className="text-xs text-[var(--app-muted)]">Glissez l image, zoomez, faites pivoter, puis enregistrez.</p>
+              </div>
+              <button
+                type="button"
+                onClick={resetAvatarEditor}
+                className="px-3 py-1.5 text-xs rounded-lg border border-[var(--app-border)] text-[var(--app-text)] hover:bg-[var(--app-surface-2)]"
+              >
+                Annuler
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div className="relative h-[320px] md:h-[420px] rounded-xl overflow-hidden bg-black">
+                <Cropper
+                  image={avatarSource}
+                  crop={avatarCrop}
+                  zoom={avatarZoom}
+                  rotation={avatarRotation}
+                  aspect={avatarAspectMode === 'square' ? 1 : undefined}
+                  cropShape={avatarAspectMode === 'square' ? 'round' : 'rect'}
+                  showGrid={avatarAspectMode === 'free'}
+                  onCropChange={setAvatarCrop}
+                  onZoomChange={setAvatarZoom}
+                  onRotationChange={setAvatarRotation}
+                  onCropComplete={handleAvatarCropComplete}
+                />
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-[var(--app-muted)]">Zoom</p>
+                  <input
+                    type="range"
+                    min={1}
+                    max={3}
+                    step={0.01}
+                    value={avatarZoom}
+                    onChange={(e) => setAvatarZoom(Number(e.target.value))}
+                    title="Zoom de l avatar"
+                    aria-label="Zoom de l avatar"
+                    className="w-full"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-[var(--app-muted)]">Rotation ({Math.round(avatarRotation)}°)</p>
+                  <input
+                    type="range"
+                    min={-180}
+                    max={180}
+                    step={1}
+                    value={avatarRotation}
+                    onChange={(e) => setAvatarRotation(Number(e.target.value))}
+                    title="Rotation de l avatar"
+                    aria-label="Rotation de l avatar"
+                    className="w-full"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setAvatarAspectMode('square')}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border ${
+                    avatarAspectMode === 'square'
+                      ? 'bg-[var(--app-accent)] text-[var(--app-accent-contrast)] border-[var(--app-accent)]'
+                      : 'border-[var(--app-border)] text-[var(--app-text)] hover:bg-[var(--app-surface-2)]'
+                  }`}
+                >
+                  <Square className="w-3.5 h-3.5" />
+                  Carre avatar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAvatarAspectMode('free')}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border ${
+                    avatarAspectMode === 'free'
+                      ? 'bg-[var(--app-accent)] text-[var(--app-accent-contrast)] border-[var(--app-accent)]'
+                      : 'border-[var(--app-border)] text-[var(--app-text)] hover:bg-[var(--app-surface-2)]'
+                  }`}
+                >
+                  <Crop className="w-3.5 h-3.5" />
+                  Recadrage libre
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setAvatarRotation((prev) => prev - 90)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-[var(--app-border)] text-[var(--app-text)] hover:bg-[var(--app-surface-2)]"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  -90°
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setAvatarRotation((prev) => prev + 90)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-[var(--app-border)] text-[var(--app-text)] hover:bg-[var(--app-surface-2)]"
+                >
+                  <RotateCw className="w-3.5 h-3.5" />
+                  +90°
+                </button>
+              </div>
+            </div>
+
+            <div className="px-5 py-4 border-t border-[var(--app-border)] flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={resetAvatarEditor}
+                disabled={avatarUploading}
+                className="px-4 py-2 rounded-xl border border-[var(--app-border)] text-sm font-medium text-[var(--app-text)] hover:bg-[var(--app-surface-2)] disabled:opacity-60"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={handleAvatarSave}
+                disabled={avatarUploading || !avatarCroppedAreaPixels}
+                className="px-4 py-2 rounded-xl bg-[var(--app-accent)] text-[var(--app-accent-contrast)] text-sm font-medium hover:brightness-110 disabled:opacity-60"
+              >
+                {avatarUploading ? 'Enregistrement...' : 'Enregistrer la photo'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
