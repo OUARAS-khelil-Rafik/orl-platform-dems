@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, useScroll, useSpring } from 'motion/react';
 import Link from 'next/link';
 import {
@@ -8,6 +8,8 @@ import {
   BookOpen,
   PlayCircle,
   Pause,
+  Volume2,
+  VolumeX,
   FileText,
   CheckCircle2,
   Stethoscope,
@@ -28,7 +30,7 @@ interface DemoVideo {
   id: string;
   title: string;
   url: string;
-  parts?: Array<{ secureUrl?: string }>;
+  parts?: Array<{ secureUrl?: string; duration?: number | string }>;
   subspecialty?: string;
   duration?: string | number;
   durationMinutes?: number;
@@ -63,7 +65,7 @@ declare global {
           videoId: string;
           playerVars?: Record<string, number>;
           events?: {
-            onReady?: (event: { target: { getDuration?: () => number } }) => void;
+            onReady?: (event: { target: { getDuration?: () => number; playVideo?: () => void; mute?: () => void; setVolume?: (volume: number) => void } }) => void;
             onStateChange?: (event: { data: number }) => void;
           };
         }
@@ -159,7 +161,38 @@ const formatClock = (seconds: number) => {
   return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
 };
 
-const formatDemoDurationLabel = (video: DemoVideo | null) => {
+const parsePartDurationToSeconds = (durationValue: unknown): number => {
+  if (typeof durationValue === 'number' && Number.isFinite(durationValue)) {
+    return Math.max(0, durationValue);
+  }
+
+  if (typeof durationValue === 'string') {
+    const raw = durationValue.trim();
+    if (!raw) return 0;
+
+    if (raw.includes(':')) {
+      const parts = raw.split(':').map((part) => Number(part));
+      if (parts.some((part) => !Number.isFinite(part))) return 0;
+      if (parts.length === 3) return Math.max(0, parts[0] * 3600 + parts[1] * 60 + parts[2]);
+      if (parts.length === 2) return Math.max(0, parts[0] * 60 + parts[1]);
+      if (parts.length === 1) return Math.max(0, parts[0]);
+    }
+
+    const asNumber = Number(raw);
+    if (Number.isFinite(asNumber)) {
+      return Math.max(0, asNumber);
+    }
+  }
+
+  return 0;
+};
+
+const formatDemoDurationLabel = (video: DemoVideo | null, totalDurationSeconds = 0) => {
+  if (Number.isFinite(totalDurationSeconds) && totalDurationSeconds > 0) {
+    const minutes = Math.max(1, Math.round(totalDurationSeconds / 60));
+    return `${minutes} min`;
+  }
+
   if (!video) return '45 min';
 
   const raw = video.duration ?? video.durationMinutes ?? video.durationSeconds;
@@ -179,16 +212,22 @@ const formatDemoDurationLabel = (video: DemoVideo | null) => {
 };
 
 const parseDurationToSeconds = (video: DemoVideo): number => {
+  const partsTotalDuration = Array.isArray(video.parts)
+    ? video.parts.reduce((sum, part) => sum + parsePartDurationToSeconds(part?.duration), 0)
+    : 0;
+
+  let explicitDuration = 0;
+
   if (typeof video.durationSeconds === 'number' && Number.isFinite(video.durationSeconds)) {
-    return Math.max(0, video.durationSeconds);
+    explicitDuration = Math.max(explicitDuration, video.durationSeconds);
   }
 
   if (typeof video.durationMinutes === 'number' && Number.isFinite(video.durationMinutes)) {
-    return Math.max(0, Math.round(video.durationMinutes * 60));
+    explicitDuration = Math.max(explicitDuration, Math.round(video.durationMinutes * 60));
   }
 
   if (typeof video.duration === 'number' && Number.isFinite(video.duration)) {
-    return Math.max(0, Math.round(video.duration * 60));
+    explicitDuration = Math.max(explicitDuration, Math.round(video.duration * 60));
   }
 
   if (typeof video.duration === 'string') {
@@ -198,18 +237,24 @@ const parseDurationToSeconds = (video: DemoVideo): number => {
     if (raw.includes(':')) {
       const parts = raw.split(':').map((part) => Number(part));
       if (parts.some((part) => !Number.isFinite(part))) return 0;
-      if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
-      if (parts.length === 2) return parts[0] * 60 + parts[1];
-      if (parts.length === 1) return parts[0] * 60;
+      if (parts.length === 3) {
+        explicitDuration = Math.max(explicitDuration, parts[0] * 3600 + parts[1] * 60 + parts[2]);
+      }
+      if (parts.length === 2) {
+        explicitDuration = Math.max(explicitDuration, parts[0] * 60 + parts[1]);
+      }
+      if (parts.length === 1) {
+        explicitDuration = Math.max(explicitDuration, parts[0] * 60);
+      }
     }
 
     const asNumber = Number(raw);
     if (Number.isFinite(asNumber)) {
-      return Math.max(0, Math.round(asNumber * 60));
+      explicitDuration = Math.max(explicitDuration, Math.round(asNumber * 60));
     }
   }
 
-  return 0;
+  return Math.max(partsTotalDuration, explicitDuration);
 };
 
 const formatSubspecialtyLabel = (subspecialty?: string) => {
@@ -258,35 +303,103 @@ export default function HomePage() {
   const youtubePlayerRef = useRef<{
     getCurrentTime?: () => number;
     getDuration?: () => number;
+    getVolume?: () => number;
+    isMuted?: () => boolean;
     playVideo?: () => void;
     pauseVideo?: () => void;
     seekTo?: (seconds: number, allowSeekAhead: boolean) => void;
+    setVolume?: (volume: number) => void;
+    mute?: () => void;
+    unMute?: () => void;
     destroy?: () => void;
   } | null>(null);
   const [demoVideo, setDemoVideo] = useState<DemoVideo | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [volumeLevel, setVolumeLevel] = useState(0.8);
+  const [isMuted, setIsMuted] = useState(true);
+  const [previewPartIndex, setPreviewPartIndex] = useState(0);
+  const [previewPartDurations, setPreviewPartDurations] = useState<number[]>([]);
   const [areVideoControlsVisible, setAreVideoControlsVisible] = useState(true);
   const [unfinishedVideos, setUnfinishedVideos] = useState<UnfinishedVideoItem[]>([]);
+  const lastNonZeroVolumeRef = useRef(0.8);
   const hideControlsTimeoutRef = useRef<number | null>(null);
+  const hasAutoPlayedRef = useRef(false);
 
-  const youtubeVideoId = extractYouTubeVideoId(demoVideo?.url || '');
+  const previewPartSources = useMemo(() => {
+    const partUrls = Array.isArray(demoVideo?.parts)
+      ? demoVideo.parts
+          .map((part) => String(part?.secureUrl || '').trim())
+          .filter((partUrl) => partUrl.length > 0)
+      : [];
+
+    if (partUrls.length > 0) {
+      return partUrls;
+    }
+
+    const singleUrl = String(demoVideo?.url || '').trim();
+    if (singleUrl) {
+      return [singleUrl];
+    }
+
+    return [FALLBACK_DEMO_VIDEO_URL];
+  }, [demoVideo]);
+
+  const previewPartDurationHints = useMemo(
+    () =>
+      previewPartSources.map((_, index) => {
+        const part = demoVideo?.parts?.[index];
+        return parsePartDurationToSeconds(part?.duration);
+      }),
+    [demoVideo?.parts, previewPartSources],
+  );
+
+  const previewPartOffsets = useMemo(() => {
+    const offsets: number[] = [0];
+    for (let i = 0; i < previewPartSources.length; i += 1) {
+      const hintedDuration = previewPartDurationHints[i] || 0;
+      const measuredDuration = previewPartDurations[i] || 0;
+      const effectiveDuration = hintedDuration > 0 ? hintedDuration : measuredDuration;
+      offsets.push(offsets[i] + Math.max(0, effectiveDuration));
+    }
+    return offsets;
+  }, [previewPartDurations, previewPartDurationHints, previewPartSources.length]);
+
+  const previewMeasuredTotalDuration = useMemo(
+    () => previewPartOffsets[previewPartOffsets.length - 1] || 0,
+    [previewPartOffsets],
+  );
+
+  const previewFallbackDuration = useMemo(
+    () => (demoVideo ? parseDurationToSeconds(demoVideo) : 0),
+    [demoVideo],
+  );
+
+  const previewTotalDuration = useMemo(
+    () => Math.max(previewMeasuredTotalDuration, previewFallbackDuration),
+    [previewFallbackDuration, previewMeasuredTotalDuration],
+  );
+
+  const previewVideoUrl = previewPartSources[previewPartIndex] || previewPartSources[0] || FALLBACK_DEMO_VIDEO_URL;
+  const isMultipartDemo = previewPartSources.length > 1;
+  const youtubeVideoId = !isMultipartDemo ? extractYouTubeVideoId(previewVideoUrl) : null;
   const isYouTubeDemo = Boolean(youtubeVideoId);
 
-  const clearHideControlsTimer = useCallback(() => {
-    if (hideControlsTimeoutRef.current) {
+  const clearHideControlsTimer = () => {
+    if (hideControlsTimeoutRef.current !== null) {
       window.clearTimeout(hideControlsTimeoutRef.current);
       hideControlsTimeoutRef.current = null;
     }
-  }, []);
+  };
 
-  const scheduleHideControls = useCallback(() => {
+  const scheduleHideControls = (delayMs = 1200) => {
+    if (!isPlaying) return;
     clearHideControlsTimer();
     hideControlsTimeoutRef.current = window.setTimeout(() => {
       setAreVideoControlsVisible(false);
-    }, 5000);
-  }, [clearHideControlsTimer]);
+    }, delayMs);
+  };
 
   const revealVideoControls = () => {
     setAreVideoControlsVisible(true);
@@ -296,6 +409,25 @@ export default function HomePage() {
   };
 
   useEffect(() => {
+    const nextPartCount = previewPartSources.length;
+
+    if (nextPartCount === 0) {
+      setPreviewPartIndex(0);
+      setPreviewPartDurations([]);
+      return;
+    }
+
+    setPreviewPartIndex((prev) => Math.min(prev, nextPartCount - 1));
+    setPreviewPartDurations((prev) => {
+      const next = new Array(nextPartCount).fill(0);
+      for (let i = 0; i < nextPartCount; i += 1) {
+        next[i] = Math.max(prev[i] || 0, previewPartDurationHints[i] || 0);
+      }
+      return next;
+    });
+  }, [previewPartDurationHints, previewPartSources.length]);
+
+  useEffect(() => {
     let isMounted = true;
 
     const loadFirstDemoVideo = async () => {
@@ -303,7 +435,14 @@ export default function HomePage() {
         const snapshot = await getDocs(collection(db, 'videos'));
         const demos = snapshot.docs
           .map((doc) => ({ id: doc.id, ...(doc.data() as Omit<DemoVideo, 'id'>) }))
-          .filter((video) => video.isFreeDemo && typeof video.url === 'string' && video.url.length > 0);
+          .filter((video) => {
+            const hasMainUrl = typeof video.url === 'string' && video.url.trim().length > 0;
+            const hasPartUrls =
+              Array.isArray(video.parts) &&
+              video.parts.some((part) => typeof part?.secureUrl === 'string' && part.secureUrl.trim().length > 0);
+
+            return Boolean(video.isFreeDemo && (hasMainUrl || hasPartUrls));
+          });
 
         if (isMounted && demos.length > 0) {
           setDemoVideo(demos[0]);
@@ -406,33 +545,113 @@ export default function HomePage() {
   }, [isAuthReady, user?.uid, user]);
 
   useEffect(() => {
+    if (volumeLevel > 0) {
+      lastNonZeroVolumeRef.current = volumeLevel;
+    }
+  }, [volumeLevel]);
+
+  useEffect(() => {
+    return () => {
+      clearHideControlsTimer();
+    };
+  }, []);
+
+  useEffect(() => {
     const resetStateFrame = window.requestAnimationFrame(() => {
+      setPreviewPartIndex(0);
       setIsPlaying(false);
       setCurrentTime(0);
       setDuration(0);
+      setAreVideoControlsVisible(true);
+      setIsMuted(true);
     });
 
+    return () => {
+      window.cancelAnimationFrame(resetStateFrame);
+    };
+  }, [demoVideo?.id]);
+
+  useEffect(() => {
+    if (isYouTubeDemo) return;
+    if (previewTotalDuration > 0) {
+      setDuration(previewTotalDuration);
+    }
+  }, [isYouTubeDemo, previewTotalDuration]);
+
+  useEffect(() => {
     const videoEl = videoRef.current;
     if (!videoEl || isYouTubeDemo) {
-      return () => {
-        window.cancelAnimationFrame(resetStateFrame);
-      };
+      return;
     }
 
+    const currentPartOffset = previewPartOffsets[previewPartIndex] || 0;
+    const hintedPartDuration =
+      previewPartOffsets[previewPartIndex + 1] !== undefined
+        ? Math.max(0, previewPartOffsets[previewPartIndex + 1] - currentPartOffset)
+        : 0;
+
     const handleLoadedMetadata = () => {
-      setDuration(Number.isFinite(videoEl.duration) ? videoEl.duration : 0);
+      const localDuration = Number.isFinite(videoEl.duration) ? Math.max(0, videoEl.duration) : 0;
+
+      if (localDuration > 0) {
+        setPreviewPartDurations((prev) => {
+          const next = [...prev];
+          while (next.length < previewPartSources.length) {
+            next.push(0);
+          }
+          next[previewPartIndex] = Math.max(next[previewPartIndex] || 0, localDuration);
+          return next;
+        });
+      }
+
+      const unifiedDuration = Math.max(previewTotalDuration, currentPartOffset + localDuration, currentPartOffset + hintedPartDuration);
+      if (unifiedDuration > 0) {
+        setDuration(unifiedDuration);
+      }
     };
+
     const handleTimeUpdate = () => {
-      setCurrentTime(videoEl.currentTime);
+      setCurrentTime(currentPartOffset + Math.max(0, videoEl.currentTime));
     };
-    const handlePlay = () => setIsPlaying(true);
+
+    const handlePlay = () => {
+      setIsPlaying(true);
+      setAreVideoControlsVisible(false);
+    };
     const handlePause = () => {
       setIsPlaying(false);
       setAreVideoControlsVisible(true);
     };
+
     const handleEnded = () => {
+      const isLastPart = previewPartIndex >= previewPartSources.length - 1;
+
+      if (!isLastPart) {
+        const nextPartIndex = previewPartIndex + 1;
+        setPreviewPartIndex(nextPartIndex);
+        setAreVideoControlsVisible(true);
+
+        requestAnimationFrame(() => {
+          const nextVideoEl = videoRef.current;
+          if (!nextVideoEl) return;
+          nextVideoEl.currentTime = 0;
+          nextVideoEl.play().catch(() => {
+            setIsPlaying(false);
+          });
+        });
+
+        return;
+      }
+
+      const localDuration = Number.isFinite(videoEl.duration) ? Math.max(0, videoEl.duration) : hintedPartDuration;
+      const finalTime = Math.max(previewTotalDuration, currentPartOffset + localDuration);
+
       setIsPlaying(false);
       setAreVideoControlsVisible(true);
+      setCurrentTime(finalTime);
+      if (finalTime > 0) {
+        setDuration(finalTime);
+      }
     };
 
     videoEl.addEventListener('loadedmetadata', handleLoadedMetadata);
@@ -442,14 +661,47 @@ export default function HomePage() {
     videoEl.addEventListener('ended', handleEnded);
 
     return () => {
-      window.cancelAnimationFrame(resetStateFrame);
       videoEl.removeEventListener('loadedmetadata', handleLoadedMetadata);
       videoEl.removeEventListener('timeupdate', handleTimeUpdate);
       videoEl.removeEventListener('play', handlePlay);
       videoEl.removeEventListener('pause', handlePause);
       videoEl.removeEventListener('ended', handleEnded);
     };
-  }, [demoVideo?.id, isYouTubeDemo]);
+  }, [isYouTubeDemo, previewPartIndex, previewPartOffsets, previewPartSources.length, previewTotalDuration]);
+
+  useEffect(() => {
+    if (isYouTubeDemo) return;
+    const videoEl = videoRef.current;
+    if (!videoEl) return;
+
+    const normalizedVolume = Math.min(1, Math.max(0, volumeLevel));
+    videoEl.volume = normalizedVolume;
+    videoEl.muted = isMuted || normalizedVolume <= 0;
+  }, [isYouTubeDemo, isMuted, previewVideoUrl, volumeLevel]);
+
+  useEffect(() => {
+    if (isYouTubeDemo) return;
+    if (!demoVideo) return;
+    if (hasAutoPlayedRef.current) return;
+
+    const videoEl = videoRef.current;
+    if (!videoEl) return;
+
+    hasAutoPlayedRef.current = true;
+    setIsMuted(true);
+    videoEl.muted = true;
+
+    videoEl
+      .play()
+      .then(() => {
+        setIsPlaying(true);
+        setAreVideoControlsVisible(false);
+      })
+      .catch(() => {
+        setIsPlaying(false);
+        setAreVideoControlsVisible(true);
+      });
+  }, [demoVideo, isYouTubeDemo]);
 
   useEffect(() => {
     if (!isYouTubeDemo || !youtubeVideoId) {
@@ -473,7 +725,9 @@ export default function HomePage() {
       youtubePlayerRef.current = new window.YT.Player('home-demo-youtube-player', {
         videoId: youtubeVideoId,
         playerVars: {
+          autoplay: 1,
           controls: 0,
+          mute: 1,
           modestbranding: 1,
           rel: 0,
           playsinline: 1,
@@ -483,6 +737,15 @@ export default function HomePage() {
             if (isDisposed) return;
             const videoDuration = event.target.getDuration?.() ?? 0;
             setDuration(Number.isFinite(videoDuration) ? videoDuration : 0);
+
+            if (!hasAutoPlayedRef.current) {
+              hasAutoPlayedRef.current = true;
+              setIsMuted(true);
+              event.target.setVolume?.(0);
+              event.target.mute?.();
+              event.target.playVideo?.();
+              setAreVideoControlsVisible(false);
+            }
           },
           onStateChange: (event) => {
             const playingState = 1;
@@ -491,10 +754,12 @@ export default function HomePage() {
 
             if (event.data === playingState) {
               setIsPlaying(true);
+              setAreVideoControlsVisible(false);
             }
 
             if (event.data === pausedState || event.data === endedState) {
               setIsPlaying(false);
+              setAreVideoControlsVisible(true);
             }
           },
         },
@@ -530,6 +795,19 @@ export default function HomePage() {
   useEffect(() => {
     if (!isYouTubeDemo || !youtubePlayerRef.current) return;
 
+    const normalizedVolume = Math.round(Math.min(1, Math.max(0, volumeLevel)) * 100);
+    youtubePlayerRef.current.setVolume?.(normalizedVolume);
+
+    if (isMuted || normalizedVolume <= 0) {
+      youtubePlayerRef.current.mute?.();
+    } else {
+      youtubePlayerRef.current.unMute?.();
+    }
+  }, [isMuted, isYouTubeDemo, volumeLevel]);
+
+  useEffect(() => {
+    if (!isYouTubeDemo || !youtubePlayerRef.current) return;
+
     const tick = window.setInterval(() => {
       const player = youtubePlayerRef.current;
       if (!player) return;
@@ -551,21 +829,6 @@ export default function HomePage() {
     };
   }, [isYouTubeDemo, isPlaying]);
 
-  useEffect(() => {
-    if (!isPlaying) {
-      clearHideControlsTimer();
-      return;
-    }
-
-    scheduleHideControls();
-  }, [isPlaying, scheduleHideControls, clearHideControlsTimer]);
-
-  useEffect(() => {
-    return () => {
-      clearHideControlsTimer();
-    };
-  }, [clearHideControlsTimer]);
-
   const togglePreviewPlayback = async () => {
     revealVideoControls();
 
@@ -574,6 +837,7 @@ export default function HomePage() {
         youtubePlayerRef.current.pauseVideo?.();
       } else {
         youtubePlayerRef.current.playVideo?.();
+        setAreVideoControlsVisible(false);
       }
       return;
     }
@@ -584,6 +848,7 @@ export default function HomePage() {
     if (videoEl.paused) {
       try {
         await videoEl.play();
+        setAreVideoControlsVisible(false);
       } catch {
         setIsPlaying(false);
       }
@@ -605,6 +870,48 @@ export default function HomePage() {
       return;
     }
 
+    if (isMultipartDemo && previewTotalDuration > 0) {
+      const targetGlobalTime = (clampedPercent / 100) * previewTotalDuration;
+
+      let targetPartIndex = previewPartSources.length - 1;
+      for (let index = 0; index < previewPartSources.length; index += 1) {
+        const startOffset = previewPartOffsets[index] || 0;
+        const endOffset =
+          index === previewPartSources.length - 1
+            ? previewTotalDuration
+            : previewPartOffsets[index + 1] || previewTotalDuration;
+
+        if (targetGlobalTime >= startOffset && targetGlobalTime <= endOffset) {
+          targetPartIndex = index;
+          break;
+        }
+      }
+
+      const targetLocalTime = Math.max(0, targetGlobalTime - (previewPartOffsets[targetPartIndex] || 0));
+
+      if (targetPartIndex !== previewPartIndex) {
+        setPreviewPartIndex(targetPartIndex);
+        requestAnimationFrame(() => {
+          const nextVideoEl = videoRef.current;
+          if (!nextVideoEl) return;
+          nextVideoEl.currentTime = targetLocalTime;
+          if (isPlaying) {
+            nextVideoEl.play().catch(() => {
+              setIsPlaying(false);
+            });
+          }
+        });
+      } else {
+        const currentVideoEl = videoRef.current;
+        if (currentVideoEl) {
+          currentVideoEl.currentTime = targetLocalTime;
+        }
+      }
+
+      setCurrentTime(targetGlobalTime);
+      return;
+    }
+
     const videoEl = videoRef.current;
     if (!videoEl || !Number.isFinite(videoEl.duration) || videoEl.duration <= 0) return;
 
@@ -612,11 +919,72 @@ export default function HomePage() {
     setCurrentTime(videoEl.currentTime);
   };
 
-  const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
+  const handleVolumeChange = (nextPercent: number) => {
+    revealVideoControls();
+
+    const clampedPercent = Math.min(100, Math.max(0, nextPercent));
+    const nextVolume = clampedPercent / 100;
+    const shouldMute = nextVolume <= 0;
+
+    if (!shouldMute) {
+      lastNonZeroVolumeRef.current = nextVolume;
+    }
+
+    setVolumeLevel(nextVolume);
+    setIsMuted(shouldMute);
+
+    if (isYouTubeDemo && youtubePlayerRef.current) {
+      youtubePlayerRef.current.setVolume?.(Math.round(nextVolume * 100));
+      if (shouldMute) {
+        youtubePlayerRef.current.mute?.();
+      } else {
+        youtubePlayerRef.current.unMute?.();
+      }
+      return;
+    }
+
+    const videoEl = videoRef.current;
+    if (!videoEl) return;
+    videoEl.volume = nextVolume;
+    videoEl.muted = shouldMute;
+  };
+
+  const toggleMute = () => {
+    revealVideoControls();
+
+    const shouldEnableAudio = isMuted || volumeLevel <= 0;
+
+    if (shouldEnableAudio) {
+      const restoredVolume = Math.max(lastNonZeroVolumeRef.current, 0.1);
+      setVolumeLevel(restoredVolume);
+      setIsMuted(false);
+
+      if (isYouTubeDemo && youtubePlayerRef.current) {
+        youtubePlayerRef.current.setVolume?.(Math.round(restoredVolume * 100));
+        youtubePlayerRef.current.unMute?.();
+      } else if (videoRef.current) {
+        videoRef.current.volume = restoredVolume;
+        videoRef.current.muted = false;
+      }
+
+      return;
+    }
+
+    setIsMuted(true);
+
+    if (isYouTubeDemo && youtubePlayerRef.current) {
+      youtubePlayerRef.current.mute?.();
+    } else if (videoRef.current) {
+      videoRef.current.muted = true;
+    }
+  };
+
+  const effectivePlaybackDuration = isYouTubeDemo ? duration : Math.max(duration, previewTotalDuration);
+  const progressPercent = effectivePlaybackDuration > 0 ? (currentTime / effectivePlaybackDuration) * 100 : 0;
+  const volumePercent = Math.round((isMuted ? 0 : volumeLevel) * 100);
   const previewTitle = demoVideo?.title || "Anatomie de l'Oreille Moyenne";
   const previewSubspecialty = formatSubspecialtyLabel(demoVideo?.subspecialty);
-  const previewDurationLabel = formatDemoDurationLabel(demoVideo);
-  const previewVideoUrl = demoVideo?.url || FALLBACK_DEMO_VIDEO_URL;
+  const previewDurationLabel = formatDemoDurationLabel(demoVideo, effectivePlaybackDuration);
   const { scrollYProgress } = useScroll();
   const scrollProgressX = useSpring(scrollYProgress, {
     stiffness: 130,
@@ -1015,7 +1383,7 @@ export default function HomePage() {
       <div id="demo-section" className="relative py-24 overflow-hidden" style={{ background: 'linear-gradient(180deg, color-mix(in oklab, var(--app-surface) 92%, var(--app-bg) 8%) 0%, color-mix(in oklab, var(--app-surface-alt) 76%, var(--app-accent) 24%) 100%)' }}>
         <div className="absolute inset-0 opacity-35" style={{ background: 'radial-gradient(circle at 20% 20%, color-mix(in oklab, var(--app-accent) 22%, transparent) 0%, transparent 45%), radial-gradient(circle at 80% 60%, color-mix(in oklab, var(--app-accent) 16%, transparent) 0%, transparent 45%)' }} />
         <div className="container mx-auto px-4">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
+          <div className="grid grid-cols-1 lg:grid-cols-[0.95fr_1.05fr] gap-16 items-center">
             <div>
               <h2 className="text-3xl md:text-4xl font-bold text-slate-900 mb-6">Une pédagogie conçue pour la rétention et la performance</h2>
               <p className="text-lg text-slate-600 mb-8">Chaque leçon active plusieurs formats pour ancrer le savoir, vérifier la compréhension et accélérer la prise de décision clinique.</p>
@@ -1047,9 +1415,14 @@ export default function HomePage() {
                 whileInView={{ opacity: 1, x: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.55 }}
-                className="aspect-square md:aspect-[4/3] rounded-3xl overflow-hidden shadow-2xl relative"
+                className={`aspect-video rounded-3xl overflow-hidden shadow-2xl relative ${isPlaying && !areVideoControlsVisible ? 'cursor-none' : 'cursor-default'}`}
                 onMouseMove={revealVideoControls}
                 onMouseEnter={revealVideoControls}
+                onMouseLeave={() => {
+                  if (!isPlaying) return;
+                  clearHideControlsTimer();
+                  setAreVideoControlsVisible(false);
+                }}
               >
                 <div className="absolute inset-0 z-10" onMouseMove={revealVideoControls} onMouseEnter={revealVideoControls} onClick={togglePreviewPlayback} />
                 {isYouTubeDemo ? (
@@ -1061,19 +1434,29 @@ export default function HomePage() {
                     ref={videoRef}
                     key={previewVideoUrl}
                     src={previewVideoUrl}
-                    className="h-full w-full object-cover"
+                    className="h-full w-full object-contain bg-black"
                     playsInline
                     preload="metadata"
                     onClick={togglePreviewPlayback}
                   />
                 )}
                 <motion.div
-                  className="absolute inset-0 z-20 bg-gradient-to-t from-slate-900/60 to-transparent flex items-end p-8"
+                  className="absolute inset-0 z-20 flex items-end p-8"
                   animate={{ opacity: areVideoControlsVisible ? 1 : 0, y: areVideoControlsVisible ? 0 : 28 }}
                   transition={{ duration: 0.3, ease: 'easeOut' }}
-                  style={{ pointerEvents: areVideoControlsVisible ? 'auto' : 'none' }}
+                  style={{
+                    pointerEvents: areVideoControlsVisible ? 'auto' : 'none',
+                    background: 'var(--demo-video-overlay)',
+                  }}
                 >
-                  <div className="bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl p-6 text-white w-full">
+                  <div
+                    className="backdrop-blur-md border rounded-2xl p-6 w-full"
+                    style={{
+                      backgroundColor: 'var(--demo-video-card-bg)',
+                      borderColor: 'var(--demo-video-card-border)',
+                      color: 'var(--demo-video-title)',
+                    }}
+                  >
                     <div className="flex items-center gap-4 mb-4">
                       <button
                         type="button"
@@ -1082,25 +1465,32 @@ export default function HomePage() {
                         className="w-12 h-12 rounded-full flex items-center justify-center transition-transform hover:scale-105"
                         style={{ backgroundColor: 'var(--app-accent)' }}
                       >
-                        {isPlaying ? <Pause className="h-6 w-6 text-white" /> : <PlayCircle className="h-6 w-6 text-white" />}
+                        {isPlaying ? (
+                          <Pause className="h-6 w-6" style={{ color: 'var(--app-accent-contrast)' }} />
+                        ) : (
+                          <PlayCircle className="h-6 w-6" style={{ color: 'var(--app-accent-contrast)' }} />
+                        )}
                       </button>
                       <div>
-                        <p className="font-semibold">{previewTitle}</p>
+                        <p className="font-semibold" style={{ color: 'var(--demo-video-title)' }}>{previewTitle}</p>
                         <p
                           className="text-sm"
-                          style={{ color: 'color-mix(in oklab, #ffffff 86%, var(--app-accent) 14%)' }}
+                          style={{ color: 'var(--demo-video-subtitle)' }}
                         >
                           Module {previewSubspecialty} • {previewDurationLabel}
                         </p>
                       </div>
                     </div>
                     <div className="space-y-2">
-                      <div className="w-full bg-white/20 rounded-full h-2 relative overflow-hidden">
+                      <div
+                        className="w-full rounded-full h-2 relative"
+                        style={{ backgroundColor: 'var(--demo-video-track-bg)' }}
+                      >
                         <div
                           className="h-2 rounded-full"
                           style={{
                             width: `${progressPercent}%`,
-                            backgroundColor: 'color-mix(in oklab, var(--app-accent) 72%, #f6e5d2 28%)',
+                            backgroundColor: 'var(--demo-video-track-fill)',
                           }}
                         />
                         <input
@@ -1111,15 +1501,46 @@ export default function HomePage() {
                           value={progressPercent}
                           onChange={(event) => handleSeek(Number(event.target.value))}
                           aria-label="Contrôle de progression vidéo"
-                          className="absolute inset-0 h-2 w-full cursor-pointer opacity-0"
+                          className="absolute inset-0 h-2 w-full cursor-pointer demo-video-seek"
                         />
                       </div>
-                      <div
-                        className="flex items-center justify-between text-xs"
-                        style={{ color: 'color-mix(in oklab, #ffffff 92%, var(--app-accent) 8%)' }}
-                      >
-                        <span>{formatClock(currentTime)}</span>
-                        <span>{formatClock(duration)}</span>
+                      <div className="flex items-center justify-between gap-4">
+                        <div
+                          className="flex items-center gap-3 text-xs"
+                          style={{ color: 'var(--demo-video-time)' }}
+                        >
+                          <span>{formatClock(currentTime)}</span>
+                          <span>•</span>
+                          <span>{formatClock(effectivePlaybackDuration)}</span>
+                        </div>
+                        <div className="flex items-center gap-2 min-w-[132px]">
+                          <button
+                            type="button"
+                            onClick={toggleMute}
+                            aria-label={isMuted || volumePercent === 0 ? 'Activer le son' : 'Couper le son'}
+                            className="h-8 w-8 rounded-full border flex items-center justify-center transition-colors"
+                            style={{
+                              borderColor: 'color-mix(in oklab, var(--demo-video-card-border) 78%, transparent)',
+                              backgroundColor: 'color-mix(in oklab, var(--demo-video-card-bg) 82%, transparent)',
+                              color: 'var(--demo-video-time)',
+                            }}
+                          >
+                            {isMuted || volumePercent === 0 ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+                          </button>
+                          <input
+                            type="range"
+                            min={0}
+                            max={100}
+                            step={1}
+                            value={volumePercent}
+                            onChange={(event) => handleVolumeChange(Number(event.target.value))}
+                            aria-label="Contrôle du volume"
+                            className="demo-video-volume w-full"
+                            style={{
+                              background: `linear-gradient(90deg, var(--demo-video-track-fill) 0%, var(--demo-video-track-fill) ${volumePercent}%, var(--demo-video-track-bg) ${volumePercent}%, var(--demo-video-track-bg) 100%)`,
+                            }}
+                          />
+                        </div>
                       </div>
                     </div>
                   </div>

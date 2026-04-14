@@ -144,6 +144,17 @@ html[data-theme='light'] {
   --hero-panel-bg: color-mix(in oklab, var(--app-surface) 26%, transparent);
   --hero-panel-border: color-mix(in oklab, var(--app-accent) 22%, transparent);
   --hero-stat-bg: color-mix(in oklab, var(--app-surface) 30%, transparent);
+  --demo-video-overlay: linear-gradient(180deg, color-mix(in oklab, var(--app-deep-surface) 66%, transparent) 0%, transparent 62%);
+  --demo-video-card-bg: color-mix(in oklab, var(--app-deep-surface) 38%, transparent);
+  --demo-video-card-border: color-mix(in oklab, var(--app-deep-text) 26%, transparent);
+  --demo-video-title: color-mix(in oklab, var(--app-deep-text) 98%, white 2%);
+  --demo-video-subtitle: color-mix(in oklab, var(--app-deep-text) 84%, var(--app-accent) 16%);
+  --demo-video-track-bg: color-mix(in oklab, var(--app-deep-text) 28%, transparent);
+  --demo-video-track-fill: color-mix(in oklab, var(--app-accent) 78%, #f6e5d2 22%);
+  --demo-video-time: color-mix(in oklab, var(--app-deep-text) 90%, var(--app-accent) 10%);
+  --demo-video-thumb: color-mix(in oklab, var(--app-accent) 88%, #fff 12%);
+  --demo-video-thumb-border: color-mix(in oklab, var(--app-deep-text) 86%, transparent);
+  --demo-video-thumb-ring: color-mix(in oklab, var(--app-accent) 42%, transparent);
 
   --footer-bg-start: rgba(255, 250, 242, 0.24);
   --footer-bg-end: rgba(176, 103, 62, 0.2);
@@ -197,6 +208,17 @@ html[data-theme='dark'] {
   --hero-panel-bg: color-mix(in oklab, var(--app-accent) 12%, rgba(255, 255, 255, 0.08));
   --hero-panel-border: color-mix(in oklab, var(--app-accent) 30%, rgba(255, 255, 255, 0.28));
   --hero-stat-bg: rgba(0, 0, 0, 0.28);
+  --demo-video-overlay: linear-gradient(180deg, rgba(0, 0, 0, 0.72) 0%, rgba(0, 0, 0, 0.1) 62%);
+  --demo-video-card-bg: color-mix(in oklab, var(--app-deep-surface) 52%, transparent);
+  --demo-video-card-border: color-mix(in oklab, var(--app-deep-text) 32%, transparent);
+  --demo-video-title: color-mix(in oklab, var(--app-deep-text) 94%, #ffffff 6%);
+  --demo-video-subtitle: color-mix(in oklab, var(--app-deep-text) 80%, var(--app-accent) 20%);
+  --demo-video-track-bg: color-mix(in oklab, var(--app-deep-text) 26%, transparent);
+  --demo-video-track-fill: color-mix(in oklab, var(--app-accent) 76%, var(--app-deep-text) 24%);
+  --demo-video-time: color-mix(in oklab, var(--app-deep-text) 88%, var(--app-accent) 12%);
+  --demo-video-thumb: color-mix(in oklab, var(--app-accent) 82%, var(--app-deep-text) 18%);
+  --demo-video-thumb-border: color-mix(in oklab, var(--app-deep-text) 82%, transparent);
+  --demo-video-thumb-ring: color-mix(in oklab, var(--app-accent) 48%, transparent);
 
   --footer-bg-start: #18120d;
   --footer-bg-end: #2b1f17;
@@ -215,6 +237,103 @@ html[data-theme='dark'] {
 html[data-theme='light'] .bg-white,
 html[data-theme='dark'] .bg-white {
   background-color: var(--app-surface) !important;
+}
+
+.demo-video-seek {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+}
+
+.demo-video-seek:focus {
+  outline: none;
+}
+
+.demo-video-seek::-webkit-slider-runnable-track {
+  height: 0.5rem;
+  border-radius: 9999px;
+  background: transparent;
+}
+
+.demo-video-seek::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 0.85rem;
+  height: 0.85rem;
+  margin-top: -3px;
+  border-radius: 9999px;
+  background: var(--demo-video-thumb);
+  border: 2px solid var(--demo-video-thumb-border);
+  box-shadow: 0 0 0 3px var(--demo-video-thumb-ring);
+}
+
+.demo-video-seek::-moz-range-track {
+  height: 0.5rem;
+  border: none;
+  border-radius: 9999px;
+  background: transparent;
+}
+
+.demo-video-seek::-moz-range-thumb {
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 9999px;
+  background: var(--demo-video-thumb);
+  border: 2px solid var(--demo-video-thumb-border);
+  box-shadow: 0 0 0 3px var(--demo-video-thumb-ring);
+}
+
+.demo-video-seek::-moz-focus-outer {
+  border: 0;
+}
+
+.demo-video-volume {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 0.45rem;
+  border-radius: 9999px;
+}
+
+.demo-video-volume:focus {
+  outline: none;
+}
+
+.demo-video-volume::-webkit-slider-runnable-track {
+  height: 0.45rem;
+  border-radius: 9999px;
+  background: transparent;
+}
+
+.demo-video-volume::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 0.82rem;
+  height: 0.82rem;
+  margin-top: -2.8px;
+  border-radius: 9999px;
+  background: var(--demo-video-thumb);
+  border: 2px solid var(--demo-video-thumb-border);
+  box-shadow: 0 0 0 3px var(--demo-video-thumb-ring);
+}
+
+.demo-video-volume::-moz-range-track {
+  height: 0.45rem;
+  border: none;
+  border-radius: 9999px;
+  background: transparent;
+}
+
+.demo-video-volume::-moz-range-thumb {
+  width: 0.82rem;
+  height: 0.82rem;
+  border-radius: 9999px;
+  background: var(--demo-video-thumb);
+  border: 2px solid var(--demo-video-thumb-border);
+  box-shadow: 0 0 0 3px var(--demo-video-thumb-ring);
+}
+
+.demo-video-volume::-moz-focus-outer {
+  border: 0;
 }
 
 html[data-theme='light'] .bg-slate-50,
