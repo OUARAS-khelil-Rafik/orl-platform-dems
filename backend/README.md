@@ -24,7 +24,7 @@ Backend runs on `http://localhost:4000` by default.
 - `POST /api/auth/change-password`
 - `POST /api/auth/admin-create` (admin)
 - `DELETE /api/auth/users/:uid`
-- `POST /api/auth/seed-demo`
+- `POST /api/auth/seed-demo` (initialise uniquement les comptes admin depuis `INITIAL_ADMIN_ACCOUNTS` dans `.env`)
 - `POST /api/data/query`
 - `GET /api/data/:collection`
 - `GET /api/data/:collection/:id`

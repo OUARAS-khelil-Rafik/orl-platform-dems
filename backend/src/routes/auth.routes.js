@@ -8,27 +8,62 @@ import { adminRequired, authRequired } from '../middleware/auth.js';
 
 const router = express.Router();
 
-const INITIAL_ADMIN_DEFAULT_PASSWORD = process.env.INITIAL_ADMIN_DEFAULT_PASSWORD || 'Admin123!';
+const parseInitialAdminAccountsFromEnv = () => {
+  const raw = String(process.env.INITIAL_ADMIN_ACCOUNTS || '').trim();
 
-const INITIAL_ADMIN_ACCOUNTS = [
-  {
-    email: 'kikoouaras@gmail.com',
-    displayName: 'OUARAS Khelil rafik',
-    phoneNumber: '0660496144',
-  },
-  {
-    email: 'histologieprincess@gmail.com',
-    displayName: 'OUARAS Ryma',
-    phoneNumber: '',
-  },
-];
+  if (!raw) {
+    return {
+      accounts: [],
+      error: 'Missing INITIAL_ADMIN_ACCOUNTS in .env.',
+    };
+  }
 
-const LEGACY_DEMO_EMAILS = [
-  'admin@dems.local',
-  'user@dems.local',
-  'vip@dems.local',
-  'vipplus@dems.local',
-];
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return {
+      accounts: [],
+      error: 'INITIAL_ADMIN_ACCOUNTS must be a valid JSON array.',
+    };
+  }
+
+  if (!Array.isArray(parsed)) {
+    return {
+      accounts: [],
+      error: 'INITIAL_ADMIN_ACCOUNTS must be a JSON array.',
+    };
+  }
+
+  const accounts = parsed
+    .map((account) => ({
+      email: String(account?.email || '').trim().toLowerCase(),
+      displayName: String(account?.displayName || 'Administrateur').trim() || 'Administrateur',
+      phoneNumber: String(account?.phoneNumber || '').trim(),
+      initialPassword: String(account?.initialPassword || '').trim(),
+    }))
+    .filter((account) => account.email.length > 0);
+
+  if (accounts.length === 0) {
+    return {
+      accounts: [],
+      error: 'INITIAL_ADMIN_ACCOUNTS does not contain any valid email.',
+    };
+  }
+
+  const hasWeakPassword = accounts.some((account) => account.initialPassword.length < 6);
+  if (hasWeakPassword) {
+    return {
+      accounts: [],
+      error: 'Each INITIAL_ADMIN_ACCOUNTS entry must contain an initialPassword with at least 6 characters.',
+    };
+  }
+
+  return {
+    accounts,
+    error: '',
+  };
+};
 
 const toSessionUser = (user) => ({
   uid: user.uid,
@@ -231,16 +266,18 @@ router.delete('/users/:uid', authRequired, async (req, res) => {
 
 router.post('/seed-demo', async (_req, res) => {
   try {
-    const normalizedLegacyEmails = LEGACY_DEMO_EMAILS.map((email) => email.toLowerCase());
-    const removedLegacyResult = await User.deleteMany({
-      email: { $in: normalizedLegacyEmails },
-    });
+    const { accounts: initialAdminAccounts, error } = parseInitialAdminAccountsFromEnv();
+
+    if (error) {
+      return res.status(500).json({ message: error });
+    }
 
     const created = [];
     const updated = [];
 
-    for (const account of INITIAL_ADMIN_ACCOUNTS) {
+    for (const account of initialAdminAccounts) {
       const normalizedEmail = String(account.email || '').trim().toLowerCase();
+
       if (!normalizedEmail) {
         continue;
       }
@@ -249,7 +286,7 @@ router.post('/seed-demo', async (_req, res) => {
       if (!existing) {
         const createdUser = await createUserWithPassword({
           email: normalizedEmail,
-          password: INITIAL_ADMIN_DEFAULT_PASSWORD,
+          password: account.initialPassword,
           displayName: account.displayName,
           role: 'admin',
           subscriptionApprovalStatus: 'none',
@@ -291,10 +328,9 @@ router.post('/seed-demo', async (_req, res) => {
       ok: true,
       created,
       updated,
-      removedLegacyCount: Number(removedLegacyResult?.deletedCount || 0),
     });
   } catch {
-    return res.status(500).json({ message: 'Unable to seed demo accounts.' });
+    return res.status(500).json({ message: 'Unable to seed admin accounts.' });
   }
 });
 

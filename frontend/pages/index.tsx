@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, useScroll, useSpring } from 'motion/react';
 import Link from 'next/link';
 import {
@@ -323,6 +323,7 @@ export default function HomePage() {
   const [previewPartDurations, setPreviewPartDurations] = useState<number[]>([]);
   const [areVideoControlsVisible, setAreVideoControlsVisible] = useState(true);
   const [unfinishedVideos, setUnfinishedVideos] = useState<UnfinishedVideoItem[]>([]);
+  const [isSupportRequestSubmitted, setIsSupportRequestSubmitted] = useState(false);
   const lastNonZeroVolumeRef = useRef(0.8);
   const hideControlsTimeoutRef = useRef<number | null>(null);
   const hasAutoPlayedRef = useRef(false);
@@ -977,6 +978,12 @@ export default function HomePage() {
     } else if (videoRef.current) {
       videoRef.current.muted = true;
     }
+  };
+
+  const handleSupportRequestSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    event.currentTarget.reset();
+    setIsSupportRequestSubmitted(true);
   };
 
   const effectivePlaybackDuration = isYouTubeDemo ? duration : Math.max(duration, previewTotalDuration);
@@ -1644,6 +1651,185 @@ export default function HomePage() {
           </div>
         </div>
       ) : null}
+
+      <div id="support-contact" className="relative pb-24 pt-6">
+        <div className="container mx-auto px-4">
+          <motion.div
+            initial={{ opacity: 0, y: 24 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.55 }}
+            className="relative overflow-hidden rounded-3xl border"
+            style={{
+              borderColor: 'color-mix(in oklab, var(--app-accent) 30%, var(--app-border) 70%)',
+              background: 'linear-gradient(140deg, color-mix(in oklab, var(--app-surface) 96%, white 4%) 0%, color-mix(in oklab, var(--app-surface-alt) 76%, var(--app-accent) 24%) 100%)',
+              boxShadow: 'var(--shadow-elevated)',
+            }}
+          >
+            <div className="absolute -right-20 -top-20 h-64 w-64 rounded-full blur-3xl" style={{ background: 'color-mix(in oklab, var(--app-accent) 26%, transparent)' }} />
+            <div className="absolute -bottom-16 -left-14 h-56 w-56 rounded-full blur-3xl" style={{ background: 'color-mix(in oklab, var(--app-accent) 18%, transparent)' }} />
+
+            <div className="relative grid grid-cols-1 lg:grid-cols-[0.9fr_1.1fr]">
+              <div
+                className="p-8 md:p-10"
+                style={{
+                  borderRight: '1px solid color-mix(in oklab, var(--app-accent) 20%, var(--app-border) 80%)',
+                  background: 'linear-gradient(160deg, color-mix(in oklab, var(--hero-bg-start) 88%, transparent 12%) 0%, color-mix(in oklab, var(--hero-bg-end) 76%, var(--app-accent) 24%) 100%)',
+                }}
+              >
+                <span
+                  className="inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em]"
+                  style={{
+                    color: 'var(--hero-title)',
+                    borderColor: 'var(--hero-chip-border)',
+                    backgroundColor: 'var(--hero-chip-bg)',
+                  }}
+                >
+                  Assistance et support
+                </span>
+
+                <h2 className="mt-4 text-3xl font-bold leading-tight" style={{ color: 'var(--hero-title)' }}>
+                  Un probleme technique ou une question ?
+                </h2>
+                <p className="mt-3 text-base leading-relaxed" style={{ color: 'var(--hero-body)' }}>
+                  Remplissez ce formulaire et notre equipe vous repondra rapidement avec une solution claire.
+                </p>
+
+                <div className="mt-8 space-y-4">
+                  <div className="rounded-2xl border px-4 py-3" style={{ borderColor: 'color-mix(in oklab, var(--hero-chip-border) 74%, transparent)' }}>
+                    <p className="text-sm font-semibold" style={{ color: 'var(--hero-title)' }}>Demandes traitees</p>
+                    <p className="text-xs" style={{ color: 'var(--hero-body)' }}>Probleme technique, compte, paiement, contenu, suggestion.</p>
+                  </div>
+                  <div className="rounded-2xl border px-4 py-3" style={{ borderColor: 'color-mix(in oklab, var(--hero-chip-border) 74%, transparent)' }}>
+                    <p className="text-sm font-semibold" style={{ color: 'var(--hero-title)' }}>Canal prioritaire</p>
+                    <p className="text-xs" style={{ color: 'var(--hero-body)' }}>Support centralise pour garder un suivi clair de chaque demande.</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-8 md:p-10">
+                <form className="space-y-5" onSubmit={handleSupportRequestSubmit}>
+                  <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+                    <label className="block">
+                      <span className="mb-2 block text-sm font-semibold" style={{ color: 'var(--app-text)' }}>
+                        Nom complet
+                      </span>
+                      <input
+                        type="text"
+                        name="fullName"
+                        required
+                        placeholder="Ex: Dr. Ahmed Benali"
+                        className="w-full rounded-xl border px-4 py-3 text-sm transition outline-none"
+                        style={{
+                          color: 'var(--app-text)',
+                          borderColor: 'color-mix(in oklab, var(--app-accent) 24%, var(--app-border) 76%)',
+                          backgroundColor: 'color-mix(in oklab, var(--app-surface) 96%, white 4%)',
+                        }}
+                        onChange={() => setIsSupportRequestSubmitted(false)}
+                      />
+                    </label>
+
+                    <label className="block">
+                      <span className="mb-2 block text-sm font-semibold" style={{ color: 'var(--app-text)' }}>
+                        Email
+                      </span>
+                      <input
+                        type="email"
+                        name="email"
+                        required
+                        placeholder="nom@exemple.com"
+                        className="w-full rounded-xl border px-4 py-3 text-sm transition outline-none"
+                        style={{
+                          color: 'var(--app-text)',
+                          borderColor: 'color-mix(in oklab, var(--app-accent) 24%, var(--app-border) 76%)',
+                          backgroundColor: 'color-mix(in oklab, var(--app-surface) 96%, white 4%)',
+                        }}
+                        onChange={() => setIsSupportRequestSubmitted(false)}
+                      />
+                    </label>
+                  </div>
+
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-semibold" style={{ color: 'var(--app-text)' }}>
+                      Type de demande
+                    </span>
+                    <select
+                      name="requestType"
+                      required
+                      defaultValue="probleme-technique"
+                      className="w-full rounded-xl border px-4 py-3 text-sm transition outline-none"
+                      style={{
+                        color: 'var(--app-text)',
+                        borderColor: 'color-mix(in oklab, var(--app-accent) 24%, var(--app-border) 76%)',
+                        backgroundColor: 'color-mix(in oklab, var(--app-surface) 96%, white 4%)',
+                      }}
+                      onChange={() => setIsSupportRequestSubmitted(false)}
+                    >
+                      <option value="probleme-technique">Probleme technique</option>
+                      <option value="compte-acces">Compte et acces</option>
+                      <option value="abonnement-paiement">Abonnement et paiement</option>
+                      <option value="contenu-pedagogique">Contenu pedagogique</option>
+                      <option value="suggestion">Suggestion d'amelioration</option>
+                      <option value="autre">Autre demande</option>
+                    </select>
+                  </label>
+
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-semibold" style={{ color: 'var(--app-text)' }}>
+                      Votre message
+                    </span>
+                    <textarea
+                      name="message"
+                      required
+                      rows={6}
+                      placeholder="Decrivez clairement votre probleme ou votre demande..."
+                      className="w-full resize-none rounded-xl border px-4 py-3 text-sm leading-relaxed transition outline-none"
+                      style={{
+                        color: 'var(--app-text)',
+                        borderColor: 'color-mix(in oklab, var(--app-accent) 24%, var(--app-border) 76%)',
+                        backgroundColor: 'color-mix(in oklab, var(--app-surface) 96%, white 4%)',
+                      }}
+                      onChange={() => setIsSupportRequestSubmitted(false)}
+                    />
+                  </label>
+
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <button
+                      type="submit"
+                      className="inline-flex items-center justify-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold transition-all hover:translate-y-[-1px]"
+                      style={{
+                        backgroundColor: 'var(--app-accent)',
+                        color: 'var(--app-accent-contrast)',
+                        boxShadow: '0 12px 24px color-mix(in oklab, var(--app-accent) 28%, transparent)',
+                      }}
+                    >
+                      Envoyer la demande
+                      <ArrowRight className="h-4 w-4" />
+                    </button>
+
+                    <p className="text-xs" style={{ color: 'var(--app-muted)' }}>
+                      Pour une urgence: kh.ouaras@univ-alger.dz
+                    </p>
+                  </div>
+
+                  {isSupportRequestSubmitted ? (
+                    <p
+                      className="rounded-xl border px-4 py-3 text-sm font-medium"
+                      style={{
+                        color: 'color-mix(in oklab, var(--app-success) 82%, var(--app-text) 18%)',
+                        borderColor: 'color-mix(in oklab, var(--app-success) 36%, var(--app-border) 64%)',
+                        backgroundColor: 'color-mix(in oklab, var(--app-success) 10%, var(--app-surface) 90%)',
+                      }}
+                    >
+                      Merci, votre demande a bien ete enregistree. Nous revenons vers vous rapidement.
+                    </p>
+                  ) : null}
+                </form>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      </div>
     </div>
   );
 }
