@@ -1021,6 +1021,24 @@ html[data-theme='dark'] .from-slate-900\/60 {
     border-color: color-mix(in oklab, var(--app-accent) 36%, var(--app-border) 64%);
   }
 
+  .purchase-badge--specialty-otologie {
+    background-color: var(--specialty-otology-bg);
+    color: var(--specialty-otology);
+    border-color: color-mix(in oklab, var(--specialty-otology) 38%, var(--app-border) 62%);
+  }
+
+  .purchase-badge--specialty-rhinologie {
+    background-color: var(--specialty-rhinology-bg);
+    color: var(--specialty-rhinology);
+    border-color: color-mix(in oklab, var(--specialty-rhinology) 38%, var(--app-border) 62%);
+  }
+
+  .purchase-badge--specialty-laryngologie {
+    background-color: var(--specialty-laryngology-bg);
+    color: var(--specialty-laryngology);
+    border-color: color-mix(in oklab, var(--specialty-laryngology) 38%, var(--app-border) 62%);
+  }
+
   /* Dark-mode overrides */
   html[data-theme='dark'] .purchase-badge--duration {
     background-color: color-mix(in oklab, var(--app-deep-surface) 86%, rgba(255,255,255,0.02));
@@ -1032,6 +1050,24 @@ html[data-theme='dark'] .from-slate-900\/60 {
     background-color: color-mix(in oklab, var(--app-accent) 18%, var(--app-deep-surface) 82%);
     color: color-mix(in oklab, var(--app-accent) 86%, white 14%);
     border-color: color-mix(in oklab, var(--app-accent) 46%, var(--app-border) 54%);
+  }
+
+  html[data-theme='dark'] .purchase-badge--specialty-otologie {
+    background-color: color-mix(in oklab, var(--specialty-otology) 22%, var(--app-deep-surface) 78%);
+    color: color-mix(in oklab, var(--specialty-otology) 88%, white 12%);
+    border-color: color-mix(in oklab, var(--specialty-otology) 50%, var(--app-border) 50%);
+  }
+
+  html[data-theme='dark'] .purchase-badge--specialty-rhinologie {
+    background-color: color-mix(in oklab, var(--specialty-rhinology) 22%, var(--app-deep-surface) 78%);
+    color: color-mix(in oklab, var(--specialty-rhinology) 88%, white 12%);
+    border-color: color-mix(in oklab, var(--specialty-rhinology) 50%, var(--app-border) 50%);
+  }
+
+  html[data-theme='dark'] .purchase-badge--specialty-laryngologie {
+    background-color: color-mix(in oklab, var(--specialty-laryngology) 22%, var(--app-deep-surface) 78%);
+    color: color-mix(in oklab, var(--specialty-laryngology) 88%, white 12%);
+    border-color: color-mix(in oklab, var(--specialty-laryngology) 50%, var(--app-border) 50%);
   }
 
   /* Notification panel */

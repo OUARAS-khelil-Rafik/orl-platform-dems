@@ -173,9 +173,37 @@ const getVideoThumbnailUrl = (video: PurchasedVideoData, secondMark = 60) => {
 
 const VIDEO_THUMB_FALLBACK = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 640 360'><rect width='640' height='360' fill='%230f172a'/><circle cx='520' cy='80' r='120' fill='%231e293b'/><circle cx='130' cy='320' r='160' fill='%23334155'/></svg>";
 
-const formatSubspecialtyLabel = (sub?: string) => {
-  if (!sub || typeof sub !== 'string') return '';
-  return sub.charAt(0).toUpperCase() + sub.slice(1);
+const resolveSubspecialtyMeta = (sub?: string) => {
+  if (!sub || typeof sub !== 'string') {
+    return { label: '', tone: 'default' as const };
+  }
+
+  const trimmed = sub.trim();
+  if (!trimmed) {
+    return { label: '', tone: 'default' as const };
+  }
+
+  const normalized = trimmed
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+
+  if (normalized.includes('otolog')) {
+    return { label: 'Otologie', tone: 'otologie' as const };
+  }
+
+  if (normalized.includes('rhino') || normalized.includes('sinuso')) {
+    return { label: 'Rhinologie', tone: 'rhinologie' as const };
+  }
+
+  if (normalized.includes('laryngo') || normalized.includes('cervico')) {
+    return { label: 'Laryngologie', tone: 'laryngologie' as const };
+  }
+
+  return {
+    label: `${trimmed.charAt(0).toUpperCase()}${trimmed.slice(1)}`,
+    tone: 'default' as const,
+  };
 };
 
 const formatVideoDuration = (video: PurchasedVideoData): string => {
@@ -774,7 +802,7 @@ export default function CheckoutPage() {
                         const v = purchasedVideosById[videoId] || {};
                         const title = (v.title && String(v.title).trim()) || `Video ${videoId}`;
                         const durationLabel = formatVideoDuration(v);
-                        const subspecialtyLabel = formatSubspecialtyLabel(v.subspecialty || v.subspeciality || v.subspecialtyName);
+                        const subspecialtyMeta = resolveSubspecialtyMeta(v.subspecialty || v.subspeciality || v.subspecialtyName);
                         const isBlocked = blockedVideoIdSet.has(videoId);
                         const thumbnailUrl = getVideoThumbnailUrl(v);
 
@@ -818,9 +846,13 @@ export default function CheckoutPage() {
                                 <span>{durationLabel}</span>
                               </span>
 
-                              {subspecialtyLabel ? (
-                                <span className="purchase-badge purchase-badge--specialty inline-flex items-center gap-2">
-                                  <span>{subspecialtyLabel}</span>
+                              {subspecialtyMeta.label ? (
+                                <span
+                                  className={`purchase-badge purchase-badge--specialty inline-flex items-center gap-2${
+                                    subspecialtyMeta.tone === 'default' ? '' : ` purchase-badge--specialty-${subspecialtyMeta.tone}`
+                                  }`}
+                                >
+                                  <span>{subspecialtyMeta.label}</span>
                                 </span>
                               ) : null}
 

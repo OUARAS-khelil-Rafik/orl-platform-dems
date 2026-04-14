@@ -714,9 +714,6 @@ export default function SpecialtyPage() {
                 {filteredUnlockedCount} accessibles
               </span>
               <span className="inline-flex items-center rounded-full border px-3 py-1" style={{ backgroundColor: 'var(--hero-chip-bg)', borderColor: 'var(--hero-chip-border)', color: 'var(--hero-chip-text)' }}>
-                {filteredViewedCount} déjà vues
-              </span>
-              <span className="inline-flex items-center rounded-full border px-3 py-1" style={{ backgroundColor: 'var(--hero-chip-bg)', borderColor: 'var(--hero-chip-border)', color: 'var(--hero-chip-text)' }}>
                 {specialtyFavoriteCount} aimees
               </span>
               <span className="inline-flex items-center rounded-full border px-3 py-1" style={{ backgroundColor: 'var(--hero-chip-bg)', borderColor: 'var(--hero-chip-border)', color: 'var(--hero-chip-text)' }}>
@@ -803,9 +800,6 @@ export default function SpecialtyPage() {
                 </span>
                 <span className="inline-flex items-center rounded-full bg-emerald-50 border border-emerald-200 px-3 py-1 text-emerald-700">
                   {filteredVideos.filter((video) => video.isFreeDemo).length} démos
-                </span>
-                <span className="inline-flex items-center rounded-full bg-blue-50 border border-blue-200 px-3 py-1 text-blue-700">
-                  {filteredVideos.filter((video) => viewedVideoIds.includes(video.id)).length} déjà vues
                 </span>
                 <span className="inline-flex items-center rounded-full bg-medical-50 border border-medical-200 px-3 py-1 text-medical-700">
                   {filteredUnlockedCount} accessibles maintenant
