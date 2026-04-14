@@ -120,22 +120,22 @@ describe('Video detail page', () => {
       {
         id: 'open-1',
         videoId: 'video-1',
-        question: 'Question ouverte test',
+        question: 'QROC test',
         answer: 'Reponse ouverte test',
       },
     ];
     fixtures.diagrams = [];
   });
 
-  it('navigates between tabs including Questions Ouvertes', async () => {
+  it('navigates between tabs including QROC', async () => {
     render(<VideoPage />);
 
     await waitFor(() => expect(screen.getByText('Video Test')).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole('button', { name: /Questions Ouvertes/i }));
+    fireEvent.click(screen.getByRole('button', { name: /QROC/i }));
 
     await waitFor(() =>
-      expect(screen.getByText('Question ouverte test')).toBeInTheDocument(),
+      expect(screen.getByText('QROC test')).toBeInTheDocument(),
     );
     expect(screen.getByRole('button', { name: /Afficher la réponse/i })).toBeInTheDocument();
   });

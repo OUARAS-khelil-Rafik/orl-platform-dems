@@ -169,7 +169,7 @@ export function SearchModal({ isOpen, onClose }: { isOpen: boolean; onClose: () 
       case 'video': return 'Vidéo';
       case 'qcm': return 'QCM';
       case 'case': return 'Cas Clinique';
-      case 'open-question': return 'Question Ouverte';
+      case 'open-question': return 'QROC';
       case 'diagram': return 'Schéma';
       default: return 'Autre';
     }
@@ -262,7 +262,7 @@ export function SearchModal({ isOpen, onClose }: { isOpen: boolean; onClose: () 
                   type="text"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Rechercher des vidéos, QCMs, cas cliniques, questions ouvertes..."
+                  placeholder="Rechercher des vidéos, QCMs, cas cliniques, QROC..."
                   className="flex-1 bg-transparent border-0 outline-none focus:ring-0 appearance-none text-[var(--app-text)] placeholder:text-[var(--app-muted)] text-base sm:text-lg"
                 />
                 {loading && <Loader2 className="w-5 h-5 text-[var(--app-accent)] animate-spin" />}

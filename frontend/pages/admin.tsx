@@ -5,6 +5,7 @@ import { useAuth } from '@/components/providers/auth-provider';
 import {
   db,
   collection,
+  addDoc,
   getDocs,
   doc,
   updateDoc,
@@ -125,6 +126,14 @@ type AdminPayment = {
   status?: 'pending' | 'approved' | 'rejected';
   receiptUrl?: string;
   createdAt: string;
+};
+
+type UserNotificationPayload = {
+  userId: string;
+  type: 'video' | 'payment';
+  title: string;
+  description: string;
+  targetHref: string;
 };
 
 type DiscussionEntry = {
@@ -567,6 +576,38 @@ export default function AdminDashboard() {
     plan?: string,
   ) => {
     try {
+      const grantedVideoIds = (() => {
+        if (type === 'video' && typeof targetId === 'string' && targetId.trim().length > 0) {
+          return [targetId.trim()];
+        }
+
+        if (type === 'cart' && Array.isArray(items)) {
+          return Array.from(
+            new Set(
+              items
+                .filter((item) => item?.type === 'video' && typeof item.id === 'string' && item.id.trim().length > 0)
+                .map((item) => item.id.trim()),
+            ),
+          );
+        }
+
+        return [] as string[];
+      })();
+
+      const videoTitleById = new Map<string, string>();
+      if (Array.isArray(items)) {
+        items
+          .filter((item) => item?.type === 'video' && typeof item.id === 'string')
+          .forEach((item) => {
+            const id = item.id.trim();
+            if (!id) return;
+            const title = String(item.title || '').trim();
+            if (title.length > 0) {
+              videoTitleById.set(id, title);
+            }
+          });
+      }
+
       await updateDoc(doc(db, 'payments', paymentId), { status: 'approved' });
 
       const approvedAt = new Date();
@@ -680,6 +721,32 @@ export default function AdminDashboard() {
           return entry;
         }),
       );
+
+      if (grantedVideoIds.length > 0) {
+        await Promise.all(
+          grantedVideoIds.map(async (videoId) => {
+            const catalogTitle = String(videos.find((video) => video.id === videoId)?.title || '').trim();
+            const resolvedTitle = videoTitleById.get(videoId) || catalogTitle || `Video ${videoId}`;
+            const payload: UserNotificationPayload = {
+              userId,
+              type: 'payment',
+              title: 'Paiement video approuve',
+              description: `Votre paiement pour \"${resolvedTitle}\" a ete approuve.`,
+              targetHref: `/videos/${videoId}`,
+            };
+
+            try {
+              await addDoc(collection(db, 'notifications'), {
+                ...payload,
+                createdAt: new Date().toISOString(),
+              });
+            } catch (notificationError) {
+              console.error('Error creating payment approval notification:', notificationError);
+            }
+          }),
+        );
+      }
+
       alert('Paiement approuvé et accès débloqué.');
     } catch (error) {
       console.error('Error approving payment:', error);
@@ -888,11 +955,14 @@ export default function AdminDashboard() {
   const handleBlockVideoForUser = async (user: AdminUser, videoId: string) => {
     try {
       const blockedSet = new Set(user.blockedVideoIds || []);
-      if (blockedSet.has(videoId)) {
+      const wasBlocked = blockedSet.has(videoId);
+      if (wasBlocked) {
         blockedSet.delete(videoId);
       } else {
         blockedSet.add(videoId);
       }
+
+      const isNowBlocked = !wasBlocked;
       const blockedVideoIds = Array.from(blockedSet);
 
       await updateDoc(doc(db, 'users', user.id), {
@@ -909,6 +979,26 @@ export default function AdminDashboard() {
             : entry,
         ),
       );
+
+        const videoTitle = String(videos.find((video) => video.id === videoId)?.title || '').trim() || `Video ${videoId}`;
+        const payload: UserNotificationPayload = {
+          userId: user.id,
+          type: 'video',
+          title: isNowBlocked ? 'Video bloquee' : 'Video debloquee',
+          description: isNowBlocked
+            ? `L'admin a bloque votre acces a \"${videoTitle}\".`
+            : `L'admin a debloque votre acces a \"${videoTitle}\".`,
+          targetHref: `/videos/${videoId}`,
+        };
+
+        try {
+          await addDoc(collection(db, 'notifications'), {
+            ...payload,
+            createdAt: new Date().toISOString(),
+          });
+        } catch (notificationError) {
+          console.error('Error creating video block notification:', notificationError);
+        }
     } catch (error) {
       console.error('Error blocking video for user:', error);
       alert('Erreur lors du blocage de la video.');
@@ -924,6 +1014,7 @@ export default function AdminDashboard() {
 
     try {
       const purchasedSet = new Set(user.purchasedVideos || []);
+      const hadVideoAlready = purchasedSet.has(targetVideoId);
       purchasedSet.add(targetVideoId);
       const nextPurchasedVideos = Array.from(purchasedSet);
 
@@ -958,6 +1049,26 @@ export default function AdminDashboard() {
         ...prev,
         [user.id]: '',
       }));
+
+      if (!hadVideoAlready) {
+        const videoTitle = String(videos.find((video) => video.id === targetVideoId)?.title || '').trim() || `Video ${targetVideoId}`;
+        const payload: UserNotificationPayload = {
+          userId: user.id,
+          type: 'video',
+          title: 'Acces video ajoute',
+          description: `L'admin vous a donne l'acces a \"${videoTitle}\".`,
+          targetHref: `/videos/${targetVideoId}`,
+        };
+
+        try {
+          await addDoc(collection(db, 'notifications'), {
+            ...payload,
+            createdAt: new Date().toISOString(),
+          });
+        } catch (notificationError) {
+          console.error('Error creating added video notification:', notificationError);
+        }
+      }
     } catch (error) {
       console.error('Error adding video to user:', error);
       alert('Erreur lors de l ajout de la video.');
@@ -1294,7 +1405,7 @@ export default function AdminDashboard() {
           ? 'QCM'
           : meta?.kind === 'select'
             ? 'Selecteur'
-            : 'Question ouverte';
+            : 'QROC';
       return `Cas Clinique (${kindLabel} #${meta?.number ?? '?'})`;
     }
 
@@ -1303,7 +1414,7 @@ export default function AdminDashboard() {
     }
 
     if (entry.itemType === 'openQuestion') {
-      return `Questions Ouvertes (Question ouverte #${entry.itemId ? openQuestionNumberById.get(entry.itemId) ?? '?' : '?'})`;
+      return `QROC (QROC #${entry.itemId ? openQuestionNumberById.get(entry.itemId) ?? '?' : '?'})`;
     }
 
     if (entry.itemType === 'diagram') {

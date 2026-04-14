@@ -1043,7 +1043,7 @@ export default function HomePage() {
       icon: FileText,
     },
     {
-      title: 'QCM + Questions ouvertes',
+      title: 'QCM + QROC',
       desc: 'Évaluation active avec feedback immédiat.',
       icon: CheckCircle2,
     },
@@ -1057,7 +1057,7 @@ export default function HomePage() {
   const journey = [
     { step: '01', title: 'Choisissez votre spécialité', text: 'Otologie, Rhinologie ou Laryngologie selon votre priorité actuelle.' },
     { step: '02', title: 'Alternez cours et cas', text: 'Passez immédiatement de la théorie à la décision clinique.' },
-    { step: '03', title: 'Validez par évaluation active', text: 'QCM et questions ouvertes pour fixer les automatismes utiles.' },
+    { step: '03', title: 'Validez par évaluation active', text: 'QCM et QROC pour fixer les automatismes utiles.' },
     { step: '04', title: 'Consolidez avec les schémas', text: 'Repères visuels et anatomiques pour une rétention rapide.' },
   ];
 
@@ -1230,7 +1230,7 @@ export default function HomePage() {
                 <div>
                   <p className="text-xs uppercase tracking-[0.14em]" style={{ color: 'var(--app-muted)' }}>Continuer vos vidéos</p>
                   <h2 className="text-2xl md:text-3xl font-bold" style={{ color: 'var(--app-text)' }}>
-                    Listes des vidéos pas encore terminées
+                    Reprenez la lecture de vos contenus en cours
                   </h2>
                 </div>
                 <span className="text-sm font-semibold" style={{ color: 'color-mix(in oklab, var(--app-accent) 76%, var(--app-text) 24%)' }}>

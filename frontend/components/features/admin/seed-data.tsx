@@ -11,7 +11,7 @@ export function SeedDataButton() {
   const pedagogicalCollections = ['videos', 'clinicalCases', 'qcms', 'openQuestions', 'diagrams'] as const;
 
   const clearData = async () => {
-    if (!confirm('Voulez-vous vraiment SUPPRIMER TOUTES les données (vidéos, cas, QCM, questions ouvertes, schémas, paiements) ?')) return;
+    if (!confirm('Voulez-vous vraiment SUPPRIMER TOUTES les données (vidéos, cas, QCM, QROC, schémas, paiements) ?')) return;
     
     setIsClearing(true);
     try {
@@ -33,7 +33,7 @@ export function SeedDataButton() {
   };
 
   const seedData = async () => {
-    if (!confirm("Cette action va SUPPRIMER les contenus pédagogiques existants (vidéos, cas, QCM, questions ouvertes, schémas) puis recréer des données de test. Continuer ?")) return;
+    if (!confirm("Cette action va SUPPRIMER les contenus pédagogiques existants (vidéos, cas, QCM, QROC, schémas) puis recréer des données de test. Continuer ?")) return;
     
     setIsSeeding(true);
     try {
@@ -294,7 +294,7 @@ export function SeedDataButton() {
         await addDoc(collection(db, 'qcms'), qcm as any);
       }
 
-      // 4. Seed Open Questions (une ou plusieurs questions ouvertes par vidéo)
+      // 4. Seed Open Questions (un ou plusieurs QROC par vidéo)
       const openQuestions = [
         {
           videoId: videoRefs[0],

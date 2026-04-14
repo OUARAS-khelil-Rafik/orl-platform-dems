@@ -638,7 +638,7 @@ export default function VideoPage() {
     },
     {
       id: 'open',
-      label: 'Questions Ouvertes',
+      label: 'QROC',
       description: 'Entraînement rédactionnel avec réponses expertes.',
       icon: MessageSquare,
       count: openQuestions.length,
@@ -994,7 +994,7 @@ export default function VideoPage() {
                                                   ? 'QCM · Plusieurs réponses'
                                                   : kind === 'select'
                                                     ? 'Sélecteur · Une réponse'
-                                                    : 'Question ouverte'}
+                                                    : 'QROC'}
                                               </span>
                                               {validated && (
                                                 <div className="ml-auto flex items-center">
@@ -1666,7 +1666,7 @@ export default function VideoPage() {
                                 {String(index + 1).padStart(2, '0')}
                               </span>
                               <span className="cas-q-type-badge px-2.5 py-0.5 rounded-full text-[10px] font-semibold">
-                                Question ouverte
+                                QROC
                               </span>
                             </div>
 
@@ -1772,7 +1772,7 @@ export default function VideoPage() {
                   </>
                 ) : (
                   <div className="video-empty-state bg-[var(--app-surface-alt)] rounded-xl p-6 border border-[var(--app-border)] text-center">
-                    <p className="text-[var(--app-muted)] py-10">Aucune question ouverte disponible pour cette vidéo.</p>
+                    <p className="text-[var(--app-muted)] py-10">Aucun QROC disponible pour cette vidéo.</p>
                   </div>
                 )}
               </motion.div>

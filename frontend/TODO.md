@@ -3,9 +3,9 @@
 ## Phase 1 - Stabilisation Fonctionnelle (Termine)
 
 - [x] Corriger la logique QCM en mode multiple cote lecture video.
-- [x] Ajouter les Questions Ouvertes dans la recherche globale.
-- [x] Ajouter l'onglet Questions Ouvertes dans la lecture video.
-- [x] Integrer les Questions Ouvertes au seed admin.
+- [x] Ajouter les QROC dans la recherche globale.
+- [x] Ajouter l'onglet QROC dans la lecture video.
+- [x] Integrer les QROC au seed admin.
 - [x] Fermer le menu profil au clic exterieur et a la touche Echap.
 - [x] Adapter la navigation/footer pour le role admin.
 
@@ -21,7 +21,7 @@
 - [x] Tests UI: menu profil (ouverture/fermeture).
 - [x] Tests UI: navigation onglets video.
 - [x] Tests UI: validation QCM single/multiple.
-- [x] Ajouter tests d'integration pour recherche (video, cas, QCM, question ouverte).
+- [x] Ajouter tests d'integration pour recherche (video, cas, QCM, QROC).
 - [x] Ajouter tests de non-regression sur acces role (admin, vip_plus, user).
 - [x] Ajouter tests sur cas limites donnees invalides (QCM sans options/corrections).
 

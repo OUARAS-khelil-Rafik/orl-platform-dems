@@ -1110,8 +1110,8 @@ function VideoCard({
 
           <span
             className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200 px-2.5 py-1"
-            title={`Nombre de questions ouvertes: ${counts.open}`}
-            aria-label={`Nombre de questions ouvertes: ${counts.open}`}
+            title={`Nombre de QROC: ${counts.open}`}
+            aria-label={`Nombre de QROC: ${counts.open}`}
           >
             <MessageSquare className="h-3.5 w-3.5" />
             <strong>{counts.open}</strong>

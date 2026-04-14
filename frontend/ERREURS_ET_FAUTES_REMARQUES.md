@@ -30,7 +30,7 @@
 ## Fautes de texte/consistance a garder en surveillance
 
 - [x] Verifier en continu les accents FR dans les nouvelles pages/formulaires.
-- [x] Maintenir une terminologie metier uniforme: "Cas cliniques", "Questions ouvertes", "Schemas".
+- [x] Maintenir une terminologie metier uniforme: "Cas cliniques", "QROC", "Schemas".
 
 ## Note
 
