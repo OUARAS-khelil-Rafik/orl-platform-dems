@@ -14,7 +14,6 @@ import {
   ShoppingCart,
   ChevronDown,
   LayoutDashboard,
-  ShoppingBag,
   Settings,
   Bell,
   Mail,
@@ -845,17 +844,6 @@ export function Navbar() {
                             </Link>
                           )}
 
-                          {(profile.role === 'vip' || profile.role === 'vip_plus') && (
-                            <Link
-                              href="/purchases"
-                              onClick={() => setIsUserMenuOpen(false)}
-                              className="flex items-center gap-2 px-3 py-2 text-sm text-[var(--app-text)] hover:bg-[var(--app-surface-2)]"
-                            >
-                              <ShoppingBag className="h-4 w-4 text-[var(--app-muted)]" />
-                              <span>Mes Achats</span>
-                            </Link>
-                          )}
-
                           <Link
                             href="/dashboard?tab=profile"
                             onClick={() => setIsUserMenuOpen(false)}
@@ -1058,17 +1046,6 @@ export function Navbar() {
                       >
                         <LayoutDashboard className="h-5 w-5 text-[var(--app-muted)]" />
                         <span>Dashboard</span>
-                      </Link>
-                    )}
-
-                    {(profile?.role === 'vip' || profile?.role === 'vip_plus') && (
-                      <Link
-                        href="/purchases"
-                        onClick={() => setIsMobileMenuOpen(false)}
-                        className="flex items-center gap-2 text-base font-medium text-[var(--app-text)]"
-                      >
-                        <ShoppingBag className="h-5 w-5 text-[var(--app-muted)]" />
-                        <span>Mes Achats</span>
                       </Link>
                     )}
 

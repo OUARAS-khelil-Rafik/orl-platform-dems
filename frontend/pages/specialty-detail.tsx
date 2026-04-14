@@ -536,6 +536,11 @@ export default function SpecialtyPage() {
   };
 
   const handleToggleFavorite = async (videoId: string) => {
+    const targetVideo = videos.find((entry) => entry.id === videoId);
+    if (targetVideo && !hasAccess(targetVideo)) {
+      return;
+    }
+
     if (!requireSignedInForPlaylist() || !user || favoritesBusyById[videoId]) {
       return;
     }
@@ -569,6 +574,11 @@ export default function SpecialtyPage() {
   };
 
   const handleToggleImportant = async (videoId: string) => {
+    const targetVideo = videos.find((entry) => entry.id === videoId);
+    if (targetVideo && !hasAccess(targetVideo)) {
+      return;
+    }
+
     if (!requireSignedInForPlaylist() || !user || favoritesBusyById[videoId]) {
       return;
     }
@@ -919,6 +929,8 @@ function VideoCard({
     primaryVideoUrl.length > 0 &&
     !/youtube\.com|youtu\.be/i.test(primaryVideoUrl);
 
+  const arePlaylistActionsDisabled = favoriteBusy || !hasAccess;
+
   const handlePreviewStart = async () => {
     if (!hasInlinePreview || !previewRef.current) return;
     try {
@@ -1021,7 +1033,7 @@ function VideoCard({
             <button
               type="button"
               onClick={onToggleFavorite}
-              disabled={favoriteBusy}
+              disabled={arePlaylistActionsDisabled}
               className={`inline-flex h-11 w-11 items-center justify-center rounded-full border backdrop-blur-sm transition-transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-rose-300 disabled:cursor-not-allowed disabled:opacity-60 ${
                 isFavorite
                   ? 'border-rose-200/80 bg-rose-500/80 text-white'
@@ -1050,7 +1062,7 @@ function VideoCard({
             <button
               type="button"
               onClick={onToggleImportant}
-              disabled={favoriteBusy}
+              disabled={arePlaylistActionsDisabled}
               className={`inline-flex h-11 w-11 items-center justify-center rounded-full border backdrop-blur-sm transition-transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-amber-300 disabled:cursor-not-allowed disabled:opacity-60 ${
                 isImportant
                   ? 'border-amber-200/80 bg-amber-500/80 text-white'
