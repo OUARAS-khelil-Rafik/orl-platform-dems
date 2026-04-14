@@ -5,30 +5,43 @@ export const hasCloudinaryConfig = (config) => {
   return Boolean(config?.cloudName && config?.apiKey && config?.apiSecret);
 };
 
-export const resolveCloudinaryConfig = (authUser) => {
+const toCloudinaryApiConfig = (config) => {
+  return {
+    cloud_name: config.cloudName,
+    api_key: config.apiKey,
+    api_secret: config.apiSecret,
+  };
+};
+
+export const resolveCloudinaryConfig = (
+  authUser,
+  {
+    preferUserConfig = true,
+    allowGlobalFallback = true,
+  } = {},
+) => {
   const userConfig = authUser?.cloudinary;
 
-  if (hasCloudinaryConfig(userConfig)) {
-    return {
-      cloud_name: userConfig.cloudName,
-      api_key: userConfig.apiKey,
-      api_secret: userConfig.apiSecret,
-    };
+  if (preferUserConfig && hasCloudinaryConfig(userConfig)) {
+    return toCloudinaryApiConfig(userConfig);
   }
 
-  if (hasCloudinaryConfig(env.cloudinary)) {
-    return {
-      cloud_name: env.cloudinary.cloudName,
-      api_key: env.cloudinary.apiKey,
-      api_secret: env.cloudinary.apiSecret,
-    };
+  if (allowGlobalFallback && hasCloudinaryConfig(env.cloudinary)) {
+    return toCloudinaryApiConfig(env.cloudinary);
   }
 
   return null;
 };
 
-export const uploadBufferToCloudinary = async ({ buffer, folder, resourceType, filename, authUser }) => {
-  const config = resolveCloudinaryConfig(authUser);
+export const uploadBufferToCloudinary = async ({
+  buffer,
+  folder,
+  resourceType,
+  filename,
+  authUser,
+  configOptions,
+}) => {
+  const config = resolveCloudinaryConfig(authUser, configOptions);
   if (!config) {
     throw new Error('Cloudinary credentials are not configured for this account.');
   }
@@ -56,8 +69,15 @@ export const uploadBufferToCloudinary = async ({ buffer, folder, resourceType, f
   });
 };
 
-export const uploadFileToCloudinary = async ({ filePath, folder, resourceType, filename, authUser }) => {
-  const config = resolveCloudinaryConfig(authUser);
+export const uploadFileToCloudinary = async ({
+  filePath,
+  folder,
+  resourceType,
+  filename,
+  authUser,
+  configOptions,
+}) => {
+  const config = resolveCloudinaryConfig(authUser, configOptions);
   if (!config) {
     throw new Error('Cloudinary credentials are not configured for this account.');
   }
@@ -111,10 +131,11 @@ export const uploadLargeVideoToCloudinary = async ({
   folder,
   filename,
   authUser,
+  configOptions,
   chunkSize,
   maxRetries = 3,
 }) => {
-  const config = resolveCloudinaryConfig(authUser);
+  const config = resolveCloudinaryConfig(authUser, configOptions);
   if (!config) {
     throw new Error('Cloudinary credentials are not configured for this account.');
   }
@@ -236,9 +257,10 @@ export const destroyCloudinaryAsset = async ({
   publicId,
   resourceType = 'image',
   authUser,
+  configOptions,
   invalidate = true,
 }) => {
-  const config = resolveCloudinaryConfig(authUser);
+  const config = resolveCloudinaryConfig(authUser, configOptions);
   if (!config) {
     throw new Error('Cloudinary credentials are not configured for this account.');
   }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Video, FileText, HelpCircle, Image as ImageIcon, MessageSquare, Plus, Save, X, Loader2, Trash2, Edit2, Search } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import {
@@ -8,6 +8,7 @@ import {
   collection,
   addDoc,
   getDocs,
+  getDoc,
   deleteDoc,
   doc,
   updateDoc,
@@ -273,6 +274,10 @@ const getErrorMessage = (error: unknown, fallback: string) => {
   return fallback;
 };
 
+const MISSING_ADMIN_CLOUDINARY_MESSAGE =
+  'Configuration Cloudinary admin manquante. Ouvrez Dashboard > Stockage, ou Admin > Utilisateurs > bouton Cloudinary sur votre compte admin, puis renseignez CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY et CLOUDINARY_API_SECRET.';
+const ADMIN_CLOUDINARY_CHECK_CACHE_MS = 15000;
+
 const createCaseQuestionId = () => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return `q-${crypto.randomUUID()}`;
@@ -364,6 +369,10 @@ export function AdminContentManager() {
   const [pendingVideoUploads, setPendingVideoUploads] = useState<CloudinaryCleanupAsset[]>([]);
   const [pendingCaseUploads, setPendingCaseUploads] = useState<CloudinaryCleanupAsset[]>([]);
   const [pendingDiagramUploads, setPendingDiagramUploads] = useState<CloudinaryCleanupAsset[]>([]);
+  const adminCloudinaryConfigCacheRef = useRef<{
+    value: boolean;
+    checkedAt: number;
+  } | null>(null);
 
   const editorGridClass = 'grid gap-6';
   const formPanelClass = 'order-2 space-y-6 rounded-3xl border border-[var(--app-border)] bg-[var(--app-surface)] p-6 shadow-sm';
@@ -440,6 +449,45 @@ export function AdminContentManager() {
     },
     [],
   );
+
+  const ensureAdminCloudinaryConfigured = useCallback(async () => {
+    const cached = adminCloudinaryConfigCacheRef.current;
+    const now = Date.now();
+
+    if (cached && now - cached.checkedAt < ADMIN_CLOUDINARY_CHECK_CACHE_MS) {
+      return cached.value;
+    }
+
+    try {
+      const settingsDoc = await getDoc(doc(db, 'appSettings', 'cloudinary'));
+      if (!settingsDoc.exists()) {
+        adminCloudinaryConfigCacheRef.current = {
+          value: false,
+          checkedAt: now,
+        };
+        return false;
+      }
+
+      const data = settingsDoc.data() as Record<string, unknown>;
+      const cloudName = String(data?.cloudName || '').trim();
+      const apiKey = String(data?.apiKey || '').trim();
+      const apiSecret = String(data?.apiSecret || '').trim();
+
+      const isComplete = Boolean(cloudName && apiKey && apiSecret);
+      adminCloudinaryConfigCacheRef.current = {
+        value: isComplete,
+        checkedAt: now,
+      };
+
+      return isComplete;
+    } catch {
+      adminCloudinaryConfigCacheRef.current = {
+        value: false,
+        checkedAt: now,
+      };
+      return false;
+    }
+  }, []);
 
   const getPendingDraftAssets = useCallback(() => {
     return dedupeCleanupAssets([
@@ -675,6 +723,13 @@ export function AdminContentManager() {
       return;
     }
 
+    const hasCloudinaryConfig = await ensureAdminCloudinaryConfigured();
+    if (!hasCloudinaryConfig) {
+      setErrorMessage(MISSING_ADMIN_CLOUDINARY_MESSAGE);
+      input.value = '';
+      return;
+    }
+
     setErrorMessage('');
     setVideoUploadFileName(file.name);
     setVideoUploadFileSize(file.size);
@@ -742,7 +797,11 @@ export function AdminContentManager() {
     } catch (error) {
       console.error('Upload error:', error);
       const details = getErrorMessage(error, 'Une erreur inattendue est survenue lors du telechargement.');
-      if (details.toLowerCase().includes('413') || details.toLowerCase().includes('volumineux')) {
+      const lowerDetails = details.toLowerCase();
+
+      if (lowerDetails.includes('parts exceed 100mb limit')) {
+        setErrorMessage('La video est trop lourde pour un decoupage Cloudinary stable (segments > 100MB). Compressez la video (bitrate plus faible) puis reessayez.');
+      } else if (lowerDetails.includes('413') || lowerDetails.includes('volumineux')) {
         setErrorMessage(`Le fichier video depasse la limite de chunk Cloudinary (${Math.round(CLOUDINARY_LIMIT / (1024 * 1024))}MB). Essayez une compression ou un autre fichier.`);
       } else {
         setErrorMessage(details);
@@ -1242,6 +1301,15 @@ export function AdminContentManager() {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    const hasCloudinaryConfig = await ensureAdminCloudinaryConfigured();
+    if (!hasCloudinaryConfig) {
+      setErrorMessage(MISSING_ADMIN_CLOUDINARY_MESSAGE);
+      if (e.target) {
+        e.target.value = '';
+      }
+      return;
+    }
+
     setIsUploading(true);
     setUploadProgress(0);
     setErrorMessage('');
@@ -1621,6 +1689,13 @@ export function AdminContentManager() {
     if (!file) return;
 
     const input = e.target;
+
+    const hasCloudinaryConfig = await ensureAdminCloudinaryConfigured();
+    if (!hasCloudinaryConfig) {
+      setErrorMessage(MISSING_ADMIN_CLOUDINARY_MESSAGE);
+      input.value = '';
+      return;
+    }
 
     setDiagramUploadFileName(file.name);
     setDiagramUploadFileSize(file.size);

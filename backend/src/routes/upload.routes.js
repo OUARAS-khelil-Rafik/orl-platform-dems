@@ -31,12 +31,37 @@ const avatarUpload = multer({
 });
 
 const MIN_FILE_SIZE = 50 * 1024 * 1024; // 50MB
-const TARGET_FILE_SIZE = 70 * 1024 * 1024; // 70MB
+const TARGET_FILE_SIZE = 85 * 1024 * 1024; // 85MB
 const CLOUDINARY_LIMIT = 100 * 1024 * 1024; // 100MB
-const MAX_PARTS = 20;
+const MAX_PARTS = 30;
+const MAX_PARTS_TRANSCODE = 45;
+const MAX_COPY_SPLIT_ATTEMPTS = 6;
 const MAX_RETRIES = 3;
 const UPLOAD_FOLDER = 'orl-platform';
 const CLEANUP_MAX_ASSETS = 200;
+const UPLOAD_CHUNK_SIZE = 20 * 1024 * 1024; // 20MB
+const PART_UPLOAD_CONCURRENCY = 3;
+const MAX_RETRY_DELAY_MS = 8000;
+const AVATAR_FOLDER_SEGMENT = '/orl-platform/avatars/';
+
+const resolveContentCloudinaryOptions = (authUser) => {
+  const isAdmin = authUser?.role === 'admin';
+  return {
+    preferUserConfig: true,
+    allowGlobalFallback: !isAdmin,
+  };
+};
+
+const isAvatarCloudinaryAsset = (entry) => {
+  const publicId = String(entry?.publicId || '').trim().toLowerCase();
+  const secureUrl = String(entry?.secureUrl || '').trim().toLowerCase();
+
+  return (
+    publicId.includes('orl-platform/avatars/')
+    || secureUrl.includes(AVATAR_FOLDER_SEGMENT)
+    || secureUrl.includes('/avatars/')
+  );
+};
 
 const normalizeCleanupResourceType = (value) => {
   const normalized = String(value || '').trim().toLowerCase();
@@ -137,7 +162,12 @@ const verifyAssetUsageInMongo = async ({ publicId, secureUrl }) => {
   };
 };
 
-const deleteCloudinaryAssetWithFallback = async ({ publicId, resourceType, authUser }) => {
+const deleteCloudinaryAssetWithFallback = async ({
+  publicId,
+  resourceType,
+  authUser,
+  configOptions,
+}) => {
   if (!publicId) {
     return {
       deleted: false,
@@ -156,6 +186,7 @@ const deleteCloudinaryAssetWithFallback = async ({ publicId, resourceType, authU
         publicId,
         resourceType: candidateType,
         authUser,
+        configOptions,
         invalidate: true,
       });
 
@@ -207,17 +238,42 @@ const sanitizeBaseName = (name) => {
 const isRetryable = (error) => {
   const message = String(error?.message || '').toLowerCase();
   const httpCode = Number(error?.http_code || 0);
-  return message.includes('timeout') || httpCode === 503 || httpCode === 504;
+  return (
+    message.includes('timeout')
+    || message.includes('timed out')
+    || message.includes('socket hang up')
+    || message.includes('econnreset')
+    || message.includes('etimedout')
+    || httpCode === 429
+    || httpCode === 503
+    || httpCode === 504
+  );
 };
 
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const computeRetryDelay = (attempt) => {
+  const baseDelay = Math.min(MAX_RETRY_DELAY_MS, 1000 * (2 ** attempt));
+  const jitter = Math.floor(Math.random() * 250);
+  return baseDelay + jitter;
+};
+
+let ffmpegAvailabilityPromise = null;
+
 const checkFFmpeg = async () => {
-  try {
-    await execFileAsync('ffmpeg', ['-version']);
-    await execFileAsync('ffprobe', ['-version']);
-    return true;
-  } catch {
-    return false;
+  if (!ffmpegAvailabilityPromise) {
+    ffmpegAvailabilityPromise = (async () => {
+      try {
+        await execFileAsync('ffmpeg', ['-version']);
+        await execFileAsync('ffprobe', ['-version']);
+        return true;
+      } catch {
+        return false;
+      }
+    })();
   }
+
+  return ffmpegAvailabilityPromise;
 };
 
 const getVideoDuration = async (filePath) => {
@@ -234,24 +290,60 @@ const getVideoDuration = async (filePath) => {
   return parseFloat(String(stdout || '').trim() || '0');
 };
 
-const splitVideo = async (filePath, outputDir, baseName) => {
-  const fileSize = fsSync.statSync(filePath).size;
-  const duration = await getVideoDuration(filePath);
+const listSplitParts = async (outputDir, baseName) => {
+  return (await fs.readdir(outputDir))
+    .filter((file) => file.startsWith(`${baseName}-part-`) && file.endsWith('.mp4'))
+    .sort()
+    .map((file) => path.join(outputDir, file));
+};
 
-  let segments = Math.ceil(fileSize / TARGET_FILE_SIZE);
-  if (segments > MAX_PARTS) {
-    segments = MAX_PARTS;
-  }
-  while (segments > 1 && fileSize / segments < MIN_FILE_SIZE) {
-    segments -= 1;
-  }
-
-  const segmentDuration = Math.max(1, Math.floor(duration / Math.max(segments, 1)));
+const runSplitPass = async ({
+  filePath,
+  outputDir,
+  baseName,
+  segmentDuration,
+  reencode,
+}) => {
   const outputPattern = path.join(outputDir, `${baseName}-part-%03d.mp4`);
 
-  await execFileAsync(
-    'ffmpeg',
-    [
+  await fs.rm(outputDir, { recursive: true, force: true });
+  await fs.mkdir(outputDir, { recursive: true });
+
+  const args = reencode
+    ? [
+      '-i',
+      filePath,
+      '-map',
+      '0:v:0',
+      '-map',
+      '0:a:0?',
+      '-c:v',
+      'libx264',
+      '-preset',
+      'veryfast',
+      '-crf',
+      '24',
+      '-g',
+      '48',
+      '-keyint_min',
+      '48',
+      '-sc_threshold',
+      '0',
+      '-c:a',
+      'aac',
+      '-b:a',
+      '128k',
+      '-f',
+      'segment',
+      '-segment_time',
+      String(segmentDuration),
+      '-reset_timestamps',
+      '1',
+      '-avoid_negative_ts',
+      'make_zero',
+      outputPattern,
+    ]
+    : [
       '-i',
       filePath,
       '-c',
@@ -265,24 +357,150 @@ const splitVideo = async (filePath, outputDir, baseName) => {
       '-avoid_negative_ts',
       'make_zero',
       outputPattern,
-    ],
-    { maxBuffer: 1024 * 1024 * 10 },
-  );
+    ];
 
-  const parts = (await fs.readdir(outputDir))
-    .filter((file) => file.startsWith(`${baseName}-part-`) && file.endsWith('.mp4'))
-    .sort()
-    .map((file) => path.join(outputDir, file));
+  await execFileAsync('ffmpeg', args, { maxBuffer: 1024 * 1024 * 10 });
 
-  const oversized = parts.some((part) => fsSync.statSync(part).size > CLOUDINARY_LIMIT);
-  if (oversized) {
-    throw new Error('Parts exceed 100MB limit');
+  const parts = await listSplitParts(outputDir, baseName);
+  if (parts.length === 0) {
+    return {
+      parts: [],
+      maxPartSize: 0,
+    };
   }
 
-  return parts;
+  const maxPartSize = parts.reduce((max, partPath) => {
+    const size = fsSync.statSync(partPath).size;
+    return size > max ? size : max;
+  }, 0);
+
+  return {
+    parts,
+    maxPartSize,
+  };
 };
 
-const uploadWithRetry = async ({ filePath, folder, publicId, authUser }) => {
+const splitVideo = async (filePath, outputDir, baseName) => {
+  const fileSize = fsSync.statSync(filePath).size;
+  const duration = await getVideoDuration(filePath);
+
+  const minSegmentsForCloudinaryLimit = Math.max(
+    2,
+    Math.ceil(fileSize / (CLOUDINARY_LIMIT * 0.9)),
+  );
+
+  let segments = Math.max(minSegmentsForCloudinaryLimit, Math.ceil(fileSize / TARGET_FILE_SIZE));
+  if (segments > MAX_PARTS) {
+    segments = MAX_PARTS;
+  }
+
+  while (segments > minSegmentsForCloudinaryLimit && fileSize / segments < MIN_FILE_SIZE) {
+    segments -= 1;
+  }
+
+  let maxPartSize = 0;
+
+  let currentSegments = Math.max(segments, minSegmentsForCloudinaryLimit);
+  let attempts = 0;
+
+  while (currentSegments <= MAX_PARTS && attempts < MAX_COPY_SPLIT_ATTEMPTS) {
+    attempts += 1;
+    const segmentDuration = duration > 0
+      ? Math.max(1, Math.floor(duration / Math.max(currentSegments, 1)))
+      : 1;
+
+    const { parts, maxPartSize: currentMaxPartSize } = await runSplitPass({
+      filePath,
+      outputDir,
+      baseName,
+      segmentDuration,
+      reencode: false,
+    });
+    if (parts.length === 0) {
+      currentSegments = Math.min(MAX_PARTS, currentSegments + 1);
+      continue;
+    }
+
+    maxPartSize = currentMaxPartSize;
+
+    if (maxPartSize <= CLOUDINARY_LIMIT) {
+      return parts;
+    }
+
+    const oversizeRatio = Math.max(1.05, maxPartSize / CLOUDINARY_LIMIT);
+    const nextSegments = Math.ceil(currentSegments * Math.max(1.2, oversizeRatio * 1.15));
+    currentSegments = Math.min(MAX_PARTS, Math.max(currentSegments + 1, nextSegments));
+  }
+
+  if (currentSegments < MAX_PARTS) {
+    const segmentDuration = duration > 0
+      ? Math.max(1, Math.floor(duration / Math.max(MAX_PARTS, 1)))
+      : 1;
+
+    const { parts, maxPartSize: currentMaxPartSize } = await runSplitPass({
+      filePath,
+      outputDir,
+      baseName,
+      segmentDuration,
+      reencode: false,
+    });
+
+    if (parts.length > 0) {
+      maxPartSize = currentMaxPartSize;
+      if (maxPartSize <= CLOUDINARY_LIMIT) {
+        return parts;
+      }
+    }
+  }
+
+  // Fallback: transcode with forced keyframe cadence to get predictable segment sizes.
+  const transcodeSegmentsBase = Math.max(
+    minSegmentsForCloudinaryLimit,
+    Math.ceil(fileSize / (CLOUDINARY_LIMIT * 0.75)),
+  );
+
+  const transcodeSegmentCandidates = [
+    Math.min(Math.max(transcodeSegmentsBase, segments), MAX_PARTS_TRANSCODE),
+    MAX_PARTS_TRANSCODE,
+  ].filter((value, index, array) => array.indexOf(value) === index);
+
+  for (const currentSegments of transcodeSegmentCandidates) {
+    const segmentDuration = duration > 0
+      ? Math.max(1, Math.floor(duration / Math.max(currentSegments, 1)))
+      : 1;
+
+    const { parts, maxPartSize: currentMaxPartSize } = await runSplitPass({
+      filePath,
+      outputDir,
+      baseName,
+      segmentDuration,
+      reencode: true,
+    });
+
+    if (parts.length === 0) {
+      continue;
+    }
+
+    maxPartSize = currentMaxPartSize;
+    if (maxPartSize <= CLOUDINARY_LIMIT) {
+      return parts;
+    }
+  }
+
+  const error = new Error(
+    `Parts exceed 100MB limit (max part size: ${Math.round(maxPartSize / (1024 * 1024))}MB).`,
+  );
+  error.code = 'CLOUDINARY_PART_SIZE_LIMIT';
+  throw error;
+};
+
+const uploadWithRetry = async ({
+  filePath,
+  folder,
+  publicId,
+  authUser,
+  configOptions,
+}) => {
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt += 1) {
     try {
       const result = await uploadLargeVideoToCloudinary({
@@ -290,7 +508,8 @@ const uploadWithRetry = async ({ filePath, folder, publicId, authUser }) => {
         folder,
         filename: publicId,
         authUser,
-        chunkSize: 6 * 1024 * 1024,
+        configOptions,
+        chunkSize: UPLOAD_CHUNK_SIZE,
         maxRetries: 0,
       });
       return {
@@ -299,6 +518,7 @@ const uploadWithRetry = async ({ filePath, folder, publicId, authUser }) => {
       };
     } catch (error) {
       if (attempt < MAX_RETRIES && isRetryable(error)) {
+        await wait(computeRetryDelay(attempt));
         continue;
       }
       throw error;
@@ -306,6 +526,54 @@ const uploadWithRetry = async ({ filePath, folder, publicId, authUser }) => {
   }
 
   throw new Error('Upload failed after retries');
+};
+
+const uploadVideoPartsWithConcurrency = async ({
+  parts,
+  folder,
+  basePublicId,
+  authUser,
+  configOptions,
+}) => {
+  if (!Array.isArray(parts) || parts.length === 0) {
+    return [];
+  }
+
+  const concurrency = Math.max(
+    1,
+    Math.min(PART_UPLOAD_CONCURRENCY, parts.length),
+  );
+
+  const results = new Array(parts.length);
+  let cursor = 0;
+
+  const workers = Array.from({ length: concurrency }, async () => {
+    while (true) {
+      const currentIndex = cursor;
+      cursor += 1;
+
+      if (currentIndex >= parts.length) {
+        return;
+      }
+
+      const partPublicId = `${basePublicId}-part-${String(currentIndex + 1).padStart(3, '0')}`;
+      const uploaded = await uploadWithRetry({
+        filePath: parts[currentIndex],
+        folder,
+        publicId: partPublicId,
+        authUser,
+        configOptions,
+      });
+
+      results[currentIndex] = {
+        ...uploaded,
+        filePath: parts[currentIndex],
+      };
+    }
+  });
+
+  await Promise.all(workers);
+  return results;
 };
 
 const probeVideo = async (filePath) => {
@@ -343,13 +611,23 @@ const probeVideo = async (filePath) => {
 };
 
 const buildPartMetadataFromUpload = async ({ result, publicId, filePath }) => {
-  const stats = await fs.stat(filePath);
-  const probe = await probeVideo(filePath);
   const format = result?.format || path.extname(filePath).replace('.', '').toLowerCase();
-  const width = result?.width || probe.width;
-  const height = result?.height || probe.height;
-  const duration = result?.duration || probe.duration;
+  const cloudDuration = Number(result?.duration || 0);
+  const cloudWidth = Number(result?.width || 0);
+  const cloudHeight = Number(result?.height || 0);
+  const cloudBitRate = Number(result?.bit_rate || 0);
+  const cloudFrameRate = Number(result?.frame_rate || 0);
+  const cloudVideoCodec = String(result?.video?.codec || '').trim();
+  const cloudAudioCodec = String(result?.audio?.codec || '').trim();
+
+  const missingCriticalMetadata = cloudDuration <= 0 || cloudWidth <= 0 || cloudHeight <= 0;
+  const probe = missingCriticalMetadata ? await probeVideo(filePath) : null;
+
+  const width = cloudWidth || probe?.width || 0;
+  const height = cloudHeight || probe?.height || 0;
+  const duration = cloudDuration || probe?.duration || 0;
   const secureUrl = result?.secure_url || result?.url || '';
+  const fileSize = Number(result?.bytes || 0) || (await fs.stat(filePath)).size;
 
   return {
     publicId,
@@ -359,11 +637,11 @@ const buildPartMetadataFromUpload = async ({ result, publicId, filePath }) => {
     width,
     height,
     aspectRatio: width && height ? (width / height).toFixed(6) : undefined,
-    bitRate: result?.bit_rate || probe.bitRate || undefined,
-    frameRate: result?.frame_rate || probe.frameRate || undefined,
-    videoCodec: result?.video?.codec || probe.videoCodec,
-    audioCodec: result?.audio?.codec || probe.audioCodec,
-    fileSize: result?.bytes || stats.size,
+    bitRate: cloudBitRate || probe?.bitRate || undefined,
+    frameRate: cloudFrameRate || probe?.frameRate || undefined,
+    videoCodec: cloudVideoCodec || probe?.videoCodec || undefined,
+    audioCodec: cloudAudioCodec || probe?.audioCodec || undefined,
+    fileSize,
   };
 };
 
@@ -397,16 +675,10 @@ router.post('/cloudinary', authRequired, withSingleFile(cloudinaryUpload), async
 
     const resourceType = req.query.resourceType === 'video' ? 'video' : 'image';
     const folder = req.query.folder ? String(req.query.folder) : UPLOAD_FOLDER;
+    const contentCloudinaryOptions = resolveContentCloudinaryOptions(req.authUser);
 
     let result;
     if (resourceType === 'video') {
-      const hasFFmpeg = await checkFFmpeg();
-      if (!hasFFmpeg) {
-        return res.status(500).json({ message: 'ffmpeg/ffprobe is not installed on the server.' });
-      }
-
-      tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'video-upload-'));
-
       const baseName = sanitizeBaseName(req.file.originalname || req.file.filename || 'video');
       const uniqueSuffix = Date.now().toString(36);
       const basePublicId = `${baseName}-${uniqueSuffix}`;
@@ -421,30 +693,31 @@ router.post('/cloudinary', authRequired, withSingleFile(cloudinaryUpload), async
           folder,
           publicId: basePublicId,
           authUser: req.authUser,
+          configOptions: contentCloudinaryOptions,
         });
 
         partsResults = [{ ...uploadResult, filePath: temporaryPath }];
       } else {
         isMultipart = true;
+
+        const hasFFmpeg = await checkFFmpeg();
+        if (!hasFFmpeg) {
+          return res.status(500).json({ message: 'ffmpeg/ffprobe is not installed on the server.' });
+        }
+
+        tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'video-upload-'));
         const outputDir = path.join(tempDir, 'split');
         await fs.mkdir(outputDir, { recursive: true });
 
         const parts = await splitVideo(temporaryPath, outputDir, basePublicId);
-        const uploads = [];
 
-        for (let i = 0; i < parts.length; i += 1) {
-          const partPublicId = `${basePublicId}-part-${String(i + 1).padStart(3, '0')}`;
-          uploads.push(
-            uploadWithRetry({
-              filePath: parts[i],
-              folder,
-              publicId: partPublicId,
-              authUser: req.authUser,
-            }).then((uploaded) => ({ ...uploaded, filePath: parts[i] })),
-          );
-        }
-
-        partsResults = await Promise.all(uploads);
+        partsResults = await uploadVideoPartsWithConcurrency({
+          parts,
+          folder,
+          basePublicId,
+          authUser: req.authUser,
+          configOptions: contentCloudinaryOptions,
+        });
       }
 
       const partsMetadata = await Promise.all(
@@ -479,6 +752,7 @@ router.post('/cloudinary', authRequired, withSingleFile(cloudinaryUpload), async
         resourceType,
         filename: undefined,
         authUser: req.authUser,
+        configOptions: contentCloudinaryOptions,
       });
     }
 
@@ -494,7 +768,17 @@ router.post('/cloudinary', authRequired, withSingleFile(cloudinaryUpload), async
     const isTooLarge =
       lower.includes('requested resource too large')
       || lower.includes('file size too large')
+      || lower.includes('parts exceed 100mb limit')
+      || error?.code === 'CLOUDINARY_PART_SIZE_LIMIT'
       || Number(error?.http_code || 0) === 413;
+    const isMissingCloudinaryConfig = lower.includes('cloudinary credentials are not configured');
+
+    if (isMissingCloudinaryConfig && req.authUser?.role === 'admin') {
+      return res.status(400).json({
+        message:
+          'Configuration Cloudinary admin manquante. Renseignez CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY et CLOUDINARY_API_SECRET dans vos parametres avant de publier du contenu.',
+      });
+    }
 
     if (isTooLarge) {
       return res.status(413).json({
@@ -575,10 +859,21 @@ router.post('/cleanup', authRequired, async (req, res) => {
           continue;
         }
 
+        const cleanupCloudinaryOptions = isAvatarCloudinaryAsset(asset)
+          ? {
+            preferUserConfig: false,
+            allowGlobalFallback: true,
+          }
+          : {
+            preferUserConfig: true,
+            allowGlobalFallback: true,
+          };
+
         const cleanupResult = await deleteCloudinaryAssetWithFallback({
           publicId: asset.publicId,
           resourceType: asset.resourceType,
           authUser: req.authUser,
+          configOptions: cleanupCloudinaryOptions,
         });
 
         results.push({
@@ -634,6 +929,10 @@ router.post('/avatar', authRequired, withSingleFile(avatarUpload), async (req, r
       resourceType: 'image',
       filename: undefined,
       authUser: req.authUser,
+      configOptions: {
+        preferUserConfig: false,
+        allowGlobalFallback: true,
+      },
     });
 
     return res.json({

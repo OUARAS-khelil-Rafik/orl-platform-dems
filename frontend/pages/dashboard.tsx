@@ -62,6 +62,17 @@ export default function UserDashboard() {
   });
   const [isSavingStorageSettings, setIsSavingStorageSettings] = useState(false);
 
+  const trimmedStorageSettings = {
+    cloudName: storageSettings.cloudName.trim(),
+    apiKey: storageSettings.apiKey.trim(),
+    apiSecret: storageSettings.apiSecret.trim(),
+  };
+
+  const hasCompleteStorageSettings =
+    Boolean(trimmedStorageSettings.cloudName)
+    && Boolean(trimmedStorageSettings.apiKey)
+    && Boolean(trimmedStorageSettings.apiSecret);
+
   const isLightMode = themeMode === 'light';
 
   const cardStyle = {
@@ -269,7 +280,14 @@ export default function UserDashboard() {
             apiKey: String(data.apiKey || ''),
             apiSecret: String(data.apiSecret || ''),
           });
+          return;
         }
+
+        setStorageSettings({
+          cloudName: '',
+          apiKey: '',
+          apiSecret: '',
+        });
       } catch (error) {
         console.error('Error loading storage settings:', error);
       }
@@ -436,16 +454,21 @@ export default function UserDashboard() {
   const handleSaveStorageSettings = async () => {
     if (!profile || profile.role !== 'admin') return;
 
+    if (!hasCompleteStorageSettings) {
+      alert('Renseignez CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY et CLOUDINARY_API_SECRET.');
+      return;
+    }
+
     try {
       setIsSavingStorageSettings(true);
       await setDoc(doc(db, 'appSettings', 'cloudinary'), {
-        cloudName: storageSettings.cloudName.trim(),
-        apiKey: storageSettings.apiKey.trim(),
-        apiSecret: storageSettings.apiSecret.trim(),
+        cloudName: trimmedStorageSettings.cloudName,
+        apiKey: trimmedStorageSettings.apiKey,
+        apiSecret: trimmedStorageSettings.apiSecret,
         updatedAt: new Date().toISOString(),
         updatedBy: profile.uid,
       });
-      alert('Paramètres Cloudinary enregistrés.');
+      alert('Paramètres Cloudinary admin enregistrés.');
     } catch (error) {
       console.error('Error saving storage settings:', error);
       alert('Erreur lors de l\'enregistrement des paramètres de stockage.');
@@ -530,6 +553,8 @@ export default function UserDashboard() {
                           src={profile.photoURL}
                           alt={profile.displayName}
                           fill
+                          loading="eager"
+                          fetchPriority="high"
                           sizes="160px"
                           className="object-cover"
                           referrerPolicy="no-referrer"
@@ -771,7 +796,8 @@ export default function UserDashboard() {
             >
               <h3 className="text-2xl font-bold mb-2" style={{ color: 'var(--app-text)' }}>Gestion de Stockage</h3>
               <p className="text-sm mb-6" style={subtleText}>
-                Configurez les identifiants Cloudinary utilisés par la plateforme.
+                Ces identifiants Cloudinary sont propres a cet admin et servent aux uploads de contenu pedagogique
+                (videos, schemas et cas cliniques). Les avatars restent sur la configuration Cloudinary principale.
               </p>
 
               <div className="max-w-xl space-y-4">
@@ -814,7 +840,7 @@ export default function UserDashboard() {
                 <button
                   type="button"
                   onClick={handleSaveStorageSettings}
-                  disabled={isSavingStorageSettings}
+                  disabled={isSavingStorageSettings || !hasCompleteStorageSettings}
                   className="inline-flex items-center justify-center px-4 py-2 rounded-xl bg-[var(--app-accent)] text-[var(--app-accent-contrast)] text-sm font-medium hover:brightness-110 disabled:opacity-60"
                 >
                   {isSavingStorageSettings ? 'Enregistrement...' : 'Enregistrer les paramètres'}
