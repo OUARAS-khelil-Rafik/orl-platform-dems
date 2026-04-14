@@ -25,8 +25,8 @@ export default function ContactPage() {
         </div>
 
         <div className="border rounded-2xl p-6 space-y-4 shadow-md" style={{ borderColor: 'color-mix(in oklab, var(--app-accent) 24%, var(--app-border) 76%)', background: 'linear-gradient(180deg, color-mix(in oklab, var(--app-surface) 96%, white 4%) 0%, color-mix(in oklab, var(--app-surface-alt) 84%, var(--app-accent) 16%) 100%)' }}>
-          <p className="text-slate-700 inline-flex items-center gap-2"><Mail className="h-4 w-4" style={{ color: 'color-mix(in oklab, var(--app-accent) 78%, var(--app-text) 22%)' }} /><span className="font-semibold">Email:</span> contact@dems-ent.dz</p>
-          <p className="text-slate-700 inline-flex items-center gap-2"><Phone className="h-4 w-4" style={{ color: 'color-mix(in oklab, var(--app-accent) 78%, var(--app-text) 22%)' }} /><span className="font-semibold">Telephone:</span> +213 (0) 555 12 34 56</p>
+          <p className="text-slate-700 inline-flex items-center gap-2"><Mail className="h-4 w-4" style={{ color: 'color-mix(in oklab, var(--app-accent) 78%, var(--app-text) 22%)' }} /><span className="font-semibold">Email:</span> kh.ouaras@univ-alger.dz</p>
+          <p className="text-slate-700 inline-flex items-center gap-2"><Phone className="h-4 w-4" style={{ color: 'color-mix(in oklab, var(--app-accent) 78%, var(--app-text) 22%)' }} /><span className="font-semibold">Telephone:</span> +213 (0) 660 49 61 44</p>
           <p className="text-slate-700 inline-flex items-center gap-2"><MapPin className="h-4 w-4" style={{ color: 'color-mix(in oklab, var(--app-accent) 78%, var(--app-text) 22%)' }} /><span className="font-semibold">Adresse:</span> Alger, Algerie</p>
         </div>
 

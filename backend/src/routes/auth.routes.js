@@ -8,6 +8,28 @@ import { adminRequired, authRequired } from '../middleware/auth.js';
 
 const router = express.Router();
 
+const INITIAL_ADMIN_DEFAULT_PASSWORD = process.env.INITIAL_ADMIN_DEFAULT_PASSWORD || 'Admin123!';
+
+const INITIAL_ADMIN_ACCOUNTS = [
+  {
+    email: 'kikoouaras@gmail.com',
+    displayName: 'OUARAS Khelil rafik',
+    phoneNumber: '0660496144',
+  },
+  {
+    email: 'histologieprincess@gmail.com',
+    displayName: 'OUARAS Ryma',
+    phoneNumber: '',
+  },
+];
+
+const LEGACY_DEMO_EMAILS = [
+  'admin@dems.local',
+  'user@dems.local',
+  'vip@dems.local',
+  'vipplus@dems.local',
+];
+
 const toSessionUser = (user) => ({
   uid: user.uid,
   email: user.email,
@@ -23,6 +45,7 @@ const createUserWithPassword = async ({
   displayName,
   role = 'user',
   subscriptionApprovalStatus = 'none',
+  phoneNumber = '',
 }) => {
   const normalizedEmail = String(email || '').trim().toLowerCase();
   if (!normalizedEmail) {
@@ -56,6 +79,7 @@ const createUserWithPassword = async ({
     importantVideoIds: [],
     blockedVideoIds: [],
     isBlocked: false,
+    phoneNumber: String(phoneNumber || '').trim(),
     createdAt: now,
   });
 
@@ -207,45 +231,68 @@ router.delete('/users/:uid', authRequired, async (req, res) => {
 
 router.post('/seed-demo', async (_req, res) => {
   try {
-    const demos = [
-      {
-        email: 'admin@dems.local',
-        password: 'Admin123!',
-        displayName: 'Admin DEMS',
-        role: 'admin',
-        subscriptionApprovalStatus: 'none',
-      },
-      {
-        email: 'user@dems.local',
-        password: 'User123!',
-        displayName: 'User DEMS',
-        role: 'user',
-        subscriptionApprovalStatus: 'none',
-      },
-      {
-        email: 'vip@dems.local',
-        password: 'Vip123!',
-        displayName: 'VIP DEMS',
-        role: 'vip',
-        subscriptionApprovalStatus: 'none',
-      },
-      {
-        email: 'vipplus@dems.local',
-        password: 'VipPlus123!',
-        displayName: 'VIP Plus DEMS',
-        role: 'vip_plus',
-        subscriptionApprovalStatus: 'approved',
-      },
-    ];
+    const normalizedLegacyEmails = LEGACY_DEMO_EMAILS.map((email) => email.toLowerCase());
+    const removedLegacyResult = await User.deleteMany({
+      email: { $in: normalizedLegacyEmails },
+    });
 
-    for (const demo of demos) {
-      const exists = await User.findOne({ email: demo.email }).lean();
-      if (!exists) {
-        await createUserWithPassword(demo);
+    const created = [];
+    const updated = [];
+
+    for (const account of INITIAL_ADMIN_ACCOUNTS) {
+      const normalizedEmail = String(account.email || '').trim().toLowerCase();
+      if (!normalizedEmail) {
+        continue;
+      }
+
+      const existing = await User.findOne({ email: normalizedEmail });
+      if (!existing) {
+        const createdUser = await createUserWithPassword({
+          email: normalizedEmail,
+          password: INITIAL_ADMIN_DEFAULT_PASSWORD,
+          displayName: account.displayName,
+          role: 'admin',
+          subscriptionApprovalStatus: 'none',
+          phoneNumber: account.phoneNumber,
+        });
+
+        if (createdUser) {
+          created.push(normalizedEmail);
+        }
+        continue;
+      }
+
+      const updatePayload = {};
+      if (existing.role !== 'admin') {
+        updatePayload.role = 'admin';
+      }
+
+      const desiredDisplayName = String(account.displayName || '').trim();
+      if (desiredDisplayName && existing.displayName !== desiredDisplayName) {
+        updatePayload.displayName = desiredDisplayName;
+      }
+
+      const desiredPhone = String(account.phoneNumber || '').trim();
+      if (desiredPhone && String(existing.phoneNumber || '').trim() !== desiredPhone) {
+        updatePayload.phoneNumber = desiredPhone;
+      }
+
+      if (existing.subscriptionApprovalStatus !== 'none') {
+        updatePayload.subscriptionApprovalStatus = 'none';
+      }
+
+      if (Object.keys(updatePayload).length > 0) {
+        await User.updateOne({ uid: existing.uid }, { $set: updatePayload });
+        updated.push(normalizedEmail);
       }
     }
 
-    return res.json({ ok: true });
+    return res.json({
+      ok: true,
+      created,
+      updated,
+      removedLegacyCount: Number(removedLegacyResult?.deletedCount || 0),
+    });
   } catch {
     return res.status(500).json({ message: 'Unable to seed demo accounts.' });
   }

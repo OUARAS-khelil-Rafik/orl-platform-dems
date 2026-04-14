@@ -62,11 +62,11 @@ export function Footer() {
           <ul className="space-y-3 text-sm">
             <li className="flex items-center gap-2">
               <Mail className="h-4 w-4" style={{ color: 'color-mix(in oklab, var(--app-accent) 74%, white 26%)' }} />
-              <span style={{ color: 'var(--footer-muted)' }}>contact@dems-ent.dz</span>
+              <span style={{ color: 'var(--footer-muted)' }}>k.ouaras@univ-alger.dz</span>
             </li>
             <li className="flex items-center gap-2">
               <Phone className="h-4 w-4" style={{ color: 'color-mix(in oklab, var(--app-accent) 74%, white 26%)' }} />
-              <span style={{ color: 'var(--footer-muted)' }}>+213 (0) 555 12 34 56</span>
+              <span style={{ color: 'var(--footer-muted)' }}>+213 (0) 660 49 61 44</span>
             </li>
             <li className="flex items-center gap-2">
               <MapPin className="h-4 w-4" style={{ color: 'color-mix(in oklab, var(--app-accent) 74%, white 26%)' }} />
