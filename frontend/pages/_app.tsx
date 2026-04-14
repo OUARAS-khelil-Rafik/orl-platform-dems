@@ -1,4 +1,5 @@
 import type { AppProps } from 'next/app';
+import Head from 'next/head';
 import { Plus_Jakarta_Sans, Sora } from 'next/font/google';
 import { motion, useScroll, useSpring } from 'motion/react';
 import '@/styles/globals.css';
@@ -40,6 +41,10 @@ function GlobalScrollProgress() {
 export default function App({ Component, pageProps }: AppProps) {
   return (
     <div className={`${plusJakarta.variable} ${sora.variable} scroll-smooth font-sans bg-[var(--app-bg)] text-[var(--app-text)] min-h-screen flex flex-col`}>
+      <Head>
+        <link rel="icon" href="/favicon.ico" sizes="any" />
+        <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+      </Head>
       <AuthProvider>
         <CartProvider>
           <GlobalScrollProgress />

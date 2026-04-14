@@ -61,6 +61,12 @@ interface ApiSessionPayload {
   user: LocalAuthUser;
 }
 
+interface ApiHttpError extends Error {
+  status?: number;
+  code?: string;
+  serverMessage?: string;
+}
+
 export interface LocalAuthUser {
   uid: string;
   email: string;
@@ -175,6 +181,16 @@ const resolveMessage = async (response: Response) => {
       return 'Request failed.';
     }
   }
+};
+
+const createApiHttpError = (status: number, message: string, code?: string): ApiHttpError => {
+  const error = new Error(`HTTP ${status}: ${message}`) as ApiHttpError;
+  error.status = status;
+  error.serverMessage = message;
+  if (code) {
+    error.code = code;
+  }
+  return error;
 };
 
 const apiRequest = async <TResponse>(
@@ -568,6 +584,7 @@ export const uploadCloudinaryAsset = async (
   options: {
     resourceType?: 'image' | 'video';
     folder?: string;
+    fileName?: string;
     onProgress?: (percentage: number) => void;
   } = {},
 ): Promise<{
@@ -588,6 +605,11 @@ export const uploadCloudinaryAsset = async (
     resourceType,
     folder,
   });
+
+  const explicitFileName = String(options.fileName || '').trim();
+  if (explicitFileName) {
+    params.set('fileName', explicitFileName);
+  }
 
   const token = getAuthToken();
   if (!token) {
@@ -664,7 +686,8 @@ export const uploadCloudinaryAsset = async (
       }
 
       const message = String(payload.message || payload.error || xhr.statusText || 'Upload failed.');
-      reject(new Error(`HTTP ${xhr.status}: ${message}`));
+      const code = String(payload.code || '').trim() || undefined;
+      reject(createApiHttpError(xhr.status, message, code));
     };
 
     xhr.onerror = () => {

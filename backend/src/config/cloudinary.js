@@ -33,6 +33,93 @@ export const resolveCloudinaryConfig = (
   return null;
 };
 
+const normalizeApiResourceType = (resourceType) => {
+  if (resourceType === 'raw') {
+    return 'raw';
+  }
+  if (resourceType === 'video') {
+    return 'video';
+  }
+  return 'image';
+};
+
+const getCloudinaryErrorHttpCode = (error) => {
+  return Number(error?.http_code || error?.error?.http_code || 0);
+};
+
+const getCloudinaryErrorMessage = (error) => {
+  return String(error?.message || error?.error?.message || '').trim();
+};
+
+const isCloudinaryNotFound = (error) => {
+  const httpCode = getCloudinaryErrorHttpCode(error);
+  const message = getCloudinaryErrorMessage(error).toLowerCase();
+  return httpCode === 404 || message.includes('not found');
+};
+
+export const cloudinaryAssetExists = async ({
+  publicId,
+  resourceType = 'image',
+  authUser,
+  configOptions,
+}) => {
+  const config = resolveCloudinaryConfig(authUser, configOptions);
+  if (!config) {
+    throw new Error('Cloudinary credentials are not configured for this account.');
+  }
+
+  const normalizedPublicId = String(publicId || '').trim();
+  if (!normalizedPublicId) {
+    return false;
+  }
+
+  cloudinary.config(config);
+
+  try {
+    await cloudinary.api.resource(normalizedPublicId, {
+      resource_type: normalizeApiResourceType(resourceType),
+      type: 'upload',
+    });
+    return true;
+  } catch (error) {
+    if (isCloudinaryNotFound(error)) {
+      return false;
+    }
+    throw error;
+  }
+};
+
+export const cloudinaryAssetsExistByPrefix = async ({
+  prefix,
+  resourceType = 'video',
+  maxResults = 1,
+  authUser,
+  configOptions,
+}) => {
+  const config = resolveCloudinaryConfig(authUser, configOptions);
+  if (!config) {
+    throw new Error('Cloudinary credentials are not configured for this account.');
+  }
+
+  const normalizedPrefix = String(prefix || '').trim();
+  if (!normalizedPrefix) {
+    return false;
+  }
+
+  const safeMaxResults = Math.max(1, Math.min(10, Number(maxResults || 1)));
+
+  cloudinary.config(config);
+
+  const response = await cloudinary.api.resources({
+    resource_type: normalizeApiResourceType(resourceType),
+    type: 'upload',
+    prefix: normalizedPrefix,
+    max_results: safeMaxResults,
+  });
+
+  return Array.isArray(response?.resources) && response.resources.length > 0;
+};
+
 export const uploadBufferToCloudinary = async ({
   buffer,
   folder,
@@ -95,13 +182,14 @@ export const uploadFileToCloudinary = async ({
     };
 
     if (resourceType === 'video') {
-      uploader.upload_large(
+      uploader.upload(
         filePath,
         {
           folder,
           resource_type: 'video',
           public_id: filename,
-          chunk_size: 20 * 1024 * 1024,
+          timeout: 600000,
+          overwrite: false,
         },
         callback,
       );
@@ -114,6 +202,7 @@ export const uploadFileToCloudinary = async ({
         folder,
         resource_type: resourceType,
         public_id: filename,
+        overwrite: false,
       },
       callback,
     );
@@ -121,8 +210,8 @@ export const uploadFileToCloudinary = async ({
 };
 
 const isRetryableCloudinaryError = (error) => {
-  const message = String(error?.message || '').toLowerCase();
-  const httpCode = Number(error?.http_code || 0);
+  const message = getCloudinaryErrorMessage(error).toLowerCase();
+  const httpCode = getCloudinaryErrorHttpCode(error);
   return message.includes('timeout') || httpCode === 429 || httpCode === 503 || httpCode === 504;
 };
 

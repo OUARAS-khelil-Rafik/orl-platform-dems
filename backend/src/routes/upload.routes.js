@@ -10,6 +10,8 @@ import { unlink } from 'node:fs/promises';
 import mongoose from 'mongoose';
 import { authRequired } from '../middleware/auth.js';
 import {
+  cloudinaryAssetExists,
+  cloudinaryAssetsExistByPrefix,
   destroyCloudinaryAsset,
   extractCloudinaryPublicId,
   inferCloudinaryResourceTypeFromUrl,
@@ -30,19 +32,69 @@ const avatarUpload = multer({
   limits: { fileSize: 10 * 1024 * 1024 },
 });
 
+const toBoundedInt = ({ value, fallback, min, max }) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+
+  const rounded = Math.floor(parsed);
+  if (rounded < min) {
+    return min;
+  }
+  if (rounded > max) {
+    return max;
+  }
+  return rounded;
+};
+
+const MB = 1024 * 1024;
+
 const MIN_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 const TARGET_FILE_SIZE = 85 * 1024 * 1024; // 85MB
 const CLOUDINARY_LIMIT = 100 * 1024 * 1024; // 100MB
 const MAX_PARTS = 30;
 const MAX_PARTS_TRANSCODE = 45;
-const MAX_COPY_SPLIT_ATTEMPTS = 6;
-const MAX_RETRIES = 3;
+const MAX_COPY_SPLIT_ATTEMPTS = toBoundedInt({
+  value: process.env.CLOUDINARY_MAX_COPY_SPLIT_ATTEMPTS,
+  fallback: 2,
+  min: 2,
+  max: 10,
+});
+const MAX_RETRIES = toBoundedInt({
+  value: process.env.CLOUDINARY_UPLOAD_MAX_RETRIES,
+  fallback: 1,
+  min: 0,
+  max: 5,
+});
 const UPLOAD_FOLDER = 'orl-platform';
 const CLEANUP_MAX_ASSETS = 200;
-const UPLOAD_CHUNK_SIZE = 20 * 1024 * 1024; // 20MB
-const PART_UPLOAD_CONCURRENCY = 3;
+const UPLOAD_CHUNK_SIZE = toBoundedInt({
+  value: process.env.CLOUDINARY_UPLOAD_CHUNK_MB,
+  fallback: 48,
+  min: 5,
+  max: 95,
+}) * MB;
+const PART_UPLOAD_CONCURRENCY = toBoundedInt({
+  value: process.env.CLOUDINARY_UPLOAD_PART_CONCURRENCY,
+  fallback: 6,
+  min: 1,
+  max: 8,
+});
+const STANDARD_VIDEO_UPLOAD_THRESHOLD = toBoundedInt({
+  value: process.env.CLOUDINARY_STANDARD_VIDEO_THRESHOLD_MB,
+  fallback: 100,
+  min: 5,
+  max: 100,
+}) * MB;
 const MAX_RETRY_DELAY_MS = 8000;
 const AVATAR_FOLDER_SEGMENT = '/orl-platform/avatars/';
+const VIDEO_PART_SUFFIX = '-part-';
+
+const formatPartNumber = (partNumber) => {
+  const safePartNumber = Math.max(1, Number(partNumber || 1));
+  return String(safePartNumber).padStart(2, '0');
+};
 
 const resolveContentCloudinaryOptions = (authUser) => {
   const isAdmin = authUser?.role === 'admin';
@@ -225,14 +277,17 @@ const deleteCloudinaryAssetWithFallback = async ({
 
 const execFileAsync = promisify(execFile);
 
-const sanitizeBaseName = (name) => {
-  return (
-    String(name || '')
-      .replace(/\.[^/.]+$/, '')
-      .replace(/[^a-z0-9-_]+/gi, '-')
-      .replace(/^-+|-+$/g, '')
-      .toLowerCase() || 'video'
-  );
+const normalizeUploadBaseName = (name, fallback = 'file') => {
+  const rawName = String(name || '').split(/[\\/]/).pop() || '';
+  const withoutExtension = rawName.replace(/\.[^/.]+$/, '').trim();
+  const normalized = withoutExtension
+    .normalize('NFKC')
+    .replace(/[\u0000-\u001f]+/g, '')
+    .replace(/[\\/]+/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return normalized || fallback;
 };
 
 const isRetryable = (error) => {
@@ -253,9 +308,18 @@ const isRetryable = (error) => {
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const computeRetryDelay = (attempt) => {
-  const baseDelay = Math.min(MAX_RETRY_DELAY_MS, 1000 * (2 ** attempt));
+  const baseDelay = Math.min(MAX_RETRY_DELAY_MS, 500 * (2 ** attempt));
   const jitter = Math.floor(Math.random() * 250);
   return baseDelay + jitter;
+};
+
+const getCloudinaryErrorHttpCode = (error) => {
+  return Number(error?.http_code || error?.error?.http_code || 0);
+};
+
+const getCloudinaryErrorMessage = (error, fallback = 'Unable to upload file.') => {
+  const message = String(error?.message || error?.error?.message || '').trim();
+  return message || fallback;
 };
 
 let ffmpegAvailabilityPromise = null;
@@ -292,7 +356,7 @@ const getVideoDuration = async (filePath) => {
 
 const listSplitParts = async (outputDir, baseName) => {
   return (await fs.readdir(outputDir))
-    .filter((file) => file.startsWith(`${baseName}-part-`) && file.endsWith('.mp4'))
+    .filter((file) => file.startsWith(`${baseName}${VIDEO_PART_SUFFIX}`) && file.endsWith('.mp4'))
     .sort()
     .map((file) => path.join(outputDir, file));
 };
@@ -304,7 +368,7 @@ const runSplitPass = async ({
   segmentDuration,
   reencode,
 }) => {
-  const outputPattern = path.join(outputDir, `${baseName}-part-%03d.mp4`);
+  const outputPattern = path.join(outputDir, `${baseName}${VIDEO_PART_SUFFIX}%02d.mp4`);
 
   await fs.rm(outputDir, { recursive: true, force: true });
   await fs.mkdir(outputDir, { recursive: true });
@@ -501,8 +565,27 @@ const uploadWithRetry = async ({
   authUser,
   configOptions,
 }) => {
+  const fileSize = Number(fsSync.statSync(filePath).size || 0);
+  const shouldUseSingleRequestUpload = fileSize > 0 && fileSize <= STANDARD_VIDEO_UPLOAD_THRESHOLD;
+
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt += 1) {
     try {
+      if (shouldUseSingleRequestUpload) {
+        const result = await uploadFileToCloudinary({
+          filePath,
+          folder,
+          resourceType: 'video',
+          filename: publicId,
+          authUser,
+          configOptions,
+        });
+
+        return {
+          result,
+          publicId: result?.public_id || `${folder}/${publicId}`,
+        };
+      }
+
       const result = await uploadLargeVideoToCloudinary({
         filePath,
         folder,
@@ -556,7 +639,8 @@ const uploadVideoPartsWithConcurrency = async ({
         return;
       }
 
-      const partPublicId = `${basePublicId}-part-${String(currentIndex + 1).padStart(3, '0')}`;
+      // Part numbering always starts at 01 for each uploaded source file.
+      const partPublicId = `${basePublicId}${VIDEO_PART_SUFFIX}${formatPartNumber(currentIndex + 1)}`;
       const uploaded = await uploadWithRetry({
         filePath: parts[currentIndex],
         folder,
@@ -674,14 +758,76 @@ router.post('/cloudinary', authRequired, withSingleFile(cloudinaryUpload), async
     temporaryPath = req.file.path;
 
     const resourceType = req.query.resourceType === 'video' ? 'video' : 'image';
-    const folder = req.query.folder ? String(req.query.folder) : UPLOAD_FOLDER;
+    const folder = (req.query.folder ? String(req.query.folder) : UPLOAD_FOLDER)
+      .trim()
+      .replace(/^\/+|\/+$/g, '') || UPLOAD_FOLDER;
+    const requestedUploadNameRaw = Array.isArray(req.query.fileName)
+      ? String(req.query.fileName[0] || '')
+      : String(req.query.fileName || '');
     const contentCloudinaryOptions = resolveContentCloudinaryOptions(req.authUser);
+    const uploadBaseName = normalizeUploadBaseName(
+      requestedUploadNameRaw
+      || req.file.originalname
+      || req.file.filename
+      || (resourceType === 'video' ? 'video' : 'image'),
+      resourceType === 'video' ? 'video' : 'image',
+    );
+    const fullPublicId = `${folder}/${uploadBaseName}`;
+
+    if (resourceType === 'video') {
+      let baseExists = false;
+      let partPrefixExists = false;
+
+      try {
+        [baseExists, partPrefixExists] = await Promise.all([
+          cloudinaryAssetExists({
+            publicId: fullPublicId,
+            resourceType: 'video',
+            authUser: req.authUser,
+            configOptions: contentCloudinaryOptions,
+          }),
+          cloudinaryAssetsExistByPrefix({
+            prefix: `${fullPublicId}${VIDEO_PART_SUFFIX}`,
+            resourceType: 'video',
+            maxResults: 1,
+            authUser: req.authUser,
+            configOptions: contentCloudinaryOptions,
+          }),
+        ]);
+      } catch (preflightError) {
+        console.warn('[uploads] Cloudinary duplicate preflight skipped:', getCloudinaryErrorMessage(preflightError, 'unknown-preflight-error'));
+      }
+
+      if (baseExists || partPrefixExists) {
+        return res.status(409).json({
+          message:
+            'Un fichier video portant ce nom existe deja dans Cloudinary. Renommez le fichier ou supprimez la version existante avant de reessayer.',
+        });
+      }
+    } else {
+      let assetExists = false;
+      try {
+        assetExists = await cloudinaryAssetExists({
+          publicId: fullPublicId,
+          resourceType,
+          authUser: req.authUser,
+          configOptions: contentCloudinaryOptions,
+        });
+      } catch (preflightError) {
+        console.warn('[uploads] Cloudinary duplicate preflight skipped:', getCloudinaryErrorMessage(preflightError, 'unknown-preflight-error'));
+      }
+
+      if (assetExists) {
+        return res.status(409).json({
+          message:
+            'Un fichier image portant ce nom existe deja dans Cloudinary. Renommez le fichier ou supprimez la version existante avant de reessayer.',
+        });
+      }
+    }
 
     let result;
     if (resourceType === 'video') {
-      const baseName = sanitizeBaseName(req.file.originalname || req.file.filename || 'video');
-      const uniqueSuffix = Date.now().toString(36);
-      const basePublicId = `${baseName}-${uniqueSuffix}`;
+      const basePublicId = uploadBaseName;
       const fileSize = Number(req.file.size || fsSync.statSync(temporaryPath).size || 0);
 
       let partsResults = [];
@@ -743,6 +889,7 @@ router.post('/cloudinary', authRequired, withSingleFile(cloudinaryUpload), async
         totalParts: partsMetadata.length,
         duration: totalDuration,
         fileSize: totalSize,
+        fileName: uploadBaseName,
         parts: isMultipart ? partsMetadata : [],
       });
     } else {
@@ -750,7 +897,7 @@ router.post('/cloudinary', authRequired, withSingleFile(cloudinaryUpload), async
         filePath: temporaryPath,
         folder,
         resourceType,
-        filename: undefined,
+        filename: uploadBaseName,
         authUser: req.authUser,
         configOptions: contentCloudinaryOptions,
       });
@@ -760,17 +907,24 @@ router.post('/cloudinary', authRequired, withSingleFile(cloudinaryUpload), async
       secureUrl: result.secure_url,
       publicId: result.public_id,
       resourceType,
+      fileName: uploadBaseName,
       uploadMode: resourceType === 'video' ? 'chunked-single-video' : 'standard',
     });
   } catch (error) {
-    const message = String(error?.message || 'Unable to upload file.');
+    const message = getCloudinaryErrorMessage(error, 'Unable to upload file.');
     const lower = message.toLowerCase();
+    const cloudinaryHttpCode = getCloudinaryErrorHttpCode(error);
     const isTooLarge =
       lower.includes('requested resource too large')
       || lower.includes('file size too large')
       || lower.includes('parts exceed 100mb limit')
       || error?.code === 'CLOUDINARY_PART_SIZE_LIMIT'
-      || Number(error?.http_code || 0) === 413;
+      || cloudinaryHttpCode === 413;
+    const isDuplicateAssetName =
+      lower.includes('already exists')
+      || lower.includes('existing public_id')
+      || lower.includes('must be unique')
+      || cloudinaryHttpCode === 409;
     const isMissingCloudinaryConfig = lower.includes('cloudinary credentials are not configured');
 
     if (isMissingCloudinaryConfig && req.authUser?.role === 'admin') {
@@ -784,6 +938,13 @@ router.post('/cloudinary', authRequired, withSingleFile(cloudinaryUpload), async
       return res.status(413).json({
         message:
           'Cloudinary a refuse ce fichier car il depasse la taille autorisee pour ce compte. Compressez la video ou changez de plan Cloudinary.',
+      });
+    }
+
+    if (isDuplicateAssetName) {
+      return res.status(409).json({
+        message:
+          'Un fichier portant le meme nom existe deja dans Cloudinary. Renommez le fichier ou supprimez la version existante avant de reessayer.',
       });
     }
 

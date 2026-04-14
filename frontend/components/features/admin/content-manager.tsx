@@ -274,6 +274,67 @@ const getErrorMessage = (error: unknown, fallback: string) => {
   return fallback;
 };
 
+const suggestAlternativeFileName = (fileName: string) => {
+  const normalized = String(fileName || '').trim();
+  if (!normalized) {
+    return 'fichier-renomme';
+  }
+
+  const dotIndex = normalized.lastIndexOf('.');
+  const hasExtension = dotIndex > 0 && dotIndex < normalized.length - 1;
+  const base = hasExtension ? normalized.slice(0, dotIndex) : normalized;
+  const extension = hasExtension ? normalized.slice(dotIndex) : '';
+  const compactStamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 12);
+  return `${base}-${compactStamp}${extension}`;
+};
+
+const getCloudinaryDuplicateNameNotification = (
+  error: unknown,
+  fileName: string,
+  resourceLabel: 'video' | 'image',
+) => {
+  const details = getErrorMessage(error, '').toLowerCase();
+  const errorStatus = (() => {
+    if (error && typeof error === 'object' && 'status' in error) {
+      const raw = Number((error as { status?: number }).status || 0);
+      if (Number.isFinite(raw)) {
+        return raw;
+      }
+    }
+
+    const match = details.match(/http\s+(\d{3})/i);
+    if (!match?.[1]) {
+      return 0;
+    }
+
+    const parsed = Number(match[1]);
+    return Number.isFinite(parsed) ? parsed : 0;
+  })();
+
+  const errorCode =
+    error && typeof error === 'object' && 'code' in error
+      ? String((error as { code?: string }).code || '').toLowerCase()
+      : '';
+
+  const isConflict409 =
+    (errorStatus === 409
+      || details.includes('http 409')
+      || details.includes('status 409')
+      || details.includes(' 409:'))
+    && (details.includes('existe deja') || details.includes('already exists') || details.includes('cloudinary'));
+
+  const hasDuplicateCode = errorCode.includes('duplicate');
+
+  if (!isConflict409 && !hasDuplicateCode) {
+    return '';
+  }
+
+  const safeFileName = String(fileName || '').trim() || 'ce fichier';
+  const suggestedFileName = suggestAlternativeFileName(safeFileName);
+
+  return `Notification: le nom de ${resourceLabel} "${safeFileName}" existe deja dans Cloudinary. Pour eviter ce blocage, renommez le fichier avant upload (ex: "${suggestedFileName}").`;
+};
+
 const MISSING_ADMIN_CLOUDINARY_MESSAGE =
   'Configuration Cloudinary admin manquante. Ouvrez Dashboard > Stockage, ou Admin > Utilisateurs > bouton Cloudinary sur votre compte admin, puis renseignez CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY et CLOUDINARY_API_SECRET.';
 const ADMIN_CLOUDINARY_CHECK_CACHE_MS = 15000;
@@ -747,9 +808,11 @@ export function AdminContentManager() {
     }
 
     try {
+      const requestedVideoName = String(videoData.title || '').trim() || file.name;
       const response = await uploadCloudinaryAsset(file, {
         resourceType: 'video',
         folder: `${UPLOAD_FOLDER}/videos`,
+        fileName: requestedVideoName,
         onProgress: (percentage) => {
           if (percentage >= 100) {
             setVideoUploadPhase('processing');
@@ -795,11 +858,19 @@ export function AdminContentManager() {
       setVideoUploadPhase('complete');
       setSuccessMessage('Video telechargee avec succes sur Cloudinary.');
     } catch (error) {
-      console.error('Upload error:', error);
+      const duplicateNameNotice = getCloudinaryDuplicateNameNotification(error, file.name, 'video');
+      if (duplicateNameNotice) {
+        console.warn('Upload duplicate filename conflict:', duplicateNameNotice);
+      } else {
+        console.error('Upload error:', error);
+      }
+
       const details = getErrorMessage(error, 'Une erreur inattendue est survenue lors du telechargement.');
       const lowerDetails = details.toLowerCase();
 
-      if (lowerDetails.includes('parts exceed 100mb limit')) {
+      if (duplicateNameNotice) {
+        setErrorMessage(duplicateNameNotice);
+      } else if (lowerDetails.includes('parts exceed 100mb limit')) {
         setErrorMessage('La video est trop lourde pour un decoupage Cloudinary stable (segments > 100MB). Compressez la video (bitrate plus faible) puis reessayez.');
       } else if (lowerDetails.includes('413') || lowerDetails.includes('volumineux')) {
         setErrorMessage(`Le fichier video depasse la limite de chunk Cloudinary (${Math.round(CLOUDINARY_LIMIT / (1024 * 1024))}MB). Essayez une compression ou un autre fichier.`);
@@ -1339,8 +1410,14 @@ export function AdminContentManager() {
       setSuccessMessage('Figure ajoutee avec succes.');
       setIsUploading(false);
     } catch (error) {
-      console.error('Upload figure error:', error);
-      setErrorMessage('Une erreur inattendue est survenue lors du téléchargement de la figure.');
+      const duplicateNameNotice = getCloudinaryDuplicateNameNotification(error, file.name, 'image');
+      if (duplicateNameNotice) {
+        console.warn('Upload case image duplicate filename conflict:', duplicateNameNotice);
+        setErrorMessage(duplicateNameNotice);
+      } else {
+        console.error('Upload figure error:', error);
+        setErrorMessage('Une erreur inattendue est survenue lors du téléchargement de la figure.');
+      }
       setIsUploading(false);
     } finally {
       // reset input value so same file can be re-selected if needed
@@ -1561,10 +1638,16 @@ export function AdminContentManager() {
       setSuccessMessage('Figure de question ajoutee avec succes.');
       setIsUploading(false);
     } catch (error) {
-      console.error('Upload case question figure error:', error);
-      setErrorMessage(
-        'Une erreur inattendue est survenue lors du téléchargement de la figure de question.',
-      );
+      const duplicateNameNotice = getCloudinaryDuplicateNameNotification(error, file.name, 'image');
+      if (duplicateNameNotice) {
+        console.warn('Upload case question image duplicate filename conflict:', duplicateNameNotice);
+        setErrorMessage(duplicateNameNotice);
+      } else {
+        console.error('Upload case question figure error:', error);
+        setErrorMessage(
+          'Une erreur inattendue est survenue lors du téléchargement de la figure de question.',
+        );
+      }
       setIsUploading(false);
     } finally {
       if (e.target) {
@@ -1746,8 +1829,14 @@ export function AdminContentManager() {
       setDiagramUploadPhase('complete');
       setSuccessMessage('Schema televerse avec succes.');
     } catch (error) {
-      console.error('Upload diagram error:', error);
-      setErrorMessage(getErrorMessage(error, 'Une erreur inattendue est survenue lors du téléchargement du schéma.'));
+      const duplicateNameNotice = getCloudinaryDuplicateNameNotification(error, file.name, 'image');
+      if (duplicateNameNotice) {
+        console.warn('Upload diagram duplicate filename conflict:', duplicateNameNotice);
+        setErrorMessage(duplicateNameNotice);
+      } else {
+        console.error('Upload diagram error:', error);
+        setErrorMessage(getErrorMessage(error, 'Une erreur inattendue est survenue lors du téléchargement du schéma.'));
+      }
       setDiagramUploadPhase('error');
       setDiagramUploadProgress((prev) => (prev > 0 ? prev : 0));
     } finally {

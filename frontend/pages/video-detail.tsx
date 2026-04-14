@@ -141,7 +141,7 @@ export default function VideoPage() {
   const orderedPlaybackParts = useMemo(() => {
     const toPartIndex = (part: VideoPartModel, fallbackIndex: number) => {
       const rawId = String(part.publicId || '');
-      const match = rawId.match(/-part-(\d+)$/i);
+      const match = rawId.match(/-(?:part|partie)-(\d+)$/i);
       if (!match?.[1]) {
         return fallbackIndex;
       }
