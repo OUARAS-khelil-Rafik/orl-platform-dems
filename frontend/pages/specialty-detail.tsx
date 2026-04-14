@@ -1025,7 +1025,7 @@ function VideoCard({
                 : 'bg-slate-900/70 text-slate-100 border-white/20'
             }`}
           >
-            {isViewed ? 'Deja vue' : 'Non vue'}
+            {isViewed ? 'Vue' : 'Non vue'}
           </span>
         </div>
         <div className="absolute inset-0 flex items-center justify-center">

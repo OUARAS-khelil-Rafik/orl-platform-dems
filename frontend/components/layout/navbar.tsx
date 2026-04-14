@@ -548,8 +548,8 @@ export function Navbar() {
                           toggleNotificationRead(notification.id);
                         }}
                         className={`notification-action mark-read ${isRead ? 'read' : 'unread'}`}
-                        title={isRead ? 'Marquer comme non vue' : 'Marquer comme deja vue'}
-                        aria-label={isRead ? 'Marquer comme non vue' : 'Marquer comme deja vue'}
+                        title={isRead ? 'Marquer comme non vue' : 'Marquer comme vue'}
+                        aria-label={isRead ? 'Marquer comme non vue' : 'Marquer comme vue'}
                       >
                         {isRead ? <MailOpen className="h-4 w-4" /> : <Mail className="h-4 w-4" />}
                       </button>
