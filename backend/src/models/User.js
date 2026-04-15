@@ -5,8 +5,15 @@ const userSchema = new mongoose.Schema(
     uid: { type: String, required: true, unique: true, index: true },
     email: { type: String, required: true, unique: true, index: true },
     passwordHash: { type: String, required: true },
+    passwordLoginEnabled: { type: Boolean, default: true },
     displayName: { type: String, required: true },
     photoURL: { type: String, default: '' },
+    googleAuth: {
+      sub: { type: String, default: '', index: true },
+      email: { type: String, default: '' },
+      picture: { type: String, default: '' },
+      connectedAt: { type: String, default: '' },
+    },
     role: {
       type: String,
       enum: ['admin', 'user', 'vip', 'vip_plus'],

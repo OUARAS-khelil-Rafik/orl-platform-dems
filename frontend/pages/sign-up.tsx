@@ -8,7 +8,7 @@ import { UserPlus } from 'lucide-react';
 
 export default function SignUpPage() {
   const router = useRouter();
-  const { user, loading, signUp } = useAuth();
+  const { user, loading, signUp, signInWithGoogle } = useAuth();
 
   const [lastName, setLastName] = useState('');
   const [firstName, setFirstName] = useState('');
@@ -65,6 +65,25 @@ export default function SignUpPage() {
         <p className="text-slate-600 mb-6">Creez votre compte avec les champs obligatoires marques par *.</p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          <button
+            type="button"
+            onClick={() => signInWithGoogle(true)}
+            disabled={isSubmitting}
+            className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-3 font-semibold text-slate-800 hover:bg-slate-50 disabled:opacity-70"
+          >
+            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-slate-900 text-xs font-bold text-white">G</span>
+            Connexion Google
+          </button>
+
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-slate-200" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-white px-2 text-slate-500">ou</span>
+            </div>
+          </div>
+
           <div>
             <label htmlFor="signup-last-name" className="block text-sm font-medium text-slate-700 mb-1">
               Nom *

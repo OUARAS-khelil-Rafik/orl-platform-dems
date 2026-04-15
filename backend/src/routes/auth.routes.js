@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import express from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
@@ -7,6 +8,11 @@ import { createId } from '../utils/id.js';
 import { adminRequired, authRequired } from '../middleware/auth.js';
 
 const router = express.Router();
+
+const GOOGLE_AUTH_BASE_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
+const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
+const GOOGLE_USERINFO_URL = 'https://openidconnect.googleapis.com/v1/userinfo';
+const GOOGLE_STATE_EXPIRATION = '10m';
 
 const parseInitialAdminAccountsFromEnv = () => {
   const raw = String(process.env.INITIAL_ADMIN_ACCOUNTS || '').trim();
@@ -65,11 +71,197 @@ const parseInitialAdminAccountsFromEnv = () => {
   };
 };
 
+const parseBooleanFlag = (value) => {
+  const normalized = String(value || '').trim().toLowerCase();
+  return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on';
+};
+
+const sanitizeNextPath = (value, fallback = '/dashboard') => {
+  const raw = String(value || '').trim();
+  if (!raw.startsWith('/') || raw.startsWith('//')) {
+    return fallback;
+  }
+  return raw;
+};
+
+const resolveFrontendBaseUrl = () => {
+  const fromEnv = String(process.env.FRONTEND_URL || '').trim();
+  if (fromEnv) {
+    return fromEnv.replace(/\/$/, '');
+  }
+
+  const firstCorsOrigin = Array.isArray(env.corsOrigins)
+    ? String(env.corsOrigins[0] || '').trim()
+    : '';
+
+  if (firstCorsOrigin) {
+    return firstCorsOrigin.replace(/\/$/, '');
+  }
+
+  return 'http://localhost:3000';
+};
+
+const getGoogleOAuthConfig = () => {
+  const clientId = String(process.env.GOOGLE_CLIENT_ID || '').trim();
+  const clientSecret = String(process.env.GOOGLE_CLIENT_SECRET || '').trim();
+  const redirectUri =
+    String(process.env.GOOGLE_REDIRECT_URI || '').trim()
+    || `http://localhost:${env.port}/api/auth/google/callback`;
+
+  const frontendBaseUrl = resolveFrontendBaseUrl();
+  const successRedirect = String(process.env.GOOGLE_AUTH_SUCCESS_REDIRECT || `${frontendBaseUrl}/oauth/google`).trim();
+  const failureRedirect = String(process.env.GOOGLE_AUTH_FAILURE_REDIRECT || `${frontendBaseUrl}/sign-in`).trim();
+
+  return {
+    clientId,
+    clientSecret,
+    redirectUri,
+    successRedirect,
+    failureRedirect,
+    isConfigured: Boolean(clientId && clientSecret && redirectUri),
+  };
+};
+
+const buildAbsoluteUrl = (value, fallback) => {
+  try {
+    return new URL(value).toString();
+  } catch {
+    return fallback;
+  }
+};
+
+const buildGoogleState = ({ intent = 'signin', remember = false, uid = '', nextPath = '/dashboard' }) => {
+  return jwt.sign(
+    {
+      provider: 'google',
+      intent: intent === 'connect' ? 'connect' : 'signin',
+      remember: Boolean(remember),
+      uid: String(uid || ''),
+      nextPath,
+      nonce: crypto.randomUUID(),
+    },
+    env.jwtSecret,
+    { expiresIn: GOOGLE_STATE_EXPIRATION },
+  );
+};
+
+const parseGoogleState = (rawState) => {
+  const payload = jwt.verify(rawState, env.jwtSecret);
+
+  if (!payload || typeof payload !== 'object' || payload.provider !== 'google') {
+    throw new Error('Invalid OAuth state payload.');
+  }
+
+  const intent = payload.intent === 'connect' ? 'connect' : 'signin';
+  const fallbackNext = intent === 'connect' ? '/dashboard?tab=profile' : '/dashboard';
+
+  return {
+    intent,
+    remember: Boolean(payload.remember),
+    uid: String(payload.uid || ''),
+    nextPath: sanitizeNextPath(payload.nextPath, fallbackNext),
+  };
+};
+
+const buildGoogleAuthorizeUrl = ({ clientId, redirectUri, state, prompt = 'select_account' }) => {
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    response_type: 'code',
+    scope: 'openid email profile',
+    state,
+    prompt,
+  });
+
+  return `${GOOGLE_AUTH_BASE_URL}?${params.toString()}`;
+};
+
+const exchangeGoogleCode = async ({ code, clientId, clientSecret, redirectUri }) => {
+  const body = new URLSearchParams({
+    code,
+    client_id: clientId,
+    client_secret: clientSecret,
+    redirect_uri: redirectUri,
+    grant_type: 'authorization_code',
+  });
+
+  const response = await fetch(GOOGLE_TOKEN_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body,
+  });
+
+  if (!response.ok) {
+    throw new Error('Google token exchange failed.');
+  }
+
+  return response.json();
+};
+
+const fetchGoogleIdentity = async (accessToken) => {
+  if (!accessToken) {
+    throw new Error('Missing Google access token.');
+  }
+
+  const response = await fetch(GOOGLE_USERINFO_URL, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error('Unable to fetch Google profile.');
+  }
+
+  const payload = await response.json();
+
+  const sub = String(payload?.sub || '').trim();
+  const email = String(payload?.email || '').trim().toLowerCase();
+  const name = String(payload?.name || '').trim();
+  const picture = String(payload?.picture || '').trim();
+  const emailVerified = Boolean(payload?.email_verified);
+
+  if (!sub || !email) {
+    throw new Error('Incomplete Google profile information.');
+  }
+
+  if (!emailVerified) {
+    throw new Error('Google email must be verified.');
+  }
+
+  return {
+    sub,
+    email,
+    name: name || 'Utilisateur',
+    picture,
+  };
+};
+
+const redirectWithOAuthError = (res, targetUrl, message) => {
+  const target = new URL(targetUrl);
+  target.searchParams.set('oauthError', message);
+  return res.redirect(target.toString());
+};
+
+const redirectWithOAuthSuccess = (res, { targetUrl, token, remember, nextPath }) => {
+  const target = new URL(targetUrl);
+  target.hash = new URLSearchParams({
+    token,
+    remember: remember ? '1' : '0',
+    next: sanitizeNextPath(nextPath, '/dashboard'),
+  }).toString();
+
+  return res.redirect(target.toString());
+};
+
 const toSessionUser = (user) => ({
   uid: user.uid,
   email: user.email,
   displayName: user.displayName || 'Utilisateur',
   photoURL: user.photoURL || '',
+  googleConnected: Boolean(user?.googleAuth?.sub),
 });
 
 const issueToken = (uid) => jwt.sign({ uid }, env.jwtSecret, { expiresIn: env.jwtExpiresIn });
@@ -104,6 +296,7 @@ const createUserWithPassword = async ({
     uid,
     email: normalizedEmail,
     passwordHash,
+    passwordLoginEnabled: true,
     displayName: String(displayName || 'Utilisateur').trim() || 'Utilisateur',
     photoURL: '',
     role,
@@ -120,6 +313,279 @@ const createUserWithPassword = async ({
 
   return created;
 };
+
+const linkGoogleToUser = async (user, googleIdentity) => {
+  const existingGoogleSub = String(user?.googleAuth?.sub || '').trim();
+  if (existingGoogleSub && existingGoogleSub !== googleIdentity.sub) {
+    throw new Error('This account is already linked to another Google account.');
+  }
+
+  const updatePayload = {
+    googleAuth: {
+      sub: googleIdentity.sub,
+      email: googleIdentity.email,
+      picture: googleIdentity.picture,
+      connectedAt: new Date().toISOString(),
+    },
+  };
+
+  if (!String(user.photoURL || '').trim() && googleIdentity.picture) {
+    updatePayload.photoURL = googleIdentity.picture;
+  }
+
+  if (!String(user.displayName || '').trim() && googleIdentity.name) {
+    updatePayload.displayName = googleIdentity.name;
+  }
+
+  await User.updateOne({ uid: user.uid }, { $set: updatePayload });
+  return User.findOne({ uid: user.uid });
+};
+
+const createUserWithGoogle = async (googleIdentity) => {
+  const fallbackPassword = `${createId()}-${crypto.randomUUID()}`;
+
+  const created = await createUserWithPassword({
+    email: googleIdentity.email,
+    password: fallbackPassword,
+    displayName: googleIdentity.name,
+    role: 'user',
+    subscriptionApprovalStatus: 'none',
+    phoneNumber: '',
+  });
+
+  if (!created) {
+    return null;
+  }
+
+  created.passwordLoginEnabled = false;
+  created.photoURL = googleIdentity.picture || created.photoURL || '';
+  created.googleAuth = {
+    sub: googleIdentity.sub,
+    email: googleIdentity.email,
+    picture: googleIdentity.picture,
+    connectedAt: new Date().toISOString(),
+  };
+  await created.save();
+
+  return created;
+};
+
+const resolveUserFromGoogleSignIn = async (googleIdentity) => {
+  const byGoogleSub = await User.findOne({ 'googleAuth.sub': googleIdentity.sub });
+  if (byGoogleSub) {
+    const linked = await linkGoogleToUser(byGoogleSub, googleIdentity);
+    return linked || byGoogleSub;
+  }
+
+  const byEmail = await User.findOne({ email: googleIdentity.email });
+  if (byEmail) {
+    const existingGoogleSub = String(byEmail?.googleAuth?.sub || '').trim();
+    if (existingGoogleSub && existingGoogleSub !== googleIdentity.sub) {
+      throw new Error('This email is already linked to another Google account.');
+    }
+
+    const linked = await linkGoogleToUser(byEmail, googleIdentity);
+    return linked || byEmail;
+  }
+
+  const created = await createUserWithGoogle(googleIdentity);
+  if (!created) {
+    throw new Error('Unable to create user with Google account.');
+  }
+
+  return created;
+};
+
+router.get('/google/start', async (req, res) => {
+  const oauth = getGoogleOAuthConfig();
+
+  if (!oauth.isConfigured) {
+    return res.status(500).json({ message: 'Google OAuth is not configured.' });
+  }
+
+  const state = buildGoogleState({
+    intent: 'signin',
+    remember: parseBooleanFlag(req.query?.remember),
+    nextPath: sanitizeNextPath(req.query?.next, '/dashboard'),
+  });
+
+  const authUrl = buildGoogleAuthorizeUrl({
+    clientId: oauth.clientId,
+    redirectUri: oauth.redirectUri,
+    state,
+    prompt: 'select_account',
+  });
+
+  return res.redirect(authUrl);
+});
+
+router.post('/google/connect-start', authRequired, async (req, res) => {
+  const oauth = getGoogleOAuthConfig();
+
+  if (!oauth.isConfigured) {
+    return res.status(500).json({ message: 'Google OAuth is not configured.' });
+  }
+
+  const state = buildGoogleState({
+    intent: 'connect',
+    remember: true,
+    uid: req.authUser.uid,
+    nextPath: sanitizeNextPath(req.body?.next, '/dashboard?tab=profile'),
+  });
+
+  const authUrl = buildGoogleAuthorizeUrl({
+    clientId: oauth.clientId,
+    redirectUri: oauth.redirectUri,
+    state,
+    prompt: 'consent',
+  });
+
+  return res.json({ url: authUrl });
+});
+
+router.post('/google/disconnect', authRequired, async (req, res) => {
+  try {
+    const user = await User.findOne({ uid: req.authUser.uid });
+    if (!user) {
+      return res.status(404).json({ message: 'Compte introuvable.' });
+    }
+
+    if (!String(user?.googleAuth?.sub || '').trim()) {
+      return res.status(400).json({ message: 'Google is not connected to this account.' });
+    }
+
+    const requestedNewPassword = String(req.body?.newPassword || '');
+
+    if (user.passwordLoginEnabled === false) {
+      if (requestedNewPassword.length < 6) {
+        return res.status(400).json({
+          message: 'Ajoutez d\'abord un mot de passe local avant de deconnecter Google.',
+        });
+      }
+
+      user.passwordHash = await bcrypt.hash(requestedNewPassword, 10);
+      user.passwordLoginEnabled = true;
+    }
+
+    user.googleAuth = {
+      sub: '',
+      email: '',
+      picture: '',
+      connectedAt: '',
+    };
+    await user.save();
+
+    const token = issueToken(user.uid);
+    return res.json({ token, user: toSessionUser(user) });
+  } catch {
+    return res.status(500).json({ message: 'Unable to disconnect Google account.' });
+  }
+});
+
+router.get('/google/callback', async (req, res) => {
+  const oauth = getGoogleOAuthConfig();
+  const frontendBase = resolveFrontendBaseUrl();
+  const successRedirectTarget = buildAbsoluteUrl(oauth.successRedirect, `${frontendBase}/oauth/google`);
+  const rawState = String(req.query?.state || '').trim();
+
+  let statePayloadForFailure = null;
+  if (rawState) {
+    try {
+      statePayloadForFailure = parseGoogleState(rawState);
+    } catch {
+      statePayloadForFailure = null;
+    }
+  }
+
+  const defaultFailureTarget = buildAbsoluteUrl(oauth.failureRedirect, `${frontendBase}/sign-in`);
+  const connectFailureTarget = buildAbsoluteUrl(
+    `${frontendBase}${sanitizeNextPath(statePayloadForFailure?.nextPath, '/dashboard?tab=profile')}`,
+    `${frontendBase}/dashboard?tab=profile`,
+  );
+  const failureRedirectTarget = statePayloadForFailure?.intent === 'connect'
+    ? connectFailureTarget
+    : defaultFailureTarget;
+
+  if (!oauth.isConfigured) {
+    return redirectWithOAuthError(res, failureRedirectTarget, 'Google OAuth non configure.');
+  }
+
+  const providerError = String(req.query?.error || '').trim();
+  if (providerError) {
+    return redirectWithOAuthError(res, failureRedirectTarget, 'Authentification Google annulee.');
+  }
+
+  const code = String(req.query?.code || '').trim();
+  if (!code || !rawState) {
+    return redirectWithOAuthError(res, failureRedirectTarget, 'Reponse Google incomplete.');
+  }
+
+  let statePayload;
+  try {
+    statePayload = parseGoogleState(rawState);
+  } catch {
+    return redirectWithOAuthError(res, failureRedirectTarget, 'Session Google expiree. Reessayez.');
+  }
+
+  let googleIdentity;
+  try {
+    const tokenResponse = await exchangeGoogleCode({
+      code,
+      clientId: oauth.clientId,
+      clientSecret: oauth.clientSecret,
+      redirectUri: oauth.redirectUri,
+    });
+
+    googleIdentity = await fetchGoogleIdentity(String(tokenResponse?.access_token || ''));
+  } catch {
+    return redirectWithOAuthError(res, failureRedirectTarget, 'Echec de verification Google.');
+  }
+
+  try {
+    let user;
+
+    if (statePayload.intent === 'connect') {
+      if (!statePayload.uid) {
+        return redirectWithOAuthError(res, failureRedirectTarget, 'Session utilisateur invalide.');
+      }
+
+      const targetUser = await User.findOne({ uid: statePayload.uid });
+      if (!targetUser) {
+        return redirectWithOAuthError(res, failureRedirectTarget, 'Utilisateur introuvable.');
+      }
+
+      const alreadyLinkedElsewhere = await User.findOne({
+        'googleAuth.sub': googleIdentity.sub,
+        uid: { $ne: targetUser.uid },
+      }).lean();
+
+      if (alreadyLinkedElsewhere) {
+        return redirectWithOAuthError(res, failureRedirectTarget, 'Ce compte Google est deja lie a un autre utilisateur.');
+      }
+
+      user = await linkGoogleToUser(targetUser, googleIdentity);
+    } else {
+      user = await resolveUserFromGoogleSignIn(googleIdentity);
+    }
+
+    if (!user) {
+      return redirectWithOAuthError(res, failureRedirectTarget, 'Connexion Google impossible.');
+    }
+
+    const token = issueToken(user.uid);
+    const remember = statePayload.intent === 'connect' ? true : statePayload.remember;
+
+    return redirectWithOAuthSuccess(res, {
+      targetUrl: successRedirectTarget,
+      token,
+      remember,
+      nextPath: statePayload.nextPath,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Connexion Google impossible.';
+    return redirectWithOAuthError(res, failureRedirectTarget, message);
+  }
+});
 
 router.post('/signup', async (req, res) => {
   try {
@@ -143,6 +609,10 @@ router.post('/signin', async (req, res) => {
     const user = await User.findOne({ email: normalizedEmail });
     if (!user) {
       return res.status(401).json({ message: 'Email ou mot de passe invalide.' });
+    }
+
+    if (user.passwordLoginEnabled === false) {
+      return res.status(400).json({ message: 'Ce compte utilise Google. Utilisez la connexion Google.' });
     }
 
     const ok = await bcrypt.compare(password, user.passwordHash);
@@ -205,7 +675,12 @@ router.post('/change-password', authRequired, async (req, res) => {
       return res.status(404).json({ message: 'Compte introuvable.' });
     }
 
-    if (req.authUser.role !== 'admin' || targetUid === req.authUser.uid) {
+    const requiresCurrentPassword = req.authUser.role !== 'admin' || targetUid === req.authUser.uid;
+    const isSelfUpdate = targetUid === req.authUser.uid;
+    const hasGoogleLinked = Boolean(String(user?.googleAuth?.sub || '').trim());
+    const allowPasswordResetThroughGoogleSession = isSelfUpdate && hasGoogleLinked;
+
+    if (requiresCurrentPassword && user.passwordLoginEnabled !== false && !allowPasswordResetThroughGoogleSession) {
       const ok = await bcrypt.compare(currentPassword, user.passwordHash);
       if (!ok) {
         return res.status(400).json({ message: 'Mot de passe actuel incorrect.' });
@@ -213,6 +688,7 @@ router.post('/change-password', authRequired, async (req, res) => {
     }
 
     user.passwordHash = await bcrypt.hash(newPassword, 10);
+    user.passwordLoginEnabled = true;
     await user.save();
 
     return res.json({ ok: true });

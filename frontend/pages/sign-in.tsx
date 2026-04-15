@@ -8,13 +8,17 @@ import { LogIn, ShieldCheck, Stethoscope } from 'lucide-react';
 
 export default function SignInPage() {
   const router = useRouter();
-  const { user, loading, signIn } = useAuth();
+  const { user, loading, signIn, signInWithGoogle } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const oauthError = Array.isArray(router.query.oauthError)
+    ? router.query.oauthError[0]
+    : router.query.oauthError;
 
   useEffect(() => {
     if (!loading && user) {
@@ -79,6 +83,10 @@ export default function SignInPage() {
         <p className="text-slate-600 mb-6">Accédez à votre espace DEMS ENT.</p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {oauthError ? (
+            <p className="text-sm text-red-600">{String(oauthError)}</p>
+          ) : null}
+
           <div>
             <label htmlFor="signin-email" className="block text-sm font-medium text-slate-700 mb-1">
               Email *
@@ -121,6 +129,16 @@ export default function SignInPage() {
             />
             Se souvenir de moi
           </label>
+
+          <button
+            type="button"
+            onClick={() => signInWithGoogle(rememberMe)}
+            disabled={isSubmitting}
+            className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-3 font-semibold text-slate-800 hover:bg-slate-50 disabled:opacity-70"
+          >
+            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-slate-900 text-xs font-bold text-white">G</span>
+            Connexion Google
+          </button>
 
           {error ? (
             <p className="text-sm text-red-600">{error}</p>

@@ -1084,11 +1084,16 @@ router.post('/avatar', authRequired, withSingleFile(avatarUpload), async (req, r
       return res.status(400).json({ message: 'file is required.' });
     }
 
+    const avatarBaseName = normalizeUploadBaseName(
+      req.file.originalname || `avatar-${req.authUser.uid}`,
+      `avatar-${req.authUser.uid}`,
+    );
+
     const result = await uploadBufferToCloudinary({
       buffer: req.file.buffer,
-      folder: `orl-platform/avatars/${req.authUser.uid}`,
+      folder: 'orl-platform/avatars',
       resourceType: 'image',
-      filename: undefined,
+      filename: avatarBaseName,
       authUser: req.authUser,
       configOptions: {
         preferUserConfig: false,

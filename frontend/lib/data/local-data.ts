@@ -72,6 +72,7 @@ export interface LocalAuthUser {
   email: string;
   displayName: string;
   photoURL: string;
+  googleConnected?: boolean;
 }
 
 export type CloudinaryResourceType = 'image' | 'video' | 'raw';
@@ -102,6 +103,23 @@ const resolveApiBaseUrl = () => {
   }
 
   return 'http://localhost:4000/api';
+};
+
+const getApiBaseUrlCandidates = () => {
+  const primary = resolveApiBaseUrl();
+  const candidates = [primary];
+
+  if (!isBrowser()) {
+    return candidates;
+  }
+
+  if (primary.includes('://localhost:4000')) {
+    candidates.push(primary.replace('://localhost:4000', '://127.0.0.1:4000'));
+  } else if (primary.includes('://127.0.0.1:4000')) {
+    candidates.push(primary.replace('://127.0.0.1:4000', '://localhost:4000'));
+  }
+
+  return Array.from(new Set(candidates));
 };
 
 const AUTH_SESSION_KEY = 'dems-auth-session-v1';
@@ -163,6 +181,22 @@ const writeSession = (session: ApiSessionPayload | null, persistence: 'local' | 
   window.localStorage.setItem(AUTH_SESSION_KEY, serialized);
 };
 
+const getSessionPersistence = (): 'local' | 'session' => {
+  if (!isBrowser()) {
+    return 'local';
+  }
+
+  if (window.localStorage.getItem(AUTH_SESSION_KEY)) {
+    return 'local';
+  }
+
+  if (window.sessionStorage.getItem(AUTH_SESSION_TEMP_KEY)) {
+    return 'session';
+  }
+
+  return 'local';
+};
+
 const notifyAuthListeners = (user: LocalAuthUser | null) => {
   authListeners.forEach((listener) => listener(user));
 };
@@ -213,17 +247,31 @@ const apiRequest = async <TResponse>(
     throw new Error('Authentication required.');
   }
 
-  const apiBaseUrl = resolveApiBaseUrl();
+  const apiBaseUrlCandidates = getApiBaseUrlCandidates();
 
-  let response: Response;
-  try {
-    response = await fetch(`${apiBaseUrl}${path}`, {
-      ...options,
-      headers,
-    });
-  } catch (error) {
-    const details = error instanceof Error ? error.message : 'Network error';
-    throw new Error(`Failed to reach API (${apiBaseUrl}). ${details}`);
+  let response: Response | null = null;
+  let lastFetchError: unknown = null;
+  let resolvedApiBaseUrl = apiBaseUrlCandidates[0] || resolveApiBaseUrl();
+
+  for (const apiBaseUrl of apiBaseUrlCandidates) {
+    resolvedApiBaseUrl = apiBaseUrl;
+
+    try {
+      response = await fetch(`${apiBaseUrl}${path}`, {
+        ...options,
+        headers,
+      });
+      break;
+    } catch (error) {
+      lastFetchError = error;
+    }
+  }
+
+  if (!response) {
+    const details = lastFetchError instanceof Error ? lastFetchError.message : 'Network error';
+    throw new Error(
+      `Failed to reach API (${resolvedApiBaseUrl}). ${details}. Ensure backend is running on port 4000 (backend: npm run dev).`,
+    );
   }
 
   if (!response.ok) {
@@ -423,6 +471,42 @@ export const signOut = async (_auth: typeof auth) => {
   notifyAuthListeners(null);
 };
 
+export const getValidatedSessionUser = async (): Promise<LocalAuthUser | null> => {
+  const session = getStoredSession();
+  if (!session?.token) {
+    return null;
+  }
+
+  try {
+    const response = await fetch(`${resolveApiBaseUrl()}/auth/me`, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${session.token}`,
+      },
+    });
+
+    if (!response.ok) {
+      writeSession(null);
+      return null;
+    }
+
+    const payload = (await response.json()) as { user?: LocalAuthUser };
+    if (!payload?.user?.uid) {
+      writeSession(null);
+      return null;
+    }
+
+    writeSession(
+      { token: session.token, user: payload.user },
+      getSessionPersistence(),
+    );
+
+    return payload.user;
+  } catch {
+    return session.user || null;
+  }
+};
+
 export const ensureDemoAccountsSeeded = async () => {
   if (!isBrowser()) {
     return;
@@ -498,6 +582,94 @@ export const signInWithEmail = async (
   notifyAuthListeners(response.user);
 
   return response.user;
+};
+
+export const beginGoogleSignIn = (rememberMe = true, nextPath = '/dashboard') => {
+  if (!isBrowser()) {
+    return;
+  }
+
+  const params = new URLSearchParams({
+    remember: rememberMe ? '1' : '0',
+    next: nextPath,
+  });
+
+  window.location.assign(`${resolveApiBaseUrl()}/auth/google/start?${params.toString()}`);
+};
+
+export const beginGoogleConnect = async (nextPath = '/dashboard?tab=profile') => {
+  const response = await apiRequest<{ url: string }>(
+    '/auth/google/connect-start',
+    {
+      method: 'POST',
+      body: JSON.stringify({ next: nextPath }),
+    },
+    true,
+  );
+
+  if (isBrowser() && response?.url) {
+    window.location.assign(response.url);
+  }
+};
+
+export const disconnectGoogleAccount = async (newPassword?: string): Promise<LocalAuthUser> => {
+  const normalizedNewPassword = typeof newPassword === 'string' ? newPassword : '';
+
+  const response = await apiRequest<{ token: string; user: LocalAuthUser }>(
+    '/auth/google/disconnect',
+    normalizedNewPassword
+      ? {
+          method: 'POST',
+          body: JSON.stringify({ newPassword: normalizedNewPassword }),
+        }
+      : {
+          method: 'POST',
+        },
+    true,
+  );
+
+  writeSession(
+    { token: response.token, user: response.user },
+    getSessionPersistence(),
+  );
+  notifyAuthListeners(response.user);
+
+  return response.user;
+};
+
+export const signInWithOAuthToken = async (
+  token: string,
+  rememberMe = true,
+): Promise<LocalAuthUser> => {
+  const normalizedToken = String(token || '').trim();
+  if (!normalizedToken) {
+    throw new Error('OAuth token is missing.');
+  }
+
+  const response = await fetch(`${resolveApiBaseUrl()}/auth/me`, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${normalizedToken}`,
+    },
+  });
+
+  if (!response.ok) {
+    const message = await resolveMessage(response);
+    throw new Error(`HTTP ${response.status}: ${message}`);
+  }
+
+  const payload = (await response.json()) as { user?: LocalAuthUser };
+  if (!payload?.user?.uid) {
+    throw new Error('OAuth session payload is invalid.');
+  }
+
+  writeSession(
+    { token: normalizedToken, user: payload.user },
+    rememberMe ? 'local' : 'session',
+  );
+  notifyAuthListeners(payload.user);
+
+  return payload.user;
 };
 
 export const updateAuthDisplayName = async (uid: string, displayName: string) => {

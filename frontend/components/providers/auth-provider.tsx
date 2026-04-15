@@ -3,10 +3,14 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import {
   auth,
+  beginGoogleConnect,
+  beginGoogleSignIn,
   createAuthAccount,
   db,
+  disconnectGoogleAccount as disconnectGoogleAccountApi,
   doc,
   ensureDemoAccountsSeeded,
+  getValidatedSessionUser,
   getDoc,
   onAuthStateChanged,
   setDoc,
@@ -37,6 +41,13 @@ export interface UserProfile {
   importantVideoIds: string[];
   blockedVideoIds?: string[];
   isBlocked?: boolean;
+  passwordLoginEnabled?: boolean;
+  googleAuth?: {
+    sub?: string;
+    email?: string;
+    picture?: string;
+    connectedAt?: string;
+  };
   createdAt: string;
 }
 
@@ -46,6 +57,9 @@ interface AuthContextType {
   loading: boolean;
   isAuthReady: boolean;
   signIn: (email: string, password: string, rememberMe?: boolean) => Promise<void>;
+  signInWithGoogle: (rememberMe?: boolean) => void;
+  connectGoogleAccount: () => Promise<void>;
+  disconnectGoogleAccount: (newPassword?: string) => Promise<void>;
   signUp: (payload: {
     lastName: string;
     firstName: string;
@@ -62,6 +76,9 @@ const AuthContext = createContext<AuthContextType>({
   loading: true,
   isAuthReady: false,
   signIn: async () => {},
+  signInWithGoogle: () => {},
+  connectGoogleAccount: async () => {},
+  disconnectGoogleAccount: async () => {},
   signUp: async () => {},
   signOut: async () => {},
 });
@@ -89,6 +106,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Important videos are a subset of favorites in the UX.
     const mergedFavoriteVideoIds = Array.from(new Set([...uniqueFavoriteVideoIds, ...uniqueImportantVideoIds]));
 
+    const googleAuthSub = String(profile.googleAuth?.sub || '').trim();
+    const normalizedGoogleAuth = googleAuthSub
+      ? {
+          sub: googleAuthSub,
+          email: String(profile.googleAuth?.email || '').trim().toLowerCase(),
+          picture: String(profile.googleAuth?.picture || '').trim(),
+          connectedAt: String(profile.googleAuth?.connectedAt || '').trim(),
+        }
+      : undefined;
+
     const sourceDisplayName = profile.displayName || authUser?.displayName || 'Utilisateur';
     const splitSourceName = splitFullName(sourceDisplayName);
     const normalizedNames = normalizeNameParts(
@@ -115,6 +142,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       importantVideoIds: uniqueImportantVideoIds,
       blockedVideoIds: Array.isArray(profile.blockedVideoIds) ? profile.blockedVideoIds : [],
       isBlocked: Boolean(profile.isBlocked),
+      passwordLoginEnabled: profile.passwordLoginEnabled !== false,
+      googleAuth: normalizedGoogleAuth,
       createdAt: profile.createdAt || new Date().toISOString(),
     };
   };
@@ -157,6 +186,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       importantVideoIds: [],
       blockedVideoIds: [],
       isBlocked: false,
+      passwordLoginEnabled: true,
       createdAt: new Date().toISOString(),
     };
 
@@ -168,17 +198,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     void ensureDemoAccountsSeeded();
 
     const unsubscribe = onAuthStateChanged(auth, async (authUser) => {
-      setUser(authUser);
-
       if (authUser) {
         try {
-          const resolvedProfile = await ensureUserProfile(authUser);
+          const validatedUser = await getValidatedSessionUser();
+
+          if (!validatedUser) {
+            setUser(null);
+            setProfile(null);
+            setLoading(false);
+            setIsAuthReady(true);
+            return;
+          }
+
+          setUser(validatedUser);
+          const resolvedProfile = await ensureUserProfile(validatedUser);
           setProfile(resolvedProfile);
         } catch (error) {
           console.error('Error fetching user profile:', error);
+          setUser(null);
           setProfile(null);
         }
       } else {
+        setUser(null);
         setProfile(null);
       }
       
@@ -193,6 +234,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const signedInUser = await signInWithEmail(email, password, rememberMe);
     setUser(signedInUser);
     const resolvedProfile = await ensureUserProfile(signedInUser);
+    setProfile(resolvedProfile);
+  };
+
+  const signInWithGoogle = (rememberMe = true) => {
+    beginGoogleSignIn(rememberMe, '/dashboard');
+  };
+
+  const connectGoogleAccount = async () => {
+    await beginGoogleConnect('/dashboard?tab=profile');
+  };
+
+  const disconnectGoogleAccount = async (newPassword?: string) => {
+    const nextUser = await disconnectGoogleAccountApi(newPassword);
+    setUser(nextUser);
+    const resolvedProfile = await ensureUserProfile(nextUser);
     setProfile(resolvedProfile);
   };
 
@@ -243,7 +299,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [profile, user]);
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, isAuthReady, signIn, signUp, signOut }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        profile,
+        loading,
+        isAuthReady,
+        signIn,
+        signInWithGoogle,
+        connectGoogleAccount,
+        disconnectGoogleAccount,
+        signUp,
+        signOut,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

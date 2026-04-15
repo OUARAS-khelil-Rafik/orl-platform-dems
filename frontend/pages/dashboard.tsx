@@ -5,7 +5,7 @@ import { useRouter } from 'next/router';
 import Image from 'next/image';
 import Link from 'next/link';
 import { motion } from 'motion/react';
-import { User, Star, Camera, LockKeyhole, Moon, Sun, Trash2, Crop, RotateCcw, RotateCw, Square } from 'lucide-react';
+import { User, Star, Camera, LockKeyhole, Moon, Sun, Trash2, Crop, RotateCcw, RotateCw, Square, Link2, Unplug } from 'lucide-react';
 import Cropper, { type Area } from 'react-easy-crop';
 import { useAuth } from '@/components/providers/auth-provider';
 import {
@@ -31,7 +31,14 @@ import { isSubscriptionActive } from '@/lib/security/access-control';
 import { formatFullName, normalizeNameParts, splitFullName } from '@/lib/utils/name-utils';
 
 export default function UserDashboard() {
-  const { user, profile, loading: authLoading, signOut } = useAuth();
+  const {
+    user,
+    profile,
+    loading: authLoading,
+    signOut,
+    connectGoogleAccount,
+    disconnectGoogleAccount,
+  } = useAuth();
   const router = useRouter();
 
   const [activeTab, setActiveTab] = useState<'profile' | 'storage'>('profile');
@@ -44,6 +51,7 @@ export default function UserDashboard() {
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [avatarEditorOpen, setAvatarEditorOpen] = useState(false);
   const [avatarSource, setAvatarSource] = useState<string | null>(null);
+  const [avatarSourceFileName, setAvatarSourceFileName] = useState('');
   const [avatarCrop, setAvatarCrop] = useState({ x: 0, y: 0 });
   const [avatarZoom, setAvatarZoom] = useState(1);
   const [avatarRotation, setAvatarRotation] = useState(0);
@@ -55,6 +63,8 @@ export default function UserDashboard() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  const [isGoogleLinking, setIsGoogleLinking] = useState(false);
+  const [isGoogleDisconnecting, setIsGoogleDisconnecting] = useState(false);
   const [storageSettings, setStorageSettings] = useState({
     cloudName: '',
     apiKey: '',
@@ -108,6 +118,26 @@ export default function UserDashboard() {
   };
 
   const subtleText = { color: 'color-mix(in oklab, var(--app-text) 78%, var(--app-muted) 22%)' };
+  const isGoogleConnected = Boolean(String(profile?.googleAuth?.sub || '').trim());
+  const oauthError = typeof router.query.oauthError === 'string' ? router.query.oauthError : '';
+  const hasLocalPassword = profile?.passwordLoginEnabled !== false;
+  const authConnectionState = !isGoogleConnected && hasLocalPassword
+    ? 'local-only'
+    : isGoogleConnected && hasLocalPassword
+      ? 'google-and-local'
+      : 'google-only';
+  const requiresCurrentPasswordForChange = hasLocalPassword && !isGoogleConnected;
+  const passwordSectionTitle = authConnectionState === 'google-only'
+    ? 'Definir un mot de passe local'
+    : 'Mettre a jour le mot de passe local';
+  const passwordPrimaryActionLabel = authConnectionState === 'google-only'
+    ? 'Definir le mot de passe local'
+    : 'Mettre a jour le mot de passe local';
+  const authStateDescription = authConnectionState === 'local-only'
+    ? 'Mode actuel: Mot de passe local uniquement.'
+    : authConnectionState === 'google-and-local'
+      ? 'Mode actuel: Connexion Google + mot de passe local.'
+      : 'Mode actuel: Connexion Google uniquement.';
 
   const createImage = (url: string) =>
     new Promise<HTMLImageElement>((resolve, reject) => {
@@ -180,6 +210,7 @@ export default function UserDashboard() {
     }
     setAvatarEditorOpen(false);
     setAvatarSource(null);
+    setAvatarSourceFileName('');
     setAvatarCrop({ x: 0, y: 0 });
     setAvatarZoom(1);
     setAvatarRotation(0);
@@ -336,6 +367,7 @@ export default function UserDashboard() {
     }
 
     setAvatarSource(localUrl);
+    setAvatarSourceFileName(file.name || 'avatar.jpg');
     setAvatarCrop({ x: 0, y: 0 });
     setAvatarZoom(1);
     setAvatarRotation(0);
@@ -360,7 +392,15 @@ export default function UserDashboard() {
         avatarCroppedAreaPixels,
         avatarRotation,
       );
-      const croppedFile = new File([croppedBlob], `avatar-${Date.now()}.jpg`, {
+      const sourceName = String(avatarSourceFileName || '').trim();
+      const sourceBaseName = sourceName
+        .split(/[\\/]/)
+        .pop()
+        ?.replace(/\.[^/.]+$/, '')
+        .trim();
+      const avatarFileBaseName = sourceBaseName || `avatar-${user.uid}`;
+
+      const croppedFile = new File([croppedBlob], `${avatarFileBaseName}.jpg`, {
         type: 'image/jpeg',
       });
 
@@ -412,7 +452,7 @@ export default function UserDashboard() {
 
   const handleChangePassword = async () => {
     if (!user) return;
-    if (!currentPassword || !newPassword || !confirmPassword) {
+    if ((!requiresCurrentPasswordForChange && (!newPassword || !confirmPassword)) || (requiresCurrentPasswordForChange && (!currentPassword || !newPassword || !confirmPassword))) {
       alert('Veuillez remplir tous les champs.');
       return;
     }
@@ -433,6 +473,61 @@ export default function UserDashboard() {
       alert(error?.message || 'Erreur lors du changement de mot de passe.');
     } finally {
       setIsUpdatingPassword(false);
+    }
+  };
+
+  const handleGoogleConnectOrReconnect = async () => {
+    try {
+      setIsGoogleLinking(true);
+      await connectGoogleAccount();
+    } catch (error: any) {
+      console.error('Error connecting Google account:', error);
+      alert(error?.message || 'Erreur lors de la connexion Google.');
+      setIsGoogleLinking(false);
+    }
+  };
+
+  const handleGoogleDisconnect = async () => {
+    if (!isGoogleConnected) return;
+
+    const confirmed = confirm('Voulez-vous vraiment deconnecter Google de ce compte ?');
+    if (!confirmed) {
+      return;
+    }
+
+    const requiresLocalPassword = profile?.passwordLoginEnabled === false;
+    let localPasswordToSet = '';
+
+    if (requiresLocalPassword) {
+      if (!newPassword || !confirmPassword) {
+        alert('Pour deconnecter Google, definissez d\'abord un mot de passe local puis confirmez-le.');
+        return;
+      }
+
+      if (newPassword !== confirmPassword) {
+        alert('Les nouveaux mots de passe ne correspondent pas.');
+        return;
+      }
+
+      if (newPassword.length < 6) {
+        alert('Le mot de passe local doit contenir au moins 6 caracteres.');
+        return;
+      }
+
+      localPasswordToSet = newPassword;
+    }
+
+    try {
+      setIsGoogleDisconnecting(true);
+      await disconnectGoogleAccount(localPasswordToSet || undefined);
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      alert('Compte Google deconnecte.');
+    } catch (error: any) {
+      alert(error?.message || 'Erreur lors de la deconnexion Google.');
+    } finally {
+      setIsGoogleDisconnecting(false);
     }
   };
 
@@ -626,6 +721,12 @@ export default function UserDashboard() {
 
           {activeTab === 'profile' && (
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+              {oauthError ? (
+                <div className="rounded-xl border px-4 py-3 text-sm" style={{ borderColor: 'color-mix(in oklab, var(--app-danger) 36%, var(--app-border) 64%)', background: 'color-mix(in oklab, var(--app-danger) 12%, var(--app-surface) 88%)', color: 'color-mix(in oklab, var(--app-danger) 78%, var(--app-text) 22%)' }}>
+                  {oauthError}
+                </div>
+              ) : null}
+
               <section className="rounded-2xl p-8 shadow-lg" style={cardStyle}>
                 <h3 className="text-2xl font-bold mb-6" style={{ color: 'var(--app-text)' }}>Mon Profil</h3>
                 <div className="rounded-2xl border p-5 space-y-6" style={insetCardStyle}>
@@ -680,23 +781,84 @@ export default function UserDashboard() {
                     </div>
                     <p className="text-xs mt-2" style={subtleText}>L'adresse email ne peut pas être modifiée depuis votre espace.</p>
                   </div>
+
+                  <div>
+                    <label className="block text-sm font-medium mb-2" style={subtleText}>Connexion Google</label>
+                    <div className="rounded-xl border p-4" style={insetCardStyle}>
+                      <p className="text-sm font-semibold" style={{ color: 'var(--app-text)' }}>
+                        {isGoogleConnected ? 'Compte Google connecte' : 'Aucun compte Google connecte'}
+                      </p>
+                      <p className="text-xs mt-1" style={subtleText}>
+                        {isGoogleConnected
+                          ? `Email Google: ${profile.googleAuth?.email || 'non disponible'}`
+                          : 'Connectez Google pour vous authentifier plus rapidement.'}
+                      </p>
+                      <p className="text-xs mt-1" style={subtleText}>{authStateDescription}</p>
+
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {!isGoogleConnected ? (
+                          <button
+                            type="button"
+                            onClick={handleGoogleConnectOrReconnect}
+                            disabled={isGoogleLinking}
+                            className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium bg-[var(--app-accent)] text-[var(--app-accent-contrast)] hover:brightness-110 disabled:opacity-60"
+                          >
+                            <Link2 className="w-4 h-4" />
+                            {isGoogleLinking ? 'Connexion...' : 'Connexion Google'}
+                          </button>
+                        ) : null}
+
+                        {isGoogleConnected ? (
+                          <button
+                            type="button"
+                            onClick={handleGoogleDisconnect}
+                            disabled={isGoogleDisconnecting}
+                            className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium border border-[var(--app-border)] text-[var(--app-text)] hover:bg-[var(--app-surface-2)] disabled:opacity-60"
+                          >
+                            <Unplug className="w-4 h-4" />
+                            {isGoogleDisconnecting
+                              ? 'Deconnexion...'
+                              : authConnectionState === 'google-only'
+                                ? 'Deconnecter Google (avec mot de passe)'
+                                : 'Deconnecter Google'}
+                          </button>
+                        ) : null}
+                      </div>
+
+                      <p className="text-xs mt-3" style={subtleText}>
+                        {authConnectionState === 'google-only'
+                          ? 'Pour desactiver la connexion Google, renseignez d\'abord un nouveau mot de passe local puis cliquez sur "Deconnecter Google".'
+                          : authConnectionState === 'google-and-local'
+                            ? 'Vous pouvez desactiver la connexion Google sans perdre l\'acces, car un mot de passe local est deja actif.'
+                            : 'Vous pouvez activer la connexion Google en complement du mot de passe local.'}
+                      </p>
+                    </div>
+                  </div>
                 </div>
               </section>
 
               <section className="rounded-2xl p-8 shadow-lg" style={cardStyle}>
                 <h3 className="text-xl font-bold mb-4 flex items-center gap-2" style={{ color: 'var(--app-text)' }}>
                   <LockKeyhole className="w-5 h-5 text-[var(--app-muted)]" />
-                  Changement du mot de passe
+                  {passwordSectionTitle}
                 </h3>
                 <div className="rounded-2xl border p-5 space-y-3" style={insetCardStyle}>
-                  <input
-                    type="password"
-                    value={currentPassword}
-                    onChange={(e) => setCurrentPassword(e.target.value)}
-                    placeholder="Mot de passe actuel"
-                    className={inputClasses}
-                    style={inputTone}
-                  />
+                  {requiresCurrentPasswordForChange ? (
+                    <input
+                      type="password"
+                      value={currentPassword}
+                      onChange={(e) => setCurrentPassword(e.target.value)}
+                      placeholder="Mot de passe actuel"
+                      className={inputClasses}
+                      style={inputTone}
+                    />
+                  ) : (
+                    <p className="text-xs" style={subtleText}>
+                      {authConnectionState === 'google-and-local'
+                        ? 'Le mot de passe actuel n\'est pas requis avec une session Google active. Definissez simplement le nouveau mot de passe local.'
+                        : 'Votre compte utilise uniquement la connexion Google. Definissez un mot de passe local pour activer aussi la connexion classique.'}
+                    </p>
+                  )}
                   <input
                     type="password"
                     value={newPassword}
@@ -719,7 +881,7 @@ export default function UserDashboard() {
                     disabled={isUpdatingPassword}
                     className="mt-1 inline-flex items-center justify-center px-4 py-2 rounded-xl bg-[var(--app-accent)] text-[var(--app-accent-contrast)] text-sm font-medium hover:brightness-110 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
                   >
-                    {isUpdatingPassword ? 'Mise à jour...' : 'Mettre à jour le mot de passe'}
+                    {isUpdatingPassword ? 'Mise a jour...' : passwordPrimaryActionLabel}
                   </button>
                 </div>
               </section>
