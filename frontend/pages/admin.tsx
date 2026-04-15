@@ -1,12 +1,13 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/components/providers/auth-provider';
 import {
   db,
   collection,
   addDoc,
   getDocs,
+  getDoc,
   doc,
   updateDoc,
   query,
@@ -17,6 +18,7 @@ import {
   deleteAuthAccountByUid,
 } from '@/lib/data/local-data';
 import { motion } from 'motion/react';
+import Image from 'next/image';
 import {
   Users,
   CreditCard,
@@ -41,6 +43,7 @@ import {
   Activity,
   Clock3,
   Settings,
+  ArrowUp,
   ArrowUpDown,
   Search,
 } from 'lucide-react';
@@ -54,6 +57,10 @@ type AdminUser = {
   firstName?: string;
   lastName?: string;
   email?: string;
+  photoURL?: string;
+  supportClientOnline?: boolean;
+  supportClientConnectedAt?: string;
+  supportClientDisconnectedAt?: string;
   phoneNumber?: string;
   role?: 'admin' | 'user' | 'vip' | 'vip_plus';
   createdAt?: string;
@@ -177,7 +184,7 @@ export default function AdminDashboard() {
   const { profile, loading: authLoading } = useAuth();
   const router = useRouter();
   
-  const [activeTab, setActiveTab] = useState<'users' | 'payments' | 'content' | 'discussions'>('payments');
+  const [activeTab, setActiveTab] = useState<'users' | 'payments' | 'content' | 'discussions' | 'support'>('payments');
   const [payments, setPayments] = useState<AdminPayment[]>([]);
   const [allPayments, setAllPayments] = useState<AdminPayment[]>([]);
   const [videos, setVideos] = useState<AdminVideo[]>([]);
@@ -191,6 +198,12 @@ export default function AdminDashboard() {
   const [selectedSupportChatId, setSelectedSupportChatId] = useState('');
   const [supportChatMessages, setSupportChatMessages] = useState<SupportChatMessageEntry[]>([]);
   const [supportReplyDraft, setSupportReplyDraft] = useState('');
+  const [isSendingSupportReply, setIsSendingSupportReply] = useState(false);
+  const [failedSupportAvatarKeys, setFailedSupportAvatarKeys] = useState<Record<string, true>>({});
+  const supportReplyComposerRef = useRef<HTMLTextAreaElement | null>(null);
+  const supportMessagesContainerRef = useRef<HTMLDivElement | null>(null);
+  const shouldStickAdminSupportScrollRef = useRef(true);
+  const previousSelectedSupportChatIdRef = useRef('');
   const [purchaseModalUserId, setPurchaseModalUserId] = useState<string | null>(null);
   const [isCreateUserModalOpen, setIsCreateUserModalOpen] = useState(false);
   const [cloudinaryModalUserId, setCloudinaryModalUserId] = useState<string | null>(null);
@@ -237,7 +250,9 @@ export default function AdminDashboard() {
         ? 'Utilisateurs'
         : activeTab === 'discussions'
           ? 'Gestion des Discussions'
-        : 'Contenu pédagogique';
+          : activeTab === 'support'
+            ? 'Gestion des problemes support'
+            : 'Contenu pédagogique';
 
   const approvedPaymentsCount = allPayments.filter((payment) => payment.status === 'approved').length;
   const blockedUsersCount = users.filter((user) => user.isBlocked).length;
@@ -414,6 +429,34 @@ export default function AdminDashboard() {
 
           if (targetChatId) {
             await loadSupportMessagesForChat(targetChatId);
+
+            const targetChat = nextChats.find((entry) => entry.id === targetChatId) || null;
+            const targetUserId = String(targetChat?.userId || '').trim();
+            if (targetUserId) {
+              const targetUserSnap = await getDoc<AdminUser>(doc(db, 'users', targetUserId));
+              if (targetUserSnap.exists()) {
+                const targetUserData = targetUserSnap.data() as AdminUser;
+                const { id: _ignoredId, ...targetUserDataWithoutId } = targetUserData;
+                setUsers((prev) => {
+                  const nextEntry: AdminUser = {
+                    id: targetUserSnap.id,
+                    ...targetUserDataWithoutId,
+                  };
+
+                  const existingIndex = prev.findIndex((entry) => entry.id === targetUserSnap.id);
+                  if (existingIndex === -1) {
+                    return [...prev, nextEntry];
+                  }
+
+                  const nextUsers = [...prev];
+                  nextUsers[existingIndex] = {
+                    ...nextUsers[existingIndex],
+                    ...nextEntry,
+                  };
+                  return nextUsers;
+                });
+              }
+            }
           }
         } catch (error) {
           console.error('Error polling support chats:', error);
@@ -425,6 +468,35 @@ export default function AdminDashboard() {
       window.clearInterval(timer);
     };
   }, [profile?.role, selectedSupportChatId, loadSupportMessagesForChat]);
+
+  useEffect(() => {
+    const container = supportMessagesContainerRef.current;
+    if (!container) {
+      return;
+    }
+
+    const didChangeChat = previousSelectedSupportChatIdRef.current !== selectedSupportChatId;
+    if (didChangeChat) {
+      container.scrollTop = container.scrollHeight;
+      shouldStickAdminSupportScrollRef.current = true;
+      previousSelectedSupportChatIdRef.current = selectedSupportChatId;
+      return;
+    }
+
+    if (shouldStickAdminSupportScrollRef.current) {
+      container.scrollTop = container.scrollHeight;
+    }
+  }, [supportChatMessages, selectedSupportChatId]);
+
+  const handleAdminSupportMessagesScroll = () => {
+    const container = supportMessagesContainerRef.current;
+    if (!container) {
+      return;
+    }
+
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    shouldStickAdminSupportScrollRef.current = distanceFromBottom <= 72;
+  };
 
   const getCreationDate = useCallback((user: AdminUser) => {
     if (!user.createdAt) {
@@ -1462,6 +1534,250 @@ export default function AdminDashboard() {
   const selectedSupportChatUser = selectedSupportChat
     ? users.find((entry) => entry.id === selectedSupportChat.userId) || null
     : null;
+  const selectedSupportClientStatus = useMemo(() => {
+    const rawDisconnectedAt = String(selectedSupportChatUser?.supportClientDisconnectedAt || '').trim();
+    const rawConnectedAt = String(selectedSupportChatUser?.supportClientConnectedAt || '').trim();
+    const referenceMoment = rawDisconnectedAt || rawConnectedAt;
+    const referenceTime = referenceMoment ? new Date(referenceMoment).getTime() : 0;
+    const elapsedMs = referenceTime > 0 ? now.getTime() - referenceTime : Number.POSITIVE_INFINITY;
+    const isOnline = Boolean(selectedSupportChatUser?.supportClientOnline);
+
+    if (isOnline) {
+      return {
+        isOnline: true,
+        label: 'En ligne',
+      };
+    }
+
+    if (referenceTime <= 0 || !Number.isFinite(elapsedMs)) {
+      return {
+        isOnline: false,
+        label: 'Hors ligne · il y a un moment',
+      };
+    }
+
+    const elapsedMinutes = Math.max(1, Math.floor(elapsedMs / 60000));
+    if (elapsedMinutes < 2) {
+      return {
+        isOnline: false,
+        label: 'Hors ligne · il y a un moment',
+      };
+    }
+
+    if (elapsedMinutes < 60) {
+      return {
+        isOnline: false,
+        label: `Hors ligne · il y a ${elapsedMinutes} min`,
+      };
+    }
+
+    const elapsedHours = Math.max(1, Math.floor(elapsedMinutes / 60));
+    return {
+      isOnline: false,
+      label: `Hors ligne · il y a ${elapsedHours} h`,
+    };
+  }, [
+    selectedSupportChatUser?.supportClientOnline,
+    selectedSupportChatUser?.supportClientConnectedAt,
+    selectedSupportChatUser?.supportClientDisconnectedAt,
+    now,
+  ]);
+  const hasSupportReplyWord = supportReplyDraft.trim().length > 0;
+  const supportReplyRows = supportReplyDraft.includes('\n') ? 2 : 1;
+  const showSupportSendAction = hasSupportReplyWord && Boolean(selectedSupportChatId);
+
+  const resolveSupportUserDisplayName = (userId?: string | null, fallbackEmail?: string | null) => {
+    if (!userId) {
+      return fallbackEmail || 'Utilisateur';
+    }
+
+    const linkedUser = users.find((entry) => entry.id === userId);
+    if (!linkedUser) {
+      return fallbackEmail || userId;
+    }
+
+    const splitName = splitFullName(linkedUser.displayName || '');
+    return formatFullName(
+      linkedUser.lastName || splitName.lastName,
+      linkedUser.firstName || splitName.firstName,
+    ) || linkedUser.displayName || linkedUser.email || fallbackEmail || userId;
+  };
+
+  const resolveSupportSenderLabel = (message: SupportChatMessageEntry) => {
+    if (message.sender === 'bot') {
+      return message.senderName || 'DEMS-ORL-Bot';
+    }
+    if (message.sender === 'admin') {
+      return message.senderName || 'Admin';
+    }
+    return message.senderName || resolveSupportUserDisplayName(message.userId, selectedSupportChat?.userEmail);
+  };
+
+  const markSupportAvatarFailed = (avatarKey: string) => {
+    setFailedSupportAvatarKeys((previous) => {
+      if (previous[avatarKey]) {
+        return previous;
+      }
+
+      return {
+        ...previous,
+        [avatarKey]: true,
+      };
+    });
+  };
+
+  const renderSupportSenderAvatar = (message: SupportChatMessageEntry) => {
+    if (message.sender === 'admin') {
+      const adminAvatarUrl = String(profile?.photoURL || '').trim();
+      const adminAvatarKey = `admin:${adminAvatarUrl || 'none'}`;
+
+      if (adminAvatarUrl && !failedSupportAvatarKeys[adminAvatarKey]) {
+        return (
+          <Image
+            src={adminAvatarUrl}
+            alt="Avatar admin"
+            width={32}
+            height={32}
+            className="h-8 w-8 rounded-full object-cover ring-1 ring-emerald-200"
+            referrerPolicy="no-referrer"
+            onError={() => markSupportAvatarFailed(adminAvatarKey)}
+          />
+        );
+      }
+
+      const adminName = String(profile?.displayName || message.senderName || 'Admin').trim();
+      const adminInitial = adminName.charAt(0).toUpperCase() || 'A';
+      return (
+        <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-emerald-700 text-xs font-semibold text-white ring-1 ring-emerald-200">
+          {adminInitial}
+        </span>
+      );
+    }
+
+    if (message.sender === 'bot') {
+      return (
+        <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-amber-700 text-xs font-semibold text-white ring-1 ring-amber-200">
+          B
+        </span>
+      );
+    }
+
+    const linkedUser = message.userId
+      ? users.find((entry) => entry.id === message.userId) || null
+      : null;
+    const userAvatarUrl = String(linkedUser?.photoURL || '').trim();
+    const userAvatarKey = `user:${message.userId || 'unknown'}:${userAvatarUrl || 'none'}`;
+
+    if (userAvatarUrl && !failedSupportAvatarKeys[userAvatarKey]) {
+      return (
+        <Image
+          src={userAvatarUrl}
+          alt="Avatar utilisateur"
+          width={32}
+          height={32}
+          className="h-8 w-8 rounded-full object-cover ring-1 ring-slate-300"
+          referrerPolicy="no-referrer"
+          onError={() => markSupportAvatarFailed(userAvatarKey)}
+        />
+      );
+    }
+
+    const displayName = resolveSupportUserDisplayName(message.userId, selectedSupportChat?.userEmail);
+    const initial = String(displayName || 'U').trim().charAt(0).toUpperCase() || 'U';
+    return (
+      <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white ring-1 ring-slate-300">
+        {initial}
+      </span>
+    );
+  };
+
+  const formatSupportInlineMarkdown = (text: string): ReactNode[] => {
+    const parts = text.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/g);
+    return parts.map((part, index) => {
+      if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
+        return <strong key={`support-strong-${index}`}>{part.slice(2, -2)}</strong>;
+      }
+      if (part.startsWith('*') && part.endsWith('*') && part.length > 2) {
+        return <em key={`support-em-${index}`}>{part.slice(1, -1)}</em>;
+      }
+      return <span key={`support-span-${index}`}>{part}</span>;
+    });
+  };
+
+  const renderSupportMessageMarkdown = (raw: string) => {
+    const lines = raw.replace(/\r\n/g, '\n').split('\n');
+    const nodes: ReactNode[] = [];
+
+    let cursor = 0;
+    while (cursor < lines.length) {
+      const line = lines[cursor] || '';
+      const orderedMatch = line.match(/^\s*\d+\.\s+(.+)$/);
+      const unorderedMatch = line.match(/^\s*[-+]\s+(.+)$/);
+
+      if (!line.trim()) {
+        nodes.push(<div key={`support-space-${cursor}`} className="h-2" />);
+        cursor += 1;
+        continue;
+      }
+
+      if (orderedMatch) {
+        const items: string[] = [];
+        let nextCursor = cursor;
+        while (nextCursor < lines.length) {
+          const nextLine = lines[nextCursor] || '';
+          const nextMatch = nextLine.match(/^\s*\d+\.\s+(.+)$/);
+          if (!nextMatch) {
+            break;
+          }
+          items.push(nextMatch[1]);
+          nextCursor += 1;
+        }
+
+        nodes.push(
+          <ol key={`support-ol-${cursor}`} className="list-decimal pl-5 space-y-1">
+            {items.map((item, index) => (
+              <li key={`support-ol-item-${cursor}-${index}`}>{formatSupportInlineMarkdown(item)}</li>
+            ))}
+          </ol>,
+        );
+        cursor = nextCursor;
+        continue;
+      }
+
+      if (unorderedMatch) {
+        const items: string[] = [];
+        let nextCursor = cursor;
+        while (nextCursor < lines.length) {
+          const nextLine = lines[nextCursor] || '';
+          const nextMatch = nextLine.match(/^\s*[-+]\s+(.+)$/);
+          if (!nextMatch) {
+            break;
+          }
+          items.push(nextMatch[1]);
+          nextCursor += 1;
+        }
+
+        nodes.push(
+          <ul key={`support-ul-${cursor}`} className="list-disc pl-5 space-y-1">
+            {items.map((item, index) => (
+              <li key={`support-ul-item-${cursor}-${index}`}>{formatSupportInlineMarkdown(item)}</li>
+            ))}
+          </ul>,
+        );
+        cursor = nextCursor;
+        continue;
+      }
+
+      nodes.push(
+        <p key={`support-line-${cursor}`} className="leading-relaxed">
+          {formatSupportInlineMarkdown(line)}
+        </p>,
+      );
+      cursor += 1;
+    }
+
+    return <div className="space-y-1">{nodes}</div>;
+  };
 
   const handleUpdateSupportChat = async (
     chat: SupportChatEntry,
@@ -1528,6 +1844,10 @@ export default function AdminDashboard() {
   };
 
   const handleSendAdminSupportReply = async () => {
+    if (isSendingSupportReply) {
+      return;
+    }
+
     const activeChat = supportChats.find((entry) => entry.id === selectedSupportChatId);
     if (!activeChat) {
       return;
@@ -1540,6 +1860,7 @@ export default function AdminDashboard() {
     }
 
     try {
+      setIsSendingSupportReply(true);
       const nowIso = new Date().toISOString();
       const messageId = `${activeChat.id}-admin-${Date.now()}`;
       const adminSenderName = String(profile?.displayName || '').trim() || 'Admin';
@@ -1592,13 +1913,15 @@ export default function AdminDashboard() {
     } catch (error) {
       console.error('Error sending admin reply:', error);
       alert('Erreur lors de l envoi de la reponse admin.');
+    } finally {
+      setIsSendingSupportReply(false);
     }
   };
 
   const cloudinaryModalUser = users.find((entry) => entry.id === cloudinaryModalUserId) || null;
 
   const adminTabs: Array<{
-    id: 'payments' | 'users' | 'discussions' | 'content';
+    id: 'payments' | 'users' | 'discussions' | 'support' | 'content';
     label: string;
     icon: typeof CreditCard;
     count?: number;
@@ -1606,6 +1929,7 @@ export default function AdminDashboard() {
     { id: 'payments', label: 'Paiements en attente', icon: CreditCard, count: payments.length },
     { id: 'users', label: 'Utilisateurs', icon: Users },
     { id: 'discussions', label: 'Gestion des Discussions', icon: MessageSquare, count: unreadDiscussionCount },
+    { id: 'support', label: 'Problemes Support', icon: Activity, count: openProblemCount },
     { id: 'content', label: 'Contenu Pedagogique', icon: FileText },
   ];
 
@@ -1707,8 +2031,8 @@ export default function AdminDashboard() {
       <main className="p-8 md:p-12 overflow-y-auto">
         <div className="max-w-[1500px] mx-auto">
           <div className="mb-6">
-            <div className="min-w-0 rounded-full border border-[rgba(68,25,6,0.08)] bg-[rgba(68,25,6,0.04)] p-1.5">
-              <nav className="flex items-center justify-between gap-2 rounded-full">
+            <div className="min-w-0 overflow-x-auto rounded-2xl sm:rounded-full border border-[color-mix(in_oklab,var(--app-border)_78%,transparent)] bg-[color-mix(in_oklab,var(--app-surface-2)_55%,transparent)] p-1 sm:p-1.5">
+              <nav className="flex min-w-max sm:min-w-0 items-stretch sm:items-center gap-1.5 sm:gap-2 rounded-2xl sm:rounded-full">
                   {adminTabs.map((item) => {
                     const isActive = activeTab === item.id;
 
@@ -1717,13 +2041,13 @@ export default function AdminDashboard() {
                         key={item.id}
                         type="button"
                         onClick={() => setActiveTab(item.id)}
-                        className={`inline-flex flex-1 items-center justify-center gap-2 px-5 py-3 rounded-full whitespace-nowrap text-base font-semibold border transition-all ${
+                        className={`inline-flex shrink-0 sm:flex-1 items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-5 py-2.5 sm:py-3 rounded-xl sm:rounded-full whitespace-nowrap text-sm sm:text-base font-semibold border transition-all ${
                           isActive
-                            ? 'bg-white text-slate-900 border-white shadow-[0_0_0_1px_rgba(0,0,0,0.04),0_1px_1px_rgba(0,0,0,0.04),0_3px_3px_1px_rgba(0,0,0,0.04),0_12px_12px_-8px_rgba(0,0,0,0.08)]'
-                            : 'bg-transparent text-slate-500 border-transparent hover:text-slate-700'
+                            ? 'bg-(--app-surface) text-(--app-text) border-(--app-border) shadow-[0_0_0_1px_rgba(0,0,0,0.04),0_1px_1px_rgba(0,0,0,0.04),0_3px_3px_1px_rgba(0,0,0,0.04),0_12px_12px_-8px_rgba(0,0,0,0.08)]'
+                            : 'bg-transparent text-(--app-muted) border-transparent hover:text-(--app-text) hover:bg-[color-mix(in_oklab,var(--app-surface)_72%,transparent)]'
                         }`}
                       >
-                        <item.icon className={`w-5 h-5 ${isActive ? 'text-blue-600' : 'text-slate-500'}`} />
+                        <item.icon className={`w-5 h-5 ${isActive ? 'text-(--app-accent)' : 'text-(--app-muted)'}`} />
                         <span>{item.label}</span>
                         {item.count !== undefined && item.count > 0 && (
                           <span className={`inline-flex items-center justify-center min-w-5 h-5 px-1 rounded-full text-[11px] font-bold ${
@@ -2540,21 +2864,25 @@ export default function AdminDashboard() {
                   </div>
                 )}
               </div>
+            </div>
+          )}
 
-              <div className="bg-white rounded-2xl shadow-md border border-slate-200 overflow-hidden">
-                <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between gap-3">
+          {activeTab === 'support' && (
+            <div className="space-y-4">
+              <div className="rounded-2xl shadow-md border border-(--app-border) bg-(--app-surface) overflow-hidden">
+                <div className="px-5 py-4 border-b border-(--app-border) flex items-center justify-between gap-3">
                   <div>
-                    <h3 className="text-base md:text-lg font-bold text-slate-900">Gestion des problemes support</h3>
-                    <p className="text-xs text-slate-500">{openProblemCount} probleme(s) actif(s)</p>
+                    <h3 className="text-base md:text-lg font-bold text-(--app-text)">Gestion des problemes support</h3>
+                    <p className="text-xs text-(--app-muted)">{openProblemCount} probleme(s) actif(s)</p>
                   </div>
                 </div>
 
                 <div className="grid gap-4 p-4 lg:grid-cols-[320px_minmax(0,1fr)]">
-                  <div className="rounded-2xl border border-slate-200 overflow-hidden">
+                  <div className="rounded-2xl border border-(--app-border) overflow-hidden">
                     {supportChats.length === 0 ? (
-                      <div className="p-6 text-sm text-slate-500">Aucune discussion probleme.</div>
+                      <div className="p-6 text-sm text-(--app-muted)">Aucune discussion probleme.</div>
                     ) : (
-                      <div className="max-h-[480px] overflow-y-auto p-2 space-y-2">
+                      <div className="max-h-120 overflow-y-auto p-2 space-y-2">
                         {supportChats.map((chat) => {
                           const linkedUser = users.find((entry) => entry.id === chat.userId);
                           const splitName = splitFullName(linkedUser?.displayName || '');
@@ -2570,15 +2898,17 @@ export default function AdminDashboard() {
                               onClick={() => setSelectedSupportChatId(chat.id)}
                               className={`w-full text-left rounded-xl border px-3 py-2 transition-colors ${
                                 selectedSupportChatId === chat.id
-                                  ? 'border-medical-500 bg-medical-50'
-                                  : 'border-slate-200 bg-white hover:bg-slate-50'
+                                  ? 'border-(--app-accent) bg-[color-mix(in_oklab,var(--app-accent)_14%,var(--app-surface)_86%)]'
+                                  : 'border-(--app-border) bg-(--app-surface) hover:brightness-[1.03]'
                               }`}
                             >
                               <div className="flex items-center justify-between gap-2">
-                                <p className="text-sm font-semibold text-slate-900 truncate">{displayName}</p>
-                                <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">{chat.status || 'open'}</span>
+                                <p className="text-sm font-semibold truncate text-(--app-text)">{displayName}</p>
+                                <span className="text-[11px] px-2 py-0.5 rounded-full bg-[color-mix(in_oklab,var(--app-surface-2)_76%,var(--app-surface)_24%)] text-(--app-text)">
+                                  {chat.status || 'open'}
+                                </span>
                               </div>
-                              <p className="text-xs text-slate-500 mt-1 truncate">{chat.lastMessage || '-'}</p>
+                              <p className="text-xs mt-1 truncate text-(--app-muted)">{chat.lastMessage || '-'}</p>
                             </button>
                           );
                         })}
@@ -2586,14 +2916,14 @@ export default function AdminDashboard() {
                     )}
                   </div>
 
-                  <div className="rounded-2xl border border-slate-200 overflow-hidden">
+                  <div className="rounded-2xl border border-(--app-border) overflow-hidden">
                     {!selectedSupportChat ? (
-                      <div className="p-8 text-sm text-slate-500">Selectionnez une discussion probleme.</div>
+                      <div className="p-8 text-sm text-(--app-muted)">Selectionnez une discussion probleme.</div>
                     ) : (
                       <div className="p-4 space-y-4">
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <div>
-                            <p className="text-sm font-semibold text-slate-900">
+                            <p className="text-sm font-semibold text-(--app-text)">
                               {(() => {
                                 const splitName = splitFullName(selectedSupportChatUser?.displayName || '');
                                 return formatFullName(
@@ -2602,66 +2932,142 @@ export default function AdminDashboard() {
                                 ) || selectedSupportChatUser?.displayName || selectedSupportChat.userEmail || selectedSupportChat.userId;
                               })()}
                             </p>
-                            <p className="text-xs text-slate-500">{selectedSupportChatUser?.email || selectedSupportChat.userEmail || '-'}</p>
+                            <p className="text-xs text-(--app-muted)">{selectedSupportChatUser?.email || selectedSupportChat.userEmail || '-'}</p>
+                            <div className="mt-1">
+                              <span
+                                className="inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-full border"
+                                style={{
+                                  borderColor: selectedSupportClientStatus.isOnline
+                                    ? 'color-mix(in oklab, #6b8e23 44%, var(--app-border) 56%)'
+                                    : 'color-mix(in oklab, #8b6f47 44%, var(--app-border) 56%)',
+                                  backgroundColor: selectedSupportClientStatus.isOnline
+                                    ? 'color-mix(in oklab, #7a8b52 18%, var(--app-surface) 82%)'
+                                    : 'color-mix(in oklab, #a27b56 16%, var(--app-surface) 84%)',
+                                  color: selectedSupportClientStatus.isOnline
+                                    ? 'color-mix(in oklab, #3f4f24 74%, var(--app-text) 26%)'
+                                    : 'color-mix(in oklab, #5f4630 74%, var(--app-text) 26%)',
+                                }}
+                              >
+                                <span
+                                  className="inline-block h-1.5 w-1.5 rounded-full"
+                                  style={{
+                                    backgroundColor: selectedSupportClientStatus.isOnline ? '#6b8e23' : '#8b6f47',
+                                  }}
+                                />
+                                Statut client: {selectedSupportClientStatus.label}
+                              </span>
+                            </div>
                           </div>
 
                           <div className="flex items-center gap-2">
                             <button
                               type="button"
                               onClick={() => handleResolveSupportChat(selectedSupportChat)}
-                              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-100 text-emerald-800 hover:bg-emerald-200"
+                              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-[color-mix(in_oklab,#10b981_18%,var(--app-surface)_82%)] text-[color-mix(in_oklab,#10b981_78%,var(--app-text)_22%)]"
                             >
-                              Resoudre (supprimer)
+                              Resoudre
                             </button>
                             <button
                               type="button"
                               onClick={() => handleDeleteSupportChat(selectedSupportChat)}
-                              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-100 text-red-700 hover:bg-red-200"
+                              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-[color-mix(in_oklab,#ef4444_16%,var(--app-surface)_84%)] text-[color-mix(in_oklab,#ef4444_76%,var(--app-text)_24%)]"
                             >
                               Supprimer
                             </button>
                           </div>
                         </div>
 
-                        <div className="rounded-xl border border-slate-200 p-3 h-[360px] overflow-y-auto space-y-3">
-                          {supportChatMessages.length === 0 ? (
-                            <p className="text-sm text-slate-500">Aucun message dans cette discussion.</p>
-                          ) : (
-                            supportChatMessages.map((message) => (
-                              <div
-                                key={message.id}
-                                className={`max-w-[88%] rounded-xl px-3 py-2 text-sm whitespace-pre-wrap ${
-                                  message.sender === 'admin'
-                                    ? 'ml-auto bg-medical-600 text-white'
-                                    : message.sender === 'user'
-                                      ? 'mr-auto bg-slate-100 text-slate-900 border border-slate-200'
-                                      : 'mr-auto bg-amber-50 text-amber-900 border border-amber-200'
-                                }`}
-                              >
-                                <p className="text-[11px] font-semibold uppercase tracking-wide opacity-80 mb-1">
-                                  {message.senderName || (message.sender === 'bot' ? 'DEMS-ORL-Bot' : message.sender === 'admin' ? 'Admin' : 'User')}
-                                </p>
-                                <p>{message.text}</p>
-                              </div>
-                            ))
-                          )}
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="text"
-                            value={supportReplyDraft}
-                            onChange={(event) => setSupportReplyDraft(event.target.value)}
-                            className="flex-1 px-3 py-2 rounded-lg border border-slate-300 text-sm"
-                            placeholder="Repondre dans le chat probleme..."
-                          />
-                          <button
-                            type="button"
-                            onClick={handleSendAdminSupportReply}
-                            className="px-4 py-2 rounded-lg text-sm font-semibold bg-medical-600 text-white hover:bg-medical-700"
+                          <div className="rounded-xl border border-(--app-border) bg-[color-mix(in_oklab,var(--app-surface-2)_60%,var(--app-surface)_40%)] p-3 h-96 flex flex-col">
+                          <div
+                            ref={supportMessagesContainerRef}
+                            onScroll={handleAdminSupportMessagesScroll}
+                              className="min-h-0 flex-1 overflow-y-auto space-y-3 pr-1"
                           >
-                            Envoyer
-                          </button>
+                            {supportChatMessages.length === 0 ? (
+                              <p className="text-sm text-(--app-muted)">Aucun message dans cette discussion.</p>
+                            ) : (
+                              supportChatMessages.map((message) => {
+                                const isAdminMessage = message.sender === 'admin';
+
+                                return (
+                                  <div
+                                    key={message.id}
+                                    className={`flex ${isAdminMessage ? 'justify-end' : 'justify-start'}`}
+                                  >
+                                    <div className={`flex max-w-[94%] gap-3 ${isAdminMessage ? 'flex-row-reverse' : 'flex-row'}`}>
+                                      <div className="pt-1 px-1">{renderSupportSenderAvatar(message)}</div>
+                                      <div
+                                        className={`rounded-2xl border px-3 py-2 text-sm ${
+                                          isAdminMessage
+                                            ? 'border-transparent bg-(--app-accent) text-(--app-accent-contrast)'
+                                            : message.sender === 'bot'
+                                              ? 'border-[color-mix(in_oklab,#f59e0b_30%,var(--app-border)_70%)] bg-[color-mix(in_oklab,#f59e0b_14%,var(--app-surface)_86%)] text-(--app-text)'
+                                              : 'border-(--app-border) bg-(--app-surface) text-(--app-text)'
+                                        }`}
+                                      >
+                                        <p className="text-[10px] uppercase tracking-wide opacity-70 mb-1">
+                                          {resolveSupportSenderLabel(message)}
+                                        </p>
+                                        <div>{renderSupportMessageMarkdown(message.text)}</div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
+
+                            <div className="mt-0 shrink-0 border-(--app-border) pb-2 pt-3">
+                            <div className="mx-0.5 flex flex-col rounded-[18px] border border-[color-mix(in_oklab,var(--app-border)_86%,var(--app-accent)_14%)] bg-(--app-surface) transition-all duration-200 hover:shadow-lg focus-within:shadow-xl shadow-[0_0.25rem_1.25rem_color-mix(in_oklab,black_6%,transparent),0_0_0_0.5px_color-mix(in_oklab,var(--app-border)_82%,transparent)]">
+                              <div className="m-2.5 flex flex-col gap-2">
+                                <div className="relative">
+                                  <textarea
+                                    ref={supportReplyComposerRef}
+                                    value={supportReplyDraft}
+                                    onChange={(event) => setSupportReplyDraft(event.target.value)}
+                                    onKeyDown={(event) => {
+                                      if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+                                        event.preventDefault();
+                                        void handleSendAdminSupportReply();
+                                      }
+                                    }}
+                                    disabled={isSendingSupportReply}
+                                    placeholder="Repondre dans le chat probleme..."
+                                    rows={supportReplyRows}
+                                    className="w-full max-h-24 min-h-0 border-0 bg-transparent text-sm leading-5 resize-none outline-none focus:outline-none focus-visible:outline-none focus:ring-0 focus-visible:ring-0 focus:border-transparent text-(--app-text) placeholder:text-(--app-muted)"
+                                  />
+                                </div>
+
+                                <div className="relative flex w-full items-center gap-2">
+                                  <div className="relative flex min-w-0 flex-1 items-center gap-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => supportReplyComposerRef.current?.focus()}
+                                      className="h-7 w-7 rounded-lg flex items-center justify-center transition-colors text-(--app-text) bg-[color-mix(in_oklab,var(--app-surface-2)_64%,var(--app-surface)_36%)]"
+                                      aria-label="Ajouter"
+                                    >
+                                      <Plus className="h-3.5 w-3.5" />
+                                    </button>
+                                  </div>
+
+                                  <div className={`transition-all duration-200 ease-out ${showSupportSendAction ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-1 pointer-events-none'}`}>
+                                    <button
+                                      type="button"
+                                      onClick={() => void handleSendAdminSupportReply()}
+                                      disabled={isSendingSupportReply || !showSupportSendAction}
+                                      className="h-7 w-7 rounded-lg disabled:opacity-60 flex items-center justify-center bg-(--app-accent) text-(--app-accent-contrast)"
+                                      aria-label="Envoyer"
+                                    >
+                                      <ArrowUp className="h-3.5 w-3.5" />
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                            <p className="mt-1 px-2 text-[10px] text-(--app-muted)">
+                              Ctrl/Cmd + Entree pour envoyer
+                            </p>
+                          </div>
                         </div>
                       </div>
                     )}

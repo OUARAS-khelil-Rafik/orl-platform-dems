@@ -14,6 +14,7 @@ import {
   getDoc,
   onAuthStateChanged,
   setDoc,
+  updateDoc,
   signInWithEmail,
   signOut as localSignOut,
   updateAuthDisplayName,
@@ -48,6 +49,12 @@ export interface UserProfile {
     picture?: string;
     connectedAt?: string;
   };
+  supportAdminOnline?: boolean;
+  supportAdminConnectedAt?: string;
+  supportAdminDisconnectedAt?: string;
+  supportClientOnline?: boolean;
+  supportClientConnectedAt?: string;
+  supportClientDisconnectedAt?: string;
   createdAt: string;
 }
 
@@ -194,6 +201,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return newProfile;
   }, []);
 
+  const publishAccountConnectionStatus = useCallback(
+    async (uid: string, role: UserRole | undefined, isOnline: boolean) => {
+      const nowIso = new Date().toISOString();
+      const normalizedRole: UserRole = role || 'user';
+
+      if (normalizedRole === 'admin') {
+        await updateDoc(doc(db, 'users', uid), {
+          supportAdminOnline: isOnline,
+          ...(isOnline
+            ? { supportAdminConnectedAt: nowIso }
+            : { supportAdminDisconnectedAt: nowIso }),
+        });
+        return;
+      }
+
+      await updateDoc(doc(db, 'users', uid), {
+        supportClientOnline: isOnline,
+        ...(isOnline
+          ? { supportClientConnectedAt: nowIso }
+          : { supportClientDisconnectedAt: nowIso }),
+      });
+    },
+    [],
+  );
+
   useEffect(() => {
     void ensureDemoAccountsSeeded();
 
@@ -213,6 +245,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(validatedUser);
           const resolvedProfile = await ensureUserProfile(validatedUser);
           setProfile(resolvedProfile);
+          void publishAccountConnectionStatus(validatedUser.uid, resolvedProfile.role, true);
         } catch (error) {
           console.error('Error fetching user profile:', error);
           setUser(null);
@@ -228,13 +261,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     return () => unsubscribe();
-  }, [ensureUserProfile]);
+  }, [ensureUserProfile, publishAccountConnectionStatus]);
 
   const signIn = async (email: string, password: string, rememberMe = false) => {
     const signedInUser = await signInWithEmail(email, password, rememberMe);
     setUser(signedInUser);
     const resolvedProfile = await ensureUserProfile(signedInUser);
     setProfile(resolvedProfile);
+    void publishAccountConnectionStatus(signedInUser.uid, resolvedProfile.role, true);
   };
 
   const signInWithGoogle = (rememberMe = true) => {
@@ -280,9 +314,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     await setDoc(doc(db, 'users', createdUser.uid), nextProfile);
     setProfile(nextProfile);
+    void publishAccountConnectionStatus(createdUser.uid, nextProfile.role, true);
   };
 
   const signOut = async () => {
+    if (user?.uid && profile?.role) {
+      try {
+        await publishAccountConnectionStatus(user.uid, profile.role, false);
+      } catch (error) {
+        console.error('Error publishing disconnect status:', error);
+      }
+    }
+
     await localSignOut(auth);
     setUser(null);
     setProfile(null);
@@ -297,6 +340,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       void updateAuthDisplayName(user.uid, profile.displayName);
     }
   }, [profile, user]);
+
+  useEffect(() => {
+    if (!user?.uid || !profile?.role) {
+      return;
+    }
+
+    let disposed = false;
+
+    const publishDisconnected = async () => {
+      try {
+        await publishAccountConnectionStatus(user.uid, profile.role, false);
+      } catch (error) {
+        if (!disposed) {
+          console.error('Error publishing disconnect status on unload:', error);
+        }
+      }
+    };
+
+    const handleBeforeUnload = () => {
+      void publishDisconnected();
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      disposed = true;
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      void publishDisconnected();
+    };
+  }, [publishAccountConnectionStatus, user?.uid, profile?.role]);
 
   return (
     <AuthContext.Provider

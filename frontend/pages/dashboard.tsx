@@ -985,26 +985,26 @@ export default function UserDashboard() {
 
   return (
     <div
-      className="flex-1 min-h-screen py-8 md:py-10"
+      className="flex-1 min-h-screen py-5 sm:py-8 md:py-10"
       style={{
         background: 'radial-gradient(130% 120% at 20% 20%, color-mix(in oklab, var(--app-accent) 4%, var(--app-bg) 96%), var(--app-bg))',
       }}
     >
-      <main className="px-4 md:px-10">
+      <main className="px-3 sm:px-6 md:px-10">
         <div className="max-w-5xl mx-auto">
           <div
-            className="mb-6 rounded-3xl border p-6 shadow-xl"
+            className="mb-6 rounded-2xl sm:rounded-3xl border p-4 sm:p-6 shadow-xl"
             style={{
               color: 'var(--hero-title)',
               borderColor: 'color-mix(in oklab, var(--hero-chip-border) 72%, var(--app-border) 28%)',
               background: 'linear-gradient(140deg, var(--hero-bg-start) 0%, color-mix(in oklab, var(--hero-bg-end) 82%, var(--app-accent) 18%) 100%)',
             }}
           >
-            <div className="grid gap-6 lg:grid-cols-[260px_minmax(0,1fr)] lg:items-center">
-              <div className="rounded-2xl p-4 backdrop-blur-sm">
+            <div className="grid gap-4 sm:gap-6 lg:grid-cols-[260px_minmax(0,1fr)] lg:items-center">
+              <div className="rounded-2xl p-2 sm:p-4 backdrop-blur-sm">
                 <div className="flex flex-col items-center text-center">
-                  <div className="relative mb-6">
-                    <div className="relative w-36 h-36 md:w-40 md:h-40 rounded-full overflow-hidden bg-slate-100 border-4 border-white shadow-[0_24px_48px_-24px_rgba(0,0,0,0.85)]">
+                  <div className="relative mb-4 sm:mb-6">
+                    <div className="relative w-28 h-28 sm:w-36 sm:h-36 md:w-40 md:h-40 rounded-full overflow-hidden bg-slate-100 border-4 border-white shadow-[0_24px_48px_-24px_rgba(0,0,0,0.85)]">
                       {profile.photoURL ? (
                         <Image
                           src={profile.photoURL}
@@ -1050,7 +1050,7 @@ export default function UserDashboard() {
                 <p className="text-xs uppercase tracking-[0.16em]" style={{ color: 'var(--hero-body)' }}>Espace personnel</p>
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.14em]" style={{ color: 'var(--hero-body)' }}>Nom complet</p>
-                  <h1 className="text-2xl md:text-3xl font-bold mt-1">{formatFullName(lastName, firstName) || profile.displayName}</h1>
+                  <h1 className="text-xl sm:text-2xl md:text-3xl font-bold mt-1 break-words">{formatFullName(lastName, firstName) || profile.displayName}</h1>
                 </div>
                 <p className="text-sm leading-relaxed" style={{ color: 'var(--hero-body)' }}>Gérez votre profil, votre sécurité et vos accès pédagogiques depuis un seul espace.</p>
 
@@ -1090,8 +1090,8 @@ export default function UserDashboard() {
                 </div>
               ) : null}
 
-              <section className="rounded-2xl p-8 shadow-lg" style={cardStyle}>
-                <h3 className="text-2xl font-bold mb-6" style={{ color: 'var(--app-text)' }}>Mon Profil</h3>
+              <section className="rounded-2xl p-4 sm:p-6 md:p-8 shadow-lg" style={cardStyle}>
+                <h3 className="text-xl sm:text-2xl font-bold mb-5 sm:mb-6" style={{ color: 'var(--app-text)' }}>Mon Profil</h3>
                 <div className="rounded-2xl border p-5 space-y-6" style={insetCardStyle}>
                   <div>
                     <label className="block text-sm font-medium mb-2" style={subtleText}>Nom et prénom</label>
@@ -1117,7 +1117,7 @@ export default function UserDashboard() {
                           className={inputClasses}
                           style={inputTone}
                         />
-                        <button onClick={handleUpdateProfile} className="bg-[var(--app-accent)] text-[var(--app-accent-contrast)] px-4 py-2 rounded-xl font-medium hover:brightness-110 transition-colors">Enregistrer</button>
+                        <button onClick={handleUpdateProfile} className="w-full sm:w-auto bg-[var(--app-accent)] text-[var(--app-accent-contrast)] px-4 py-2 rounded-xl font-medium hover:brightness-110 transition-colors">Enregistrer</button>
                         <button
                           onClick={() => {
                             setIsEditing(false);
@@ -1125,14 +1125,14 @@ export default function UserDashboard() {
                             setLastName(profile.lastName || splitName.lastName);
                             setFirstName(profile.firstName || splitName.firstName);
                           }}
-                          className="bg-[var(--app-surface-2)] text-[var(--app-text)] px-4 py-2 rounded-xl font-medium border border-[var(--app-border)] hover:brightness-105 transition-colors"
+                          className="w-full sm:w-auto bg-[var(--app-surface-2)] text-[var(--app-text)] px-4 py-2 rounded-xl font-medium border border-[var(--app-border)] hover:brightness-105 transition-colors"
                         >
                           Annuler
                         </button>
                       </div>
                     ) : (
-                      <div className="flex justify-between items-center px-4 py-3 border rounded-xl" style={insetCardStyle}>
-                        <span className="font-medium text-[var(--app-text)]">{formatFullName(lastName, firstName) || profile.displayName}</span>
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between px-4 py-3 border rounded-xl" style={insetCardStyle}>
+                        <span className="font-medium text-[var(--app-text)] break-words">{formatFullName(lastName, firstName) || profile.displayName}</span>
                         <button onClick={() => setIsEditing(true)} className="text-sm font-medium text-[var(--app-accent)] hover:underline">Modifier</button>
                       </div>
                     )}
@@ -1200,7 +1200,7 @@ export default function UserDashboard() {
                 </div>
               </section>
 
-              <section className="rounded-2xl p-8 shadow-lg" style={cardStyle}>
+              <section className="rounded-2xl p-4 sm:p-6 md:p-8 shadow-lg" style={cardStyle}>
                 <h3 className="text-xl font-bold mb-4 flex items-center gap-2" style={{ color: 'var(--app-text)' }}>
                   <LockKeyhole className="w-5 h-5 text-[var(--app-muted)]" />
                   {passwordSectionTitle}
@@ -1242,14 +1242,14 @@ export default function UserDashboard() {
                     type="button"
                     onClick={handleChangePassword}
                     disabled={isUpdatingPassword}
-                    className="mt-1 inline-flex items-center justify-center px-4 py-2 rounded-xl bg-[var(--app-accent)] text-[var(--app-accent-contrast)] text-sm font-medium hover:brightness-110 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                    className="mt-1 inline-flex w-full sm:w-auto items-center justify-center px-4 py-2 rounded-xl bg-[var(--app-accent)] text-[var(--app-accent-contrast)] text-sm font-medium hover:brightness-110 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
                   >
                     {isUpdatingPassword ? 'Mise a jour...' : passwordPrimaryActionLabel}
                   </button>
                 </div>
               </section>
 
-              <section className="rounded-2xl p-8 shadow-lg" style={cardStyle}>
+              <section className="rounded-2xl p-4 sm:p-6 md:p-8 shadow-lg" style={cardStyle}>
                 <h3 className="text-xl font-bold mb-4" style={{ color: 'var(--app-text)' }}>Mode par défaut</h3>
                 <div className="rounded-2xl border p-5" style={insetCardStyle}>
                   <div className="flex flex-col sm:flex-row sm:items-center gap-3">
@@ -1275,7 +1275,7 @@ export default function UserDashboard() {
                       type="button"
                       onClick={handleSaveDefaultMode}
                       disabled={isSavingDefaultMode}
-                      className="px-4 py-2 rounded-xl bg-[var(--app-accent)] text-[var(--app-accent-contrast)] text-sm font-medium hover:brightness-110 disabled:opacity-60 transition-colors"
+                      className="w-full sm:w-auto px-4 py-2 rounded-xl bg-[var(--app-accent)] text-[var(--app-accent-contrast)] text-sm font-medium hover:brightness-110 disabled:opacity-60 transition-colors"
                     >
                       {isSavingDefaultMode ? 'Enregistrement...' : 'Enregistrer'}
                     </button>
@@ -1283,7 +1283,7 @@ export default function UserDashboard() {
                 </div>
               </section>
 
-              <section className="rounded-2xl p-8 shadow-lg" style={cardStyle}>
+              <section className="rounded-2xl p-4 sm:p-6 md:p-8 shadow-lg" style={cardStyle}>
                   <h3 className="text-xl font-bold mb-4 flex items-center gap-2" style={{ color: 'var(--app-text)' }}>
                     <Bell className="w-5 h-5 text-[var(--app-muted)]" />
                     Notifications ({unreadNotificationsCount} non lues)
@@ -1298,7 +1298,7 @@ export default function UserDashboard() {
                       notifications.slice(0, 12).map((entry) => (
                         <div
                           key={entry.id}
-                          className="rounded-xl border px-4 py-3"
+                          className="rounded-xl border px-3 sm:px-4 py-3"
                           style={{
                             ...insetCardStyle,
                             borderColor: entry.isRead
@@ -1343,7 +1343,7 @@ export default function UserDashboard() {
 
               {profile.role !== 'admin' && (
                 <section
-                  className="rounded-2xl shadow-lg border p-8"
+                  className="rounded-2xl shadow-lg border p-4 sm:p-6 md:p-8"
                   style={{
                     ...cardStyle,
                     background: 'color-mix(in oklab, var(--app-surface) 88%, var(--app-danger) 12%)',
@@ -1360,7 +1360,7 @@ export default function UserDashboard() {
                     type="button"
                     onClick={handleDeleteAccountPermanently}
                     disabled={isDeletingAccount}
-                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--app-danger)] text-[var(--app-accent-contrast)] text-sm font-medium hover:brightness-110 disabled:opacity-60"
+                    className="inline-flex w-full sm:w-auto items-center justify-center gap-2 px-4 py-2 rounded-xl bg-[var(--app-danger)] text-[var(--app-accent-contrast)] text-sm font-medium hover:brightness-110 disabled:opacity-60"
                   >
                     <Trash2 className="w-4 h-4" />
                     {isDeletingAccount ? 'Suppression...' : 'Supprimer définitivement mon compte'}
@@ -1374,7 +1374,7 @@ export default function UserDashboard() {
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="rounded-2xl shadow-lg border p-8"
+              className="rounded-2xl shadow-lg border p-4 sm:p-6 md:p-8"
               style={cardStyle}
             >
               <h3 className="text-2xl font-bold mb-2" style={{ color: 'var(--app-text)' }}>Gestion de Stockage</h3>
@@ -1424,7 +1424,7 @@ export default function UserDashboard() {
                   type="button"
                   onClick={handleSaveStorageSettings}
                   disabled={isSavingStorageSettings || !hasCompleteStorageSettings}
-                  className="inline-flex items-center justify-center px-4 py-2 rounded-xl bg-[var(--app-accent)] text-[var(--app-accent-contrast)] text-sm font-medium hover:brightness-110 disabled:opacity-60"
+                  className="inline-flex w-full sm:w-auto items-center justify-center px-4 py-2 rounded-xl bg-[var(--app-accent)] text-[var(--app-accent-contrast)] text-sm font-medium hover:brightness-110 disabled:opacity-60"
                 >
                   {isSavingStorageSettings ? 'Enregistrement...' : 'Enregistrer les paramètres'}
                 </button>

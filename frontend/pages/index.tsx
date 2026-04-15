@@ -31,6 +31,14 @@ import { useAuth } from '@/components/providers/auth-provider';
 import { collection, db, deleteDoc, doc, getDocs, query, setDoc, updateDoc, where } from '@/lib/data/local-data';
 import { IMAGE_FALLBACK_SRC, VIDEO_FALLBACK_SRC, applyImageFallback } from '@/lib/utils/media-fallback';
 
+const isApiUnavailableError = (error: unknown) => {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  return error.message.includes('Failed to reach API');
+};
+
 interface DemoVideo {
   id: string;
   title: string;
@@ -85,14 +93,15 @@ type SupportChatMessage = {
   createdAt?: string;
 };
 
+type AdminSupportPresence = {
+  isOnline: boolean;
+  lastConnectedAt: string | null;
+  lastDisconnectedAt: string | null;
+};
+
 const buildWaitingBotSuggestion = () => {
   return [
     'Votre message est bien recu. Nous attendons la reponse de l\'admin.',
-    '',
-    'Pour accelerer la resolution, ajoutez si possible :',
-    '1. capture ecran ou etape exacte',
-    '+ numero de recu / transaction',
-    '- contexte (page, appareil, navigateur)',
   ].join('\n');
 };
 
@@ -102,9 +111,9 @@ const buildWelcomeBotMessage = () => {
     'Une nouvelle discussion support est prete pour vous.',
     '',
     'Pour bien commencer, vous pouvez partager :',
-    '- le contexte du probleme',
-    '- le message d\'erreur exact',
-    '- ce que vous avez deja essaye',
+    '- Le contexte du probleme',
+    '- Le message d\'erreur exact',
+    '- Ce que vous avez déja essaye',
   ].join('\n');
 };
 
@@ -350,7 +359,7 @@ const getUnfinishedVideoTheme = (subspecialtyLabel: string) => {
 };
 
 export default function HomePage() {
-  const { user, isAuthReady } = useAuth();
+  const { user, profile, isAuthReady } = useAuth();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const youtubePlayerRef = useRef<{
     getCurrentTime?: () => number;
@@ -379,6 +388,11 @@ export default function HomePage() {
   const [supportChats, setSupportChats] = useState<SupportChat[]>([]);
   const [activeSupportChatId, setActiveSupportChatId] = useState('');
   const [supportChatMessages, setSupportChatMessages] = useState<SupportChatMessage[]>([]);
+  const [adminSupportPresence, setAdminSupportPresence] = useState<AdminSupportPresence>({
+    isOnline: false,
+    lastConnectedAt: null,
+    lastDisconnectedAt: null,
+  });
   const [chatComposer, setChatComposer] = useState('');
   const [isSendingChatMessage, setIsSendingChatMessage] = useState(false);
   const [isUserAvatarFallback, setIsUserAvatarFallback] = useState(false);
@@ -386,8 +400,12 @@ export default function HomePage() {
   const hideControlsTimeoutRef = useRef<number | null>(null);
   const hasAutoPlayedRef = useRef(false);
   const supportMessagesContainerRef = useRef<HTMLDivElement | null>(null);
+  const shouldStickSupportScrollRef = useRef(true);
+  const previousSupportChatIdRef = useRef('');
   const chatComposerRef = useRef<HTMLTextAreaElement | null>(null);
   const isEnsuringWelcomeChatRef = useRef(false);
+  const hasLoggedAdminPresenceApiDownRef = useRef(false);
+  const hasLoggedSupportPollingApiDownRef = useRef(false);
 
   const activeSupportChat = useMemo(
     () => supportChats.find((chat) => chat.id === activeSupportChatId) || null,
@@ -397,6 +415,106 @@ export default function HomePage() {
   const hasComposerWord = chatComposer.trim().length > 0;
   const chatComposerRows = chatComposer.includes('\n') ? 2 : 1;
   const showSendComposerAction = hasComposerWord && !isActiveSupportChatResolved;
+  const isAdmin = profile?.role === 'admin';
+
+  const adminSupportStatusLabel = useMemo(() => {
+    if (adminSupportPresence.isOnline) {
+      return 'En ligne';
+    }
+
+    const rawDisconnectedAt = String(adminSupportPresence.lastDisconnectedAt || '').trim();
+    const rawConnectedAt = String(adminSupportPresence.lastConnectedAt || '').trim();
+    const rawReferenceMoment = rawDisconnectedAt || rawConnectedAt;
+
+    if (!rawReferenceMoment) {
+      return 'Hors ligne · il y a un moment';
+    }
+
+    const elapsedMs = Date.now() - new Date(rawReferenceMoment).getTime();
+    if (!Number.isFinite(elapsedMs) || elapsedMs <= 0) {
+      return 'Hors ligne · il y a un moment';
+    }
+
+    const elapsedMinutes = Math.max(1, Math.floor(elapsedMs / 60000));
+    if (elapsedMinutes < 2) {
+      return 'Hors ligne · il y a un moment';
+    }
+
+    if (elapsedMinutes < 60) {
+      return `Hors ligne · il y a ${elapsedMinutes} min`;
+    }
+
+    const elapsedHours = Math.max(1, Math.floor(elapsedMinutes / 60));
+    return `Hors ligne · il y a ${elapsedHours} h`;
+  }, [adminSupportPresence]);
+
+  useEffect(() => {
+    if (!isChatOpen || !user || isAdmin) {
+      return;
+    }
+
+    let isDisposed = false;
+
+    const refreshAdminSupportPresence = async () => {
+      try {
+        const adminSnap = await getDocs(query(collection(db, 'users'), where('role', '==', 'admin')));
+
+        let latestConnected = 0;
+        let latestDisconnected = 0;
+        let hasOnlineAdmin = false;
+
+        adminSnap.docs.forEach((entry) => {
+          const data = entry.data() as Record<string, unknown>;
+          const rawConnectedAt = typeof data.supportAdminConnectedAt === 'string' ? data.supportAdminConnectedAt : '';
+          const rawDisconnectedAt = typeof data.supportAdminDisconnectedAt === 'string' ? data.supportAdminDisconnectedAt : '';
+          const connectedTime = rawConnectedAt ? new Date(rawConnectedAt).getTime() : 0;
+          const disconnectedTime = rawDisconnectedAt ? new Date(rawDisconnectedAt).getTime() : 0;
+          const isMarkedOnline = data.supportAdminOnline === true;
+
+          if (connectedTime > latestConnected) {
+            latestConnected = connectedTime;
+          }
+
+          if (disconnectedTime > latestDisconnected) {
+            latestDisconnected = disconnectedTime;
+          }
+
+          if (isMarkedOnline) {
+            hasOnlineAdmin = true;
+          }
+        });
+
+        if (!isDisposed) {
+          hasLoggedAdminPresenceApiDownRef.current = false;
+          setAdminSupportPresence({
+            isOnline: hasOnlineAdmin,
+            lastConnectedAt: latestConnected > 0 ? new Date(latestConnected).toISOString() : null,
+            lastDisconnectedAt: latestDisconnected > 0 ? new Date(latestDisconnected).toISOString() : null,
+          });
+        }
+      } catch (error) {
+        if (isApiUnavailableError(error)) {
+          if (!hasLoggedAdminPresenceApiDownRef.current) {
+            console.warn('Support status unavailable: backend API is temporarily unreachable.');
+            hasLoggedAdminPresenceApiDownRef.current = true;
+          }
+          return;
+        }
+
+        console.error('Error loading admin support presence:', error);
+      }
+    };
+
+    void refreshAdminSupportPresence();
+    const timer = window.setInterval(() => {
+      void refreshAdminSupportPresence();
+    }, 4_000);
+
+    return () => {
+      isDisposed = true;
+      window.clearInterval(timer);
+    };
+  }, [isChatOpen, user, isAdmin]);
 
   const quickReplyOptions = useMemo(() => {
     const transcript = supportChatMessages.map((message) => message.text.toLowerCase()).join(' ');
@@ -1150,7 +1268,7 @@ export default function HomePage() {
 
   useEffect(() => {
     const loadUserSupportChats = async () => {
-      if (!user) {
+      if (!user || isAdmin) {
         setSupportChats([]);
         setActiveSupportChatId('');
         setSupportChatMessages([]);
@@ -1183,15 +1301,19 @@ export default function HomePage() {
           return nextSupportChats[0]?.id || '';
         });
       } catch (error) {
+        if (isApiUnavailableError(error)) {
+          return;
+        }
+
         console.error('Error loading support chats:', error);
       }
     };
 
     void loadUserSupportChats();
-  }, [user]);
+  }, [user, isAdmin]);
 
   const loadSupportMessagesByChatId = async (chatId: string) => {
-    if (!chatId || !user) {
+    if (!chatId || !user || isAdmin) {
       setSupportChatMessages([]);
       return;
     }
@@ -1207,16 +1329,20 @@ export default function HomePage() {
         });
       setSupportChatMessages(nextMessages);
     } catch (error) {
+      if (isApiUnavailableError(error)) {
+        return;
+      }
+
       console.error('Error loading support chat messages:', error);
     }
   };
 
   useEffect(() => {
     void loadSupportMessagesByChatId(activeSupportChatId);
-  }, [activeSupportChatId, user]);
+  }, [activeSupportChatId, user, isAdmin]);
 
   useEffect(() => {
-    if (!user) {
+    if (!user || isAdmin || !isChatOpen) {
       return;
     }
 
@@ -1250,7 +1376,17 @@ export default function HomePage() {
           if (selectedChatId) {
             await loadSupportMessagesByChatId(selectedChatId);
           }
+
+          hasLoggedSupportPollingApiDownRef.current = false;
         } catch (error) {
+          if (isApiUnavailableError(error)) {
+            if (!hasLoggedSupportPollingApiDownRef.current) {
+              console.warn('Support polling paused: backend API is temporarily unreachable.');
+              hasLoggedSupportPollingApiDownRef.current = true;
+            }
+            return;
+          }
+
           console.error('Error polling support chat:', error);
         }
       })();
@@ -1259,7 +1395,15 @@ export default function HomePage() {
     return () => {
       window.clearInterval(timer);
     };
-  }, [user, activeSupportChatId]);
+  }, [user, activeSupportChatId, isAdmin, isChatOpen]);
+
+  useEffect(() => {
+    if (!isChatOpen) {
+      return;
+    }
+
+    shouldStickSupportScrollRef.current = true;
+  }, [isChatOpen]);
 
   useEffect(() => {
     if (!isChatOpen) {
@@ -1270,15 +1414,36 @@ export default function HomePage() {
     if (!container) {
       return;
     }
-    container.scrollTop = container.scrollHeight;
-  }, [isChatOpen, supportChatMessages]);
+
+    const didChangeChat = previousSupportChatIdRef.current !== activeSupportChatId;
+    if (didChangeChat) {
+      container.scrollTop = container.scrollHeight;
+      shouldStickSupportScrollRef.current = true;
+      previousSupportChatIdRef.current = activeSupportChatId;
+      return;
+    }
+
+    if (shouldStickSupportScrollRef.current) {
+      container.scrollTop = container.scrollHeight;
+    }
+  }, [isChatOpen, activeSupportChatId, supportChatMessages]);
+
+  const handleSupportMessagesScroll = () => {
+    const container = supportMessagesContainerRef.current;
+    if (!container) {
+      return;
+    }
+
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    shouldStickSupportScrollRef.current = distanceFromBottom <= 72;
+  };
 
   useEffect(() => {
     setIsUserAvatarFallback(false);
   }, [user?.photoURL]);
 
   useEffect(() => {
-    if (!isChatOpen || !user) {
+    if (!isChatOpen || !user || isAdmin) {
       return;
     }
 
@@ -1292,7 +1457,15 @@ export default function HomePage() {
         await loadSupportMessagesByChatId(chatId);
       }
     })();
-  }, [isChatOpen, user, supportChats.length]);
+  }, [isChatOpen, user, isAdmin, supportChats.length]);
+
+  useEffect(() => {
+    if (!isAdmin || !isChatOpen) {
+      return;
+    }
+
+    setIsChatOpen(false);
+  }, [isAdmin, isChatOpen]);
 
   const supportIntroMessage = () => {
     return buildWelcomeBotMessage();
@@ -2352,34 +2525,35 @@ export default function HomePage() {
         </div>
       ) : null}
 
-      <div className="fixed bottom-5 right-5 z-[70]">
-        <motion.button
-          type="button"
-          whileHover={{ scale: 1.04 }}
-          whileTap={{ scale: 0.96 }}
-          onClick={() => setIsChatOpen((current) => !current)}
-          className="h-14 w-14 rounded-full shadow-xl flex items-center justify-center"
-          style={{
-            background: 'linear-gradient(135deg, color-mix(in oklab, var(--app-accent) 90%, #ffe5c6 10%), color-mix(in oklab, var(--app-accent) 70%, #1e1e1e 30%))',
-            color: 'var(--app-accent-contrast)',
-          }}
-          aria-label={isChatOpen ? 'Fermer le chatbot support' : 'Ouvrir le chatbot support'}
-        >
-          {isChatOpen ? <X className="h-6 w-6" /> : <MessageCircle className="h-6 w-6" />}
-        </motion.button>
-
-        {isChatOpen ? (
-          <motion.div
-            initial={{ opacity: 0, y: 14, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 10, scale: 0.98 }}
-            transition={{ duration: 0.2 }}
-            className="absolute bottom-16 right-0 flex h-[min(74vh,640px)] w-[min(92vw,390px)] flex-col rounded-3xl border shadow-2xl overflow-hidden"
+      {!isAdmin ? (
+        <div className="fixed bottom-5 right-5 z-[70]">
+          <motion.button
+            type="button"
+            whileHover={{ scale: 1.04 }}
+            whileTap={{ scale: 0.96 }}
+            onClick={() => setIsChatOpen((current) => !current)}
+            className="h-14 w-14 rounded-full shadow-xl flex items-center justify-center"
             style={{
-              borderColor: 'color-mix(in oklab, var(--app-border) 84%, var(--app-accent) 16%)',
-              background: 'color-mix(in oklab, var(--app-surface) 96%, white 4%)',
+              background: 'linear-gradient(135deg, color-mix(in oklab, var(--app-accent) 90%, #ffe5c6 10%), color-mix(in oklab, var(--app-accent) 70%, #1e1e1e 30%))',
+              color: 'var(--app-accent-contrast)',
             }}
+            aria-label={isChatOpen ? 'Fermer le chatbot support' : 'Ouvrir le chatbot support'}
           >
+            {isChatOpen ? <X className="h-6 w-6" /> : <MessageCircle className="h-6 w-6" />}
+          </motion.button>
+
+          {isChatOpen ? (
+            <motion.div
+              initial={{ opacity: 0, y: 14, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 10, scale: 0.98 }}
+              transition={{ duration: 0.2 }}
+              className="absolute bottom-16 right-0 flex h-[min(74vh,640px)] w-[min(92vw,390px)] flex-col rounded-3xl border shadow-2xl overflow-hidden"
+              style={{
+                borderColor: 'color-mix(in oklab, var(--app-border) 84%, var(--app-accent) 16%)',
+                background: 'color-mix(in oklab, var(--app-surface) 96%, white 4%)',
+              }}
+            >
             <div
               className="px-4 py-3 border-b"
               style={{
@@ -2391,8 +2565,27 @@ export default function HomePage() {
               <p className="text-xs" style={{ color: 'var(--app-muted)' }}>Chat en direct avec suivi admin.</p>
               {activeSupportChat ? (
                 <div className="mt-2 flex items-center justify-between gap-2">
-                  <span className="text-[11px] px-2 py-1 rounded-full" style={{ backgroundColor: 'color-mix(in oklab, var(--app-surface-alt) 80%, var(--app-accent) 20%)', color: 'var(--app-text)' }}>
-                    Statut: {activeSupportChat.status || 'open'}
+                  <span
+                    className="inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-full border"
+                    style={{
+                      borderColor: adminSupportPresence.isOnline
+                        ? 'color-mix(in oklab, #6b8e23 44%, var(--app-border) 56%)'
+                        : 'color-mix(in oklab, #8b6f47 44%, var(--app-border) 56%)',
+                      backgroundColor: adminSupportPresence.isOnline
+                        ? 'color-mix(in oklab, #7a8b52 18%, var(--app-surface) 82%)'
+                        : 'color-mix(in oklab, #a27b56 16%, var(--app-surface) 84%)',
+                      color: adminSupportPresence.isOnline
+                        ? 'color-mix(in oklab, #3f4f24 74%, var(--app-text) 26%)'
+                        : 'color-mix(in oklab, #5f4630 74%, var(--app-text) 26%)',
+                    }}
+                  >
+                    <span
+                      className="inline-block h-1.5 w-1.5 rounded-full"
+                      style={{
+                        backgroundColor: adminSupportPresence.isOnline ? '#6b8e23' : '#8b6f47',
+                      }}
+                    />
+                    Statut : {adminSupportStatusLabel}
                   </span>
                   <button
                     type="button"
@@ -2400,7 +2593,7 @@ export default function HomePage() {
                     className="text-[11px] px-2 py-1 rounded-md border"
                     style={{ borderColor: 'color-mix(in oklab, var(--app-danger) 42%, var(--app-border) 58%)', color: 'var(--app-danger)' }}
                   >
-                    Resolu et supprimer
+                    Resolu & Supprimer
                   </button>
                 </div>
               ) : null}
@@ -2448,6 +2641,7 @@ export default function HomePage() {
 
                 <div
                   ref={supportMessagesContainerRef}
+                  onScroll={handleSupportMessagesScroll}
                   className="flex-1 overflow-y-auto px-4 py-4 space-y-4"
                   style={{ backgroundColor: 'color-mix(in oklab, var(--app-surface-alt) 36%, var(--app-surface) 64%)' }}
                 >
@@ -2587,9 +2781,10 @@ export default function HomePage() {
                 </div>
               </>
             )}
-          </motion.div>
-        ) : null}
-      </div>
+            </motion.div>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

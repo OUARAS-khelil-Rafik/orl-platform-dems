@@ -20,6 +20,12 @@ const userSchema = new mongoose.Schema(
       default: 'user',
       index: true,
     },
+    supportAdminOnline: { type: Boolean, default: false },
+    supportAdminConnectedAt: { type: String, default: '' },
+    supportAdminDisconnectedAt: { type: String, default: '' },
+    supportClientOnline: { type: Boolean, default: false },
+    supportClientConnectedAt: { type: String, default: '' },
+    supportClientDisconnectedAt: { type: String, default: '' },
     subscriptionEndDate: { type: String },
     subscriptionApprovalStatus: {
       type: String,
