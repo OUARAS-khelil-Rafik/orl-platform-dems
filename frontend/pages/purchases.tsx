@@ -8,6 +8,7 @@ import { Clock3, Lock, PlayCircle, ReceiptText, ShoppingBag } from 'lucide-react
 import Image from 'next/image';
 import { useAuth } from '@/components/providers/auth-provider';
 import { collection, db, doc, getDoc, getDocs, query, where } from '@/lib/data/local-data';
+import { VIDEO_FALLBACK_SRC, applyImageFallback } from '@/lib/utils/media-fallback';
 
 type PaymentStatus = 'approved' | 'pending' | 'rejected';
 
@@ -170,8 +171,6 @@ const getVideoThumbnailUrl = (video: PurchasedVideoData, secondMark = 60) => {
 
   return null;
 };
-
-const VIDEO_THUMB_FALLBACK = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 640 360'><rect width='640' height='360' fill='%230f172a'/><circle cx='520' cy='80' r='120' fill='%231e293b'/><circle cx='130' cy='320' r='160' fill='%23334155'/></svg>";
 
 export default function PurchasesPage() {
   const { user, profile, loading: authLoading } = useAuth();
@@ -667,11 +666,12 @@ export default function PurchasesPage() {
                       <div key={videoId} className="border rounded-xl p-6 transition-transform duration-200 hover:-translate-y-1" style={tileStyle}>
                         <div className="relative aspect-video rounded-xl overflow-hidden mb-4 border" style={{ borderColor: 'var(--app-border)' }}>
                           <Image
-                            src={thumbnailUrl || VIDEO_THUMB_FALLBACK}
+                            src={thumbnailUrl || VIDEO_FALLBACK_SRC}
                             alt={`Apercu de ${title}`}
                             fill
                             sizes="(max-width: 768px) 100vw, 50vw"
                             className="object-cover"
+                            onError={(event) => applyImageFallback(event, VIDEO_FALLBACK_SRC)}
                           />
                           <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-transparent" />
 

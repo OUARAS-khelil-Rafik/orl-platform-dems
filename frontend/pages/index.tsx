@@ -25,6 +25,7 @@ import {
 import Image from 'next/image';
 import { useAuth } from '@/components/providers/auth-provider';
 import { collection, db, getDocs } from '@/lib/data/local-data';
+import { IMAGE_FALLBACK_SRC, VIDEO_FALLBACK_SRC, applyImageFallback } from '@/lib/utils/media-fallback';
 
 interface DemoVideo {
   id: string;
@@ -101,7 +102,7 @@ const extractYouTubeVideoId = (url: string) => {
   return null;
 };
 
-const VIDEO_CARD_PLACEHOLDER = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360"><rect width="640" height="360" fill="%230f172a"/><circle cx="520" cy="80" r="120" fill="%231e293b"/><circle cx="130" cy="320" r="160" fill="%23334155"/></svg>';
+const VIDEO_CARD_PLACEHOLDER = VIDEO_FALLBACK_SRC;
 
 const buildCloudinaryVideoThumbnailUrl = (videoUrl: string, secondMark = 60) => {
   const cleaned = videoUrl.trim().split('#')[0]?.split('?')[0] ?? '';
@@ -1113,6 +1114,7 @@ export default function HomePage() {
             loading="eager"
             className="object-cover opacity-20"
             referrerPolicy="no-referrer"
+            onError={(event) => applyImageFallback(event, IMAGE_FALLBACK_SRC)}
           />
           <div className="absolute inset-0" style={{ background: 'var(--hero-overlay)' }} />
           <div className="absolute -top-24 -right-20 w-96 h-96 rounded-full blur-3xl" style={{ backgroundColor: 'color-mix(in srgb, var(--app-accent) 32%, transparent)' }} />
@@ -1268,6 +1270,7 @@ export default function HomePage() {
                           className="object-cover transition-transform duration-300 group-hover:scale-105"
                           loading="lazy"
                           referrerPolicy="no-referrer"
+                          onError={(event) => applyImageFallback(event, VIDEO_FALLBACK_SRC)}
                         />
                         <div className="absolute inset-x-0 top-0 h-1" style={{ background: theme.stripeGradient }} />
                         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/15 to-transparent" />

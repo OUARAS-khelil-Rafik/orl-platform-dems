@@ -9,6 +9,7 @@ import { UserPlus } from 'lucide-react';
 export default function SignUpPage() {
   const router = useRouter();
   const { user, loading, signUp, signInWithGoogle } = useAuth();
+  const googleButtonLabel = 'Connexion Google';
 
   const [lastName, setLastName] = useState('');
   const [firstName, setFirstName] = useState('');
@@ -72,7 +73,7 @@ export default function SignUpPage() {
             className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-3 font-semibold text-slate-800 hover:bg-slate-50 disabled:opacity-70"
           >
             <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-slate-900 text-xs font-bold text-white">G</span>
-            Connexion Google
+            <span suppressHydrationWarning>{googleButtonLabel}</span>
           </button>
 
           <div className="relative">

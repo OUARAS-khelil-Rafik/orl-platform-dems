@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
 import { signInWithOAuthToken } from '@/lib/data/local-data';
+import { normalizeGoogleOAuthError } from '@/lib/utils/oauth-error';
 
 const sanitizeNextPath = (rawPath: string | null, fallback = '/dashboard') => {
   const nextPath = String(rawPath || '').trim();
@@ -28,9 +29,11 @@ export default function GoogleOAuthCallbackPage() {
       const token = hashParams.get('token');
       const remember = hashParams.get('remember') !== '0';
       const nextPath = sanitizeNextPath(hashParams.get('next'), '/dashboard');
-      const oauthError = typeof router.query.oauthError === 'string'
-        ? router.query.oauthError
-        : '';
+      const oauthError = normalizeGoogleOAuthError(
+        typeof router.query.oauthError === 'string'
+          ? router.query.oauthError
+          : '',
+      );
 
       if (oauthError) {
         setError(oauthError);
@@ -49,9 +52,9 @@ export default function GoogleOAuthCallbackPage() {
         setStatus('Connexion reussie. Redirection...');
         router.replace(nextPath);
       } catch (callbackError) {
-        const message = callbackError instanceof Error
+        const message = normalizeGoogleOAuthError(callbackError instanceof Error
           ? callbackError.message
-          : 'Connexion Google impossible.';
+          : 'Connexion Google impossible.');
         setError(message);
         setStatus('Connexion Google interrompue.');
       }

@@ -3,6 +3,11 @@ import express from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { env } from '../config/env.js';
+import {
+  isGmailAppPasswordAuthError,
+  isSmtpMailerConfigured,
+  sendPasswordResetMail,
+} from '../config/mailer.js';
 import { User } from '../models/User.js';
 import { createId } from '../utils/id.js';
 import { adminRequired, authRequired } from '../middleware/auth.js';
@@ -13,6 +18,14 @@ const GOOGLE_AUTH_BASE_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const GOOGLE_USERINFO_URL = 'https://openidconnect.googleapis.com/v1/userinfo';
 const GOOGLE_STATE_EXPIRATION = '10m';
+const PASSWORD_RESET_REQUEST_MESSAGE = 'Si un compte existe avec cet email, un lien de reinitialisation a ete prepare.';
+const PASSWORD_RESET_TTL_MINUTES = (() => {
+  const parsed = Number.parseInt(String(process.env.PASSWORD_RESET_TOKEN_TTL_MINUTES || '30'), 10);
+  if (!Number.isFinite(parsed)) {
+    return 30;
+  }
+  return Math.max(5, Math.min(parsed, 180));
+})();
 
 const parseInitialAdminAccountsFromEnv = () => {
   const raw = String(process.env.INITIAL_ADMIN_ACCOUNTS || '').trim();
@@ -75,6 +88,11 @@ const parseBooleanFlag = (value) => {
   const normalized = String(value || '').trim().toLowerCase();
   return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on';
 };
+
+const shouldExposePasswordResetLink = parseBooleanFlag(
+  process.env.PASSWORD_RESET_EXPOSE_LINK
+  || (process.env.NODE_ENV !== 'production' ? 'true' : 'false'),
+);
 
 const sanitizeNextPath = (value, fallback = '/dashboard') => {
   const raw = String(value || '').trim();
@@ -265,6 +283,8 @@ const toSessionUser = (user) => ({
 });
 
 const issueToken = (uid) => jwt.sign({ uid }, env.jwtSecret, { expiresIn: env.jwtExpiresIn });
+const issuePasswordResetToken = () => crypto.randomBytes(32).toString('hex');
+const hashPasswordResetToken = (token) => crypto.createHash('sha256').update(String(token || '')).digest('hex');
 
 const createUserWithPassword = async ({
   email,
@@ -317,7 +337,7 @@ const createUserWithPassword = async ({
 const linkGoogleToUser = async (user, googleIdentity) => {
   const existingGoogleSub = String(user?.googleAuth?.sub || '').trim();
   if (existingGoogleSub && existingGoogleSub !== googleIdentity.sub) {
-    throw new Error('This account is already linked to another Google account.');
+    throw new Error('Ce compte est deja lie a un autre compte Google.');
   }
 
   const updatePayload = {
@@ -371,21 +391,33 @@ const createUserWithGoogle = async (googleIdentity) => {
 };
 
 const resolveUserFromGoogleSignIn = async (googleIdentity) => {
-  const byGoogleSub = await User.findOne({ 'googleAuth.sub': googleIdentity.sub });
-  if (byGoogleSub) {
-    const linked = await linkGoogleToUser(byGoogleSub, googleIdentity);
-    return linked || byGoogleSub;
+  const candidates = await User.find({
+    $or: [
+      { 'googleAuth.sub': googleIdentity.sub },
+      { email: googleIdentity.email },
+    ],
+  }).limit(2);
+
+  const byGoogleSub = candidates.find(
+    (entry) => String(entry?.googleAuth?.sub || '').trim() === googleIdentity.sub,
+  );
+  const byEmail = candidates.find(
+    (entry) => String(entry?.email || '').trim().toLowerCase() === googleIdentity.email,
+  );
+
+  if (byGoogleSub && byEmail && byGoogleSub.uid !== byEmail.uid) {
+    throw new Error('Conflit de compte detecte pour cet email Google. Contactez le support.');
   }
 
-  const byEmail = await User.findOne({ email: googleIdentity.email });
-  if (byEmail) {
-    const existingGoogleSub = String(byEmail?.googleAuth?.sub || '').trim();
+  const targetUser = byGoogleSub || byEmail;
+  if (targetUser) {
+    const existingGoogleSub = String(targetUser?.googleAuth?.sub || '').trim();
     if (existingGoogleSub && existingGoogleSub !== googleIdentity.sub) {
-      throw new Error('This email is already linked to another Google account.');
+      throw new Error('Cet email est deja lie a un autre compte Google.');
     }
 
-    const linked = await linkGoogleToUser(byEmail, googleIdentity);
-    return linked || byEmail;
+    const linked = await linkGoogleToUser(targetUser, googleIdentity);
+    return linked || targetUser;
   }
 
   const created = await createUserWithGoogle(googleIdentity);
@@ -563,6 +595,19 @@ router.get('/google/callback', async (req, res) => {
         return redirectWithOAuthError(res, failureRedirectTarget, 'Ce compte Google est deja lie a un autre utilisateur.');
       }
 
+      const emailAlreadyUsedElsewhere = await User.findOne({
+        email: googleIdentity.email,
+        uid: { $ne: targetUser.uid },
+      }).lean();
+
+      if (emailAlreadyUsedElsewhere) {
+        return redirectWithOAuthError(
+          res,
+          failureRedirectTarget,
+          'Cet email Google est deja utilise par un autre compte. Connectez-vous avec ce compte pour lier Google.',
+        );
+      }
+
       user = await linkGoogleToUser(targetUser, googleIdentity);
     } else {
       user = await resolveUserFromGoogleSignIn(googleIdentity);
@@ -624,6 +669,113 @@ router.post('/signin', async (req, res) => {
     return res.json({ token, user: toSessionUser(user) });
   } catch {
     return res.status(500).json({ message: 'Unable to sign in.' });
+  }
+});
+
+router.post('/forgot-password', async (req, res) => {
+  try {
+    const normalizedEmail = String(req.body?.email || '').trim().toLowerCase();
+    if (!normalizedEmail) {
+      return res.json({ ok: true, message: PASSWORD_RESET_REQUEST_MESSAGE });
+    }
+
+    const user = await User.findOne({ email: normalizedEmail });
+    if (!user) {
+      return res.json({ ok: true, message: PASSWORD_RESET_REQUEST_MESSAGE });
+    }
+
+    const resetToken = issuePasswordResetToken();
+    const resetTokenHash = hashPasswordResetToken(resetToken);
+    const expiresAt = new Date(Date.now() + PASSWORD_RESET_TTL_MINUTES * 60 * 1000);
+
+    user.passwordReset = {
+      tokenHash: resetTokenHash,
+      expiresAt,
+    };
+    await user.save();
+
+    const frontendBase = resolveFrontendBaseUrl();
+    const resetUrl = `${frontendBase}/reset-password?token=${encodeURIComponent(resetToken)}`;
+
+    let emailSent = false;
+    if (isSmtpMailerConfigured) {
+      try {
+        await sendPasswordResetMail({
+          toEmail: normalizedEmail,
+          displayName: user.displayName || 'Utilisateur',
+          resetUrl,
+          expiresInMinutes: PASSWORD_RESET_TTL_MINUTES,
+        });
+        emailSent = true;
+        console.info(`[auth] Password reset email sent to ${normalizedEmail}.`);
+      } catch (error) {
+        if (isGmailAppPasswordAuthError(error)) {
+          console.error(
+            '[auth] Gmail SMTP authentication failed. Enable Google 2-Step Verification and set a 16-character App Password in SMTP_PASS.',
+          );
+        }
+        console.error(`[auth] Password reset email failed for ${normalizedEmail}.`, error);
+      }
+    } else {
+      console.warn('[auth] SMTP mailer is not configured. Falling back to reset link exposure policy.');
+    }
+
+    const shouldReturnResetUrl = shouldExposePasswordResetLink && !emailSent;
+
+    if (shouldReturnResetUrl) {
+      console.info(`[auth] Password reset link generated for ${normalizedEmail}: ${resetUrl}`);
+    }
+
+    if (shouldReturnResetUrl) {
+      return res.json({
+        ok: true,
+        message: PASSWORD_RESET_REQUEST_MESSAGE,
+        resetUrl,
+        emailSent,
+      });
+    }
+
+    return res.json({ ok: true, message: PASSWORD_RESET_REQUEST_MESSAGE, emailSent });
+  } catch {
+    return res.status(500).json({ message: 'Unable to process password reset request.' });
+  }
+});
+
+router.post('/reset-password', async (req, res) => {
+  try {
+    const token = String(req.body?.token || '').trim();
+    const newPassword = String(req.body?.newPassword || '');
+
+    if (!token) {
+      return res.status(400).json({ message: 'Le token de reinitialisation est manquant.' });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ message: 'Le nouveau mot de passe doit contenir au moins 6 caracteres.' });
+    }
+
+    const tokenHash = hashPasswordResetToken(token);
+    const user = await User.findOne({
+      'passwordReset.tokenHash': tokenHash,
+      'passwordReset.expiresAt': { $gt: new Date() },
+    });
+
+    if (!user) {
+      return res.status(400).json({ message: 'Le lien de reinitialisation est invalide ou expire.' });
+    }
+
+    user.passwordHash = await bcrypt.hash(newPassword, 10);
+    user.passwordLoginEnabled = true;
+    user.passwordReset = {
+      tokenHash: '',
+      expiresAt: null,
+    };
+
+    await user.save();
+
+    return res.json({ ok: true, message: 'Mot de passe reinitialise avec succes.' });
+  } catch {
+    return res.status(500).json({ message: 'Unable to reset password.' });
   }
 });
 

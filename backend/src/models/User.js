@@ -40,6 +40,10 @@ const userSchema = new mongoose.Schema(
       apiSecret: { type: String, default: '' },
       updatedAt: { type: String },
     },
+    passwordReset: {
+      tokenHash: { type: String, default: '' },
+      expiresAt: { type: Date, default: null },
+    },
   },
   { timestamps: true },
 );

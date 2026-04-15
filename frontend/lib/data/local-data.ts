@@ -584,6 +584,32 @@ export const signInWithEmail = async (
   return response.user;
 };
 
+export const requestPasswordReset = async (email: string) => {
+  const response = await apiRequest<{ ok: boolean; message: string; resetUrl?: string; emailSent?: boolean }>(
+    '/auth/forgot-password',
+    {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    },
+    false,
+  );
+
+  return response;
+};
+
+export const resetPasswordWithToken = async (token: string, newPassword: string) => {
+  const response = await apiRequest<{ ok: boolean; message: string }>(
+    '/auth/reset-password',
+    {
+      method: 'POST',
+      body: JSON.stringify({ token, newPassword }),
+    },
+    false,
+  );
+
+  return response;
+};
+
 export const beginGoogleSignIn = (rememberMe = true, nextPath = '/dashboard') => {
   if (!isBrowser()) {
     return;

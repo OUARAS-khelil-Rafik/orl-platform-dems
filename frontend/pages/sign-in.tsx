@@ -2,9 +2,10 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/components/providers/auth-provider';
 import { LogIn, ShieldCheck, Stethoscope } from 'lucide-react';
+import { normalizeGoogleOAuthError } from '@/lib/utils/oauth-error';
 
 export default function SignInPage() {
   const router = useRouter();
@@ -16,9 +17,10 @@ export default function SignInPage() {
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const oauthError = Array.isArray(router.query.oauthError)
+  const oauthErrorRaw = Array.isArray(router.query.oauthError)
     ? router.query.oauthError[0]
     : router.query.oauthError;
+  const oauthError = useMemo(() => normalizeGoogleOAuthError(oauthErrorRaw), [oauthErrorRaw]);
 
   useEffect(() => {
     if (!loading && user) {
@@ -119,16 +121,25 @@ export default function SignInPage() {
             />
           </div>
 
-          <label htmlFor="signin-remember" className="inline-flex items-center gap-2 text-sm text-slate-700 select-none">
-            <input
-              id="signin-remember"
-              type="checkbox"
-              checked={rememberMe}
-              onChange={(event) => setRememberMe(event.target.checked)}
-              className="h-4 w-4 rounded border-slate-300 text-amber-700 focus:ring-amber-500"
-            />
-            Se souvenir de moi
-          </label>
+          <div className="flex items-center justify-between gap-3">
+            <label htmlFor="signin-remember" className="inline-flex items-center gap-2 text-sm text-slate-700 select-none">
+              <input
+                id="signin-remember"
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(event) => setRememberMe(event.target.checked)}
+                className="h-4 w-4 rounded border-slate-300 text-amber-700 focus:ring-amber-500"
+              />
+              Se souvenir de moi
+            </label>
+
+            <Link
+              href="/forgot-password"
+              className="text-sm font-semibold auth-inline-link text-amber-700 hover:text-amber-800"
+            >
+              Mot de passe oublie ?
+            </Link>
+          </div>
 
           <button
             type="button"

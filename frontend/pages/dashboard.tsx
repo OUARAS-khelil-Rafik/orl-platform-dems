@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -29,6 +29,8 @@ import {
 } from '@/lib/data/local-data';
 import { isSubscriptionActive } from '@/lib/security/access-control';
 import { formatFullName, normalizeNameParts, splitFullName } from '@/lib/utils/name-utils';
+import { AVATAR_FALLBACK_SRC, applyImageFallback } from '@/lib/utils/media-fallback';
+import { normalizeGoogleOAuthError } from '@/lib/utils/oauth-error';
 
 export default function UserDashboard() {
   const {
@@ -119,7 +121,8 @@ export default function UserDashboard() {
 
   const subtleText = { color: 'color-mix(in oklab, var(--app-text) 78%, var(--app-muted) 22%)' };
   const isGoogleConnected = Boolean(String(profile?.googleAuth?.sub || '').trim());
-  const oauthError = typeof router.query.oauthError === 'string' ? router.query.oauthError : '';
+  const oauthErrorRaw = typeof router.query.oauthError === 'string' ? router.query.oauthError : '';
+  const oauthError = useMemo(() => normalizeGoogleOAuthError(oauthErrorRaw), [oauthErrorRaw]);
   const hasLocalPassword = profile?.passwordLoginEnabled !== false;
   const authConnectionState = !isGoogleConnected && hasLocalPassword
     ? 'local-only'
@@ -639,7 +642,7 @@ export default function UserDashboard() {
             }}
           >
             <div className="grid gap-6 lg:grid-cols-[260px_minmax(0,1fr)] lg:items-center">
-              <div className="rounded-2xl border border-white/30 bg-white/10 p-4 backdrop-blur-sm">
+              <div className="rounded-2xl p-4 backdrop-blur-sm">
                 <div className="flex flex-col items-center text-center">
                   <div className="relative mb-6">
                     <div className="relative w-36 h-36 md:w-40 md:h-40 rounded-full overflow-hidden bg-slate-100 border-4 border-white shadow-[0_24px_48px_-24px_rgba(0,0,0,0.85)]">
@@ -653,6 +656,7 @@ export default function UserDashboard() {
                           sizes="160px"
                           className="object-cover"
                           referrerPolicy="no-referrer"
+                          onError={(event) => applyImageFallback(event, AVATAR_FALLBACK_SRC)}
                         />
                       ) : (
                         <User className="w-16 h-16 text-[var(--app-muted)] absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />

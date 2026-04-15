@@ -38,6 +38,7 @@ import {
   ClipboardList,
 } from 'lucide-react';
 import Image from 'next/image';
+import { IMAGE_FALLBACK_SRC, applyImageFallback } from '@/lib/utils/media-fallback';
 
 type VideoTab = 'cas' | 'open' | 'qcm' | 'schemas';
 
@@ -847,6 +848,7 @@ export default function VideoPage() {
                                             sizes="(max-width: 768px) 100vw, (max-width: 1280px) 50vw, 33vw"
                                             className="object-cover transition-transform duration-500 group-hover:scale-110"
                                             referrerPolicy="no-referrer"
+                                            onError={(event) => applyImageFallback(event, IMAGE_FALLBACK_SRC)}
                                           />
                                           <div className="video-figure-caption absolute inset-x-0 bottom-0 px-3 py-1 text-xs flex items-center justify-between">
                                             <span>Figure {String(imgIndex + 1).padStart(2, '0')}</span>
@@ -1178,6 +1180,7 @@ export default function VideoPage() {
                                                         sizes="(max-width: 640px) 100vw, 50vw"
                                                         className="object-cover transition-transform duration-500 group-hover:scale-110"
                                                         referrerPolicy="no-referrer"
+                                                        onError={(event) => applyImageFallback(event, IMAGE_FALLBACK_SRC)}
                                                       />
                                                       <div className="video-figure-caption video-figure-caption--compact absolute inset-x-0 bottom-0 px-2 py-1 text-[10px] flex items-center justify-between">
                                                         <span>
@@ -1823,6 +1826,7 @@ export default function VideoPage() {
                                   sizes="(max-width: 1024px) 100vw, 80vw"
                                   className="object-contain"
                                   referrerPolicy="no-referrer"
+                                  onError={(event) => applyImageFallback(event, IMAGE_FALLBACK_SRC)}
                                 />
                                 {/* plus de calque SVG sur l'image : les marqueurs sont uniquement listés en dessous */}
                               </div>
@@ -1993,6 +1997,7 @@ export default function VideoPage() {
                 sizes="100vw"
                 className="object-contain" 
                 referrerPolicy="no-referrer" 
+                onError={(event) => applyImageFallback(event, IMAGE_FALLBACK_SRC)}
               />
             </motion.div>
             

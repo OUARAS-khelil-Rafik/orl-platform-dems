@@ -28,6 +28,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import Image from 'next/image';
 import { db, collection, getDocs, query, where } from '@/lib/data/local-data';
 import { SearchModal } from '@/components/features/search/search-modal';
+import { AVATAR_FALLBACK_SRC, applyImageFallback } from '@/lib/utils/media-fallback';
 
 type NavbarNotification = {
   id: string;
@@ -824,6 +825,7 @@ export function Navbar() {
                               width={32}
                               height={32}
                               className="w-full h-full object-cover"
+                              onError={(event) => applyImageFallback(event, AVATAR_FALLBACK_SRC)}
                             />
                           ) : (
                             <User className="h-5 w-5 text-[var(--app-muted)]" />
@@ -1039,6 +1041,7 @@ export function Navbar() {
                             width={40}
                             height={40}
                             className="w-full h-full object-cover"
+                            onError={(event) => applyImageFallback(event, AVATAR_FALLBACK_SRC)}
                           />
                         ) : (
                           <User className="h-5 w-5 text-[var(--app-muted)]" />

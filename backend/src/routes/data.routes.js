@@ -643,7 +643,7 @@ router.get('/:collection', async (req, res) => {
     const collection = normalizeCollectionName(req.params.collection);
 
     if (isUsersCollection(collection)) {
-      const users = await User.find({}, { passwordHash: 0, __v: 0 }).lean();
+      const users = await User.find({}, { passwordHash: 0, passwordReset: 0, __v: 0 }).lean();
       const docs = users.map((entry) => {
         const { _id, uid, ...rest } = entry;
         return {
@@ -671,7 +671,7 @@ router.post('/query', async (req, res) => {
     const filter = toMongoFilter(constraints);
 
     if (isUsersCollection(collection)) {
-      const users = await User.find(filter, { passwordHash: 0, __v: 0 }).lean();
+      const users = await User.find(filter, { passwordHash: 0, passwordReset: 0, __v: 0 }).lean();
       const docs = users.map((entry) => {
         const { _id, uid, ...rest } = entry;
         return {
@@ -715,7 +715,7 @@ router.get('/:collection/:id', authOptional, async (req, res) => {
     }
 
     if (isUsersCollection(collection)) {
-      const user = await User.findOne({ uid: id }, { passwordHash: 0, __v: 0 }).lean();
+      const user = await User.findOne({ uid: id }, { passwordHash: 0, passwordReset: 0, __v: 0 }).lean();
       if (!user) {
         return res.json({ exists: false });
       }

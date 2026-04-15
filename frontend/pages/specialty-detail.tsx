@@ -10,6 +10,7 @@ import { useAuth } from '@/components/providers/auth-provider';
 import { canAccessVideo } from '@/lib/security/access-control';
 import { useCart } from '@/components/providers/cart-provider';
 import Image from 'next/image';
+import { VIDEO_FALLBACK_SRC, applyImageFallback } from '@/lib/utils/media-fallback';
 
 interface Video {
   id: string;
@@ -967,7 +968,7 @@ function VideoCard({
         onBlur={handlePreviewStop}
       >
         <Image
-          src={thumbnailUrl || 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360"><rect width="640" height="360" fill="%230f172a"/><circle cx="520" cy="80" r="120" fill="%231e293b"/><circle cx="130" cy="320" r="160" fill="%23334155"/></svg>'}
+          src={thumbnailUrl || VIDEO_FALLBACK_SRC}
           alt={video.title}
           fill
           sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
@@ -977,10 +978,13 @@ function VideoCard({
           loading={index === 0 ? 'eager' : 'lazy'}
           fetchPriority={index === 0 ? 'high' : 'auto'}
           referrerPolicy="no-referrer"
-          onError={() => {
+          onError={(event) => {
             if (thumbnailSecond !== 0) {
               setThumbnailSecond(0);
+              return;
             }
+
+            applyImageFallback(event, VIDEO_FALLBACK_SRC);
           }}
         />
         {hasInlinePreview && (
