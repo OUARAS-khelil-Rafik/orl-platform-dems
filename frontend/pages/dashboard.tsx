@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -144,39 +144,21 @@ export default function UserDashboard() {
 
   const isLightMode = themeMode === 'light';
 
-  const cardStyle = {
-    background: isLightMode
-      ? 'color-mix(in oklab, var(--app-bg) 94%, var(--app-surface) 6%)'
-      : 'color-mix(in oklab, var(--app-surface) 96%, var(--app-bg) 4%)',
-    borderColor: isLightMode
-      ? 'color-mix(in oklab, var(--app-border) 88%, var(--app-surface-2) 12%)'
-      : 'color-mix(in oklab, var(--app-border) 90%, var(--app-deep-surface) 10%)',
-    boxShadow: '0 14px 48px -24px rgba(0, 0, 0, 0.55)',
-  };
+  const cardToneClasses = isLightMode
+    ? 'bg-[color-mix(in_oklab,var(--app-bg)_94%,var(--app-surface)_6%)] border-[color-mix(in_oklab,var(--app-border)_88%,var(--app-surface-2)_12%)]'
+    : 'bg-[color-mix(in_oklab,var(--app-surface)_96%,var(--app-bg)_4%)] border-[color-mix(in_oklab,var(--app-border)_90%,var(--app-deep-surface)_10%)]';
+  const cardClassName = `${cardToneClasses} border shadow-[0_14px_48px_-24px_rgba(0,0,0,0.55)]`;
 
-  const insetCardStyle = {
-    background: isLightMode
-      ? 'color-mix(in oklab, var(--app-bg) 96%, var(--app-surface-2) 4%)'
-      : 'color-mix(in oklab, var(--app-surface-2) 86%, var(--app-deep-surface) 14%)',
-    borderColor: isLightMode
-      ? 'color-mix(in oklab, var(--app-border) 92%, var(--app-surface) 8%)'
-      : 'color-mix(in oklab, var(--app-border) 86%, var(--app-deep-surface-2) 14%)',
-  };
+  const insetCardClasses = isLightMode
+    ? 'bg-[color-mix(in_oklab,var(--app-bg)_96%,var(--app-surface-2)_4%)] border-[color-mix(in_oklab,var(--app-border)_92%,var(--app-surface)_8%)]'
+    : 'bg-[color-mix(in_oklab,var(--app-surface-2)_86%,var(--app-deep-surface)_14%)] border-[color-mix(in_oklab,var(--app-border)_86%,var(--app-deep-surface-2)_14%)]';
 
   const inputClasses =
-    'w-full px-4 py-2 rounded-xl border bg-[var(--app-surface)] text-[var(--app-text)] border-[var(--app-border)] placeholder:text-[var(--app-muted)] focus:ring-2 focus:ring-[var(--app-accent)] focus:border-[var(--app-accent)] outline-none transition-all';
-
-  const inputTone = {
-    background: isLightMode
-      ? 'color-mix(in oklab, var(--app-bg) 96%, var(--app-surface) 4%)'
-      : 'var(--app-surface)',
-    borderColor: isLightMode
-      ? 'color-mix(in oklab, var(--app-border) 92%, var(--app-surface-2) 8%)'
-      : 'var(--app-border)',
-    color: 'var(--app-text)',
-  };
-
-  const subtleText = { color: 'color-mix(in oklab, var(--app-text) 78%, var(--app-muted) 22%)' };
+    'w-full px-4 py-2 rounded-xl border placeholder:text-(--app-muted) focus:ring-2 focus:ring-[var(--app-accent)] focus:border-(--app-accent) outline-none transition-all';
+  const inputToneClasses = isLightMode
+    ? 'bg-[color-mix(in_oklab,var(--app-bg)_96%,var(--app-surface)_4%)] border-[color-mix(in_oklab,var(--app-border)_92%,var(--app-surface-2)_8%)] text-(--app-text)'
+    : 'bg-(--app-surface) border-(--app-border) text-(--app-text)';
+  const subtleTextClass = 'text-[color-mix(in_oklab,var(--app-text)_78%,var(--app-muted)_22%)]';
   const isGoogleConnected = Boolean(String(profile?.googleAuth?.sub || '').trim());
   const oauthErrorRaw = typeof router.query.oauthError === 'string' ? router.query.oauthError : '';
   const oauthError = useMemo(() => normalizeGoogleOAuthError(oauthErrorRaw), [oauthErrorRaw]);
@@ -410,7 +392,7 @@ export default function UserDashboard() {
         ]);
 
         const nextNotifications = notificationsSnap.docs
-          .map((entry) => ({ id: entry.id, ...(entry.data() as UserNotification) }))
+          .map((entry) => ({ ...(entry.data() as UserNotification), id: entry.id }))
           .sort((a, b) => {
             const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
             const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
@@ -418,7 +400,7 @@ export default function UserDashboard() {
           });
 
         const nextSupportChats = chatsSnap.docs
-          .map((entry) => ({ id: entry.id, ...(entry.data() as SupportChat) }))
+          .map((entry) => ({ ...(entry.data() as SupportChat), id: entry.id }))
           .sort((a, b) => {
             const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
             const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
@@ -438,7 +420,7 @@ export default function UserDashboard() {
     void loadUserNotificationsAndSupport();
   }, [user]);
 
-  const loadSupportMessagesByChatId = async (chatId: string) => {
+  const loadSupportMessagesByChatId = useCallback(async (chatId: string) => {
     if (!chatId || !user) {
       setSupportChatMessages([]);
       return;
@@ -447,7 +429,7 @@ export default function UserDashboard() {
     try {
       const messagesSnap = await getDocs(query(collection(db, 'supportChatMessages'), where('chatId', '==', chatId)));
       const nextMessages = messagesSnap.docs
-        .map((entry) => ({ id: entry.id, ...(entry.data() as SupportChatMessage) }))
+        .map((entry) => ({ ...(entry.data() as SupportChatMessage), id: entry.id }))
         .sort((a, b) => {
           const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
           const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
@@ -458,7 +440,7 @@ export default function UserDashboard() {
     } catch (error) {
       console.error('Error loading support chat messages:', error);
     }
-  };
+  }, [user]);
 
   useEffect(() => {
     if (!activeSupportChatId) {
@@ -466,7 +448,7 @@ export default function UserDashboard() {
       return;
     }
     void loadSupportMessagesByChatId(activeSupportChatId);
-  }, [activeSupportChatId, user]);
+  }, [activeSupportChatId, loadSupportMessagesByChatId]);
 
   useEffect(() => {
     if (!user) {
@@ -478,7 +460,7 @@ export default function UserDashboard() {
         try {
           const chatsSnap = await getDocs(query(collection(db, 'supportChats'), where('userId', '==', user.uid)));
           const nextChats = chatsSnap.docs
-            .map((entry) => ({ id: entry.id, ...(entry.data() as SupportChat) }))
+            .map((entry) => ({ ...(entry.data() as SupportChat), id: entry.id }))
             .sort((a, b) => {
               const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
               const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
@@ -503,7 +485,7 @@ export default function UserDashboard() {
     return () => {
       window.clearInterval(timer);
     };
-  }, [user, activeSupportChatId]);
+  }, [user, activeSupportChatId, loadSupportMessagesByChatId]);
 
   const buildChatbotIntroByProblemType = (problemType: SupportChat['problemType']) => {
     if (problemType === 'billing') {
@@ -985,20 +967,12 @@ export default function UserDashboard() {
 
   return (
     <div
-      className="flex-1 min-h-screen py-5 sm:py-8 md:py-10"
-      style={{
-        background: 'radial-gradient(130% 120% at 20% 20%, color-mix(in oklab, var(--app-accent) 4%, var(--app-bg) 96%), var(--app-bg))',
-      }}
+      className="flex-1 min-h-screen py-5 sm:py-8 md:py-10 bg-[radial-gradient(130%_120%_at_20%_20%,color-mix(in_oklab,var(--app-accent)_4%,var(--app-bg)_96%),var(--app-bg))]"
     >
       <main className="px-3 sm:px-6 md:px-10">
         <div className="max-w-5xl mx-auto">
           <div
-            className="mb-6 rounded-2xl sm:rounded-3xl border p-4 sm:p-6 shadow-xl"
-            style={{
-              color: 'var(--hero-title)',
-              borderColor: 'color-mix(in oklab, var(--hero-chip-border) 72%, var(--app-border) 28%)',
-              background: 'linear-gradient(140deg, var(--hero-bg-start) 0%, color-mix(in oklab, var(--hero-bg-end) 82%, var(--app-accent) 18%) 100%)',
-            }}
+            className="mb-6 rounded-2xl sm:rounded-3xl border p-4 sm:p-6 shadow-xl text-(--hero-title) border-[color-mix(in_oklab,var(--hero-chip-border)_72%,var(--app-border)_28%)] bg-[linear-gradient(140deg,var(--hero-bg-start)_0%,color-mix(in_oklab,var(--hero-bg-end)_82%,var(--app-accent)_18%)_100%)]"
           >
             <div className="grid gap-4 sm:gap-6 lg:grid-cols-[260px_minmax(0,1fr)] lg:items-center">
               <div className="rounded-2xl p-2 sm:p-4 backdrop-blur-sm">
@@ -1018,11 +992,11 @@ export default function UserDashboard() {
                           onError={(event) => applyImageFallback(event, AVATAR_FALLBACK_SRC)}
                         />
                       ) : (
-                        <User className="w-16 h-16 text-[var(--app-muted)] absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+                        <User className="w-16 h-16 text-(--app-muted) absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
                       )}
                     </div>
                     <label
-                      className={`absolute -bottom-4 left-1/2 -translate-x-1/2 inline-flex items-center gap-1.5 rounded-full border border-[var(--app-border)] bg-[var(--app-surface)] px-4 py-2 text-xs font-semibold text-[var(--app-text)] shadow-xl shadow-black/35 transition ${avatarUploading || avatarEditorOpen ? 'cursor-not-allowed opacity-70' : 'cursor-pointer hover:-translate-y-0.5 hover:brightness-105'}`}
+                      className={`absolute -bottom-4 left-1/2 -translate-x-1/2 inline-flex items-center gap-1.5 rounded-full border border-(--app-border) bg-(--app-surface) px-4 py-2 text-xs font-semibold text-(--app-text) shadow-xl shadow-black/35 transition ${avatarUploading || avatarEditorOpen ? 'cursor-not-allowed opacity-70' : 'cursor-pointer hover:-translate-y-0.5 hover:brightness-105'}`}
                       title="Modifier la photo"
                       aria-label="Modifier la photo"
                     >
@@ -1047,21 +1021,21 @@ export default function UserDashboard() {
               </div>
 
               <div className="min-w-0 space-y-4">
-                <p className="text-xs uppercase tracking-[0.16em]" style={{ color: 'var(--hero-body)' }}>Espace personnel</p>
+                <p className="text-xs uppercase tracking-[0.16em] text-(--hero-body)">Espace personnel</p>
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.14em]" style={{ color: 'var(--hero-body)' }}>Nom complet</p>
-                  <h1 className="text-xl sm:text-2xl md:text-3xl font-bold mt-1 break-words">{formatFullName(lastName, firstName) || profile.displayName}</h1>
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-(--hero-body)">Nom complet</p>
+                  <h1 className="text-xl sm:text-2xl md:text-3xl font-bold mt-1 wrap-break-word">{formatFullName(lastName, firstName) || profile.displayName}</h1>
                 </div>
-                <p className="text-sm leading-relaxed" style={{ color: 'var(--hero-body)' }}>Gérez votre profil, votre sécurité et vos accès pédagogiques depuis un seul espace.</p>
+                <p className="text-sm leading-relaxed text-(--hero-body)">Gérez votre profil, votre sécurité et vos accès pédagogiques depuis un seul espace.</p>
 
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="rounded-xl border border-white/25 bg-white/10 px-4 py-3">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: 'var(--hero-body)' }}>Email</p>
-                    <p className="mt-1 text-sm font-medium break-all" style={{ color: 'var(--hero-title)' }}>{profile.email}</p>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-(--hero-body)">Email</p>
+                    <p className="mt-1 text-sm font-medium break-all text-(--hero-title)">{profile.email}</p>
                   </div>
 
                   <div className="rounded-xl border border-white/25 bg-white/10 px-4 py-3">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: 'var(--hero-body)' }}>Role</p>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-(--hero-body)">Role</p>
                     <div className="mt-1">
                       <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
                         isVipPlus
@@ -1070,7 +1044,7 @@ export default function UserDashboard() {
                             ? 'bg-medical-100 text-medical-700'
                             : profile.role === 'admin'
                               ? 'bg-purple-100 text-purple-700'
-                              : 'bg-[var(--app-surface-2)] text-[var(--app-text)]'
+                              : 'bg-(--app-surface-2) text-(--app-text)'
                       }`}>
                         {isVipPlus ? <Star className="w-3 h-3 fill-current" /> : null}
                         {accountLevelLabel}
@@ -1085,16 +1059,16 @@ export default function UserDashboard() {
           {activeTab === 'profile' && (
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
               {oauthError ? (
-                <div className="rounded-xl border px-4 py-3 text-sm" style={{ borderColor: 'color-mix(in oklab, var(--app-danger) 36%, var(--app-border) 64%)', background: 'color-mix(in oklab, var(--app-danger) 12%, var(--app-surface) 88%)', color: 'color-mix(in oklab, var(--app-danger) 78%, var(--app-text) 22%)' }}>
+                <div className="rounded-xl border px-4 py-3 text-sm border-[color-mix(in_oklab,var(--app-danger)_36%,var(--app-border)_64%)] bg-[color-mix(in_oklab,var(--app-danger)_12%,var(--app-surface)_88%)] text-[color-mix(in_oklab,var(--app-danger)_78%,var(--app-text)_22%)]">
                   {oauthError}
                 </div>
               ) : null}
 
-              <section className="rounded-2xl p-4 sm:p-6 md:p-8 shadow-lg" style={cardStyle}>
-                <h3 className="text-xl sm:text-2xl font-bold mb-5 sm:mb-6" style={{ color: 'var(--app-text)' }}>Mon Profil</h3>
-                <div className="rounded-2xl border p-5 space-y-6" style={insetCardStyle}>
+              <section className={`rounded-2xl p-4 sm:p-6 md:p-8 shadow-lg ${cardClassName}`}>
+                <h3 className="text-xl sm:text-2xl font-bold mb-5 sm:mb-6 text-(--app-text)">Mon Profil</h3>
+                <div className={`rounded-2xl border p-5 space-y-6 ${insetCardClasses}`}>
                   <div>
-                    <label className="block text-sm font-medium mb-2" style={subtleText}>Nom et prénom</label>
+                    <label className={`block text-sm font-medium mb-2 ${subtleTextClass}`}>Nom et prénom</label>
                     {isEditing ? (
                       <div className="grid sm:grid-cols-2 gap-2">
                         <input
@@ -1104,8 +1078,7 @@ export default function UserDashboard() {
                           title="Nom"
                           aria-label="Nom"
                           placeholder="NOM"
-                          className={inputClasses}
-                          style={inputTone}
+                          className={`${inputClasses} ${inputToneClasses}`}
                         />
                         <input
                           type="text"
@@ -1114,10 +1087,9 @@ export default function UserDashboard() {
                           title="Prénom"
                           aria-label="Prénom"
                           placeholder="Prénom"
-                          className={inputClasses}
-                          style={inputTone}
+                          className={`${inputClasses} ${inputToneClasses}`}
                         />
-                        <button onClick={handleUpdateProfile} className="w-full sm:w-auto bg-[var(--app-accent)] text-[var(--app-accent-contrast)] px-4 py-2 rounded-xl font-medium hover:brightness-110 transition-colors">Enregistrer</button>
+                        <button onClick={handleUpdateProfile} className="w-full sm:w-auto bg-(--app-accent) text-(--app-accent-contrast) px-4 py-2 rounded-xl font-medium hover:brightness-110 transition-colors">Enregistrer</button>
                         <button
                           onClick={() => {
                             setIsEditing(false);
@@ -1125,38 +1097,38 @@ export default function UserDashboard() {
                             setLastName(profile.lastName || splitName.lastName);
                             setFirstName(profile.firstName || splitName.firstName);
                           }}
-                          className="w-full sm:w-auto bg-[var(--app-surface-2)] text-[var(--app-text)] px-4 py-2 rounded-xl font-medium border border-[var(--app-border)] hover:brightness-105 transition-colors"
+                          className="w-full sm:w-auto bg-(--app-surface-2) text-(--app-text) px-4 py-2 rounded-xl font-medium border border-(--app-border) hover:brightness-105 transition-colors"
                         >
                           Annuler
                         </button>
                       </div>
                     ) : (
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between px-4 py-3 border rounded-xl" style={insetCardStyle}>
-                        <span className="font-medium text-[var(--app-text)] break-words">{formatFullName(lastName, firstName) || profile.displayName}</span>
-                        <button onClick={() => setIsEditing(true)} className="text-sm font-medium text-[var(--app-accent)] hover:underline">Modifier</button>
+                      <div className={`flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between px-4 py-3 border rounded-xl ${insetCardClasses}`}>
+                        <span className="font-medium text-(--app-text) wrap-break-word">{formatFullName(lastName, firstName) || profile.displayName}</span>
+                        <button onClick={() => setIsEditing(true)} className="text-sm font-medium text-(--app-accent) hover:underline">Modifier</button>
                       </div>
                     )}
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-2" style={subtleText}>Adresse Email</label>
-                    <div className="px-4 py-3 border rounded-xl text-[var(--app-muted)] cursor-not-allowed" style={insetCardStyle}>
+                    <label className={`block text-sm font-medium mb-2 ${subtleTextClass}`}>Adresse Email</label>
+                    <div className={`px-4 py-3 border rounded-xl text-(--app-muted) cursor-not-allowed ${insetCardClasses}`}>
                       {profile.email}
                     </div>
-                    <p className="text-xs mt-2" style={subtleText}>L'adresse email ne peut pas être modifiée depuis votre espace.</p>
+                    <p className={`text-xs mt-2 ${subtleTextClass}`}>L'adresse email ne peut pas être modifiée depuis votre espace.</p>
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium mb-2" style={subtleText}>Connexion Google</label>
-                    <div className="rounded-xl border p-4" style={insetCardStyle}>
-                      <p className="text-sm font-semibold" style={{ color: 'var(--app-text)' }}>
+                    <label className={`block text-sm font-medium mb-2 ${subtleTextClass}`}>Connexion Google</label>
+                    <div className={`rounded-xl border p-4 ${insetCardClasses}`}>
+                      <p className="text-sm font-semibold text-(--app-text)">
                         {isGoogleConnected ? 'Compte Google connecte' : 'Aucun compte Google connecte'}
                       </p>
-                      <p className="text-xs mt-1" style={subtleText}>
+                      <p className={`text-xs mt-1 ${subtleTextClass}`}>
                         {isGoogleConnected
                           ? `Email Google: ${profile.googleAuth?.email || 'non disponible'}`
                           : 'Connectez Google pour vous authentifier plus rapidement.'}
                       </p>
-                      <p className="text-xs mt-1" style={subtleText}>{authStateDescription}</p>
+                      <p className={`text-xs mt-1 ${subtleTextClass}`}>{authStateDescription}</p>
 
                       <div className="mt-3 flex flex-wrap gap-2">
                         {!isGoogleConnected ? (
@@ -1164,7 +1136,7 @@ export default function UserDashboard() {
                             type="button"
                             onClick={handleGoogleConnectOrReconnect}
                             disabled={isGoogleLinking}
-                            className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium bg-[var(--app-accent)] text-[var(--app-accent-contrast)] hover:brightness-110 disabled:opacity-60"
+                            className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium bg-(--app-accent) text-(--app-accent-contrast) hover:brightness-110 disabled:opacity-60"
                           >
                             <Link2 className="w-4 h-4" />
                             {isGoogleLinking ? 'Connexion...' : 'Connexion Google'}
@@ -1176,7 +1148,7 @@ export default function UserDashboard() {
                             type="button"
                             onClick={handleGoogleDisconnect}
                             disabled={isGoogleDisconnecting}
-                            className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium border border-[var(--app-border)] text-[var(--app-text)] hover:bg-[var(--app-surface-2)] disabled:opacity-60"
+                            className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium border border-(--app-border) text-(--app-text) hover:bg-(--app-surface-2) disabled:opacity-60"
                           >
                             <Unplug className="w-4 h-4" />
                             {isGoogleDisconnecting
@@ -1188,7 +1160,7 @@ export default function UserDashboard() {
                         ) : null}
                       </div>
 
-                      <p className="text-xs mt-3" style={subtleText}>
+                      <p className={`text-xs mt-3 ${subtleTextClass}`}>
                         {authConnectionState === 'google-only'
                           ? 'Pour desactiver la connexion Google, renseignez d\'abord un nouveau mot de passe local puis cliquez sur "Deconnecter Google".'
                           : authConnectionState === 'google-and-local'
@@ -1200,23 +1172,22 @@ export default function UserDashboard() {
                 </div>
               </section>
 
-              <section className="rounded-2xl p-4 sm:p-6 md:p-8 shadow-lg" style={cardStyle}>
-                <h3 className="text-xl font-bold mb-4 flex items-center gap-2" style={{ color: 'var(--app-text)' }}>
-                  <LockKeyhole className="w-5 h-5 text-[var(--app-muted)]" />
+              <section className={`rounded-2xl p-4 sm:p-6 md:p-8 shadow-lg ${cardClassName}`}>
+                <h3 className="text-xl font-bold mb-4 flex items-center gap-2 text-(--app-text)">
+                  <LockKeyhole className="w-5 h-5 text-(--app-muted)" />
                   {passwordSectionTitle}
                 </h3>
-                <div className="rounded-2xl border p-5 space-y-3" style={insetCardStyle}>
+                <div className={`rounded-2xl border p-5 space-y-3 ${insetCardClasses}`}>
                   {requiresCurrentPasswordForChange ? (
                     <input
                       type="password"
                       value={currentPassword}
                       onChange={(e) => setCurrentPassword(e.target.value)}
                       placeholder="Mot de passe actuel"
-                      className={inputClasses}
-                      style={inputTone}
+                      className={`${inputClasses} ${inputToneClasses}`}
                     />
                   ) : (
-                    <p className="text-xs" style={subtleText}>
+                    <p className={`text-xs ${subtleTextClass}`}>
                       {authConnectionState === 'google-and-local'
                         ? 'Le mot de passe actuel n\'est pas requis avec une session Google active. Definissez simplement le nouveau mot de passe local.'
                         : 'Votre compte utilise uniquement la connexion Google. Definissez un mot de passe local pour activer aussi la connexion classique.'}
@@ -1227,55 +1198,52 @@ export default function UserDashboard() {
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
                     placeholder="Nouveau mot de passe"
-                    className={inputClasses}
-                    style={inputTone}
+                    className={`${inputClasses} ${inputToneClasses}`}
                   />
                   <input
                     type="password"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder="Confirmer le nouveau mot de passe"
-                    className={inputClasses}
-                    style={inputTone}
+                    className={`${inputClasses} ${inputToneClasses}`}
                   />
                   <button
                     type="button"
                     onClick={handleChangePassword}
                     disabled={isUpdatingPassword}
-                    className="mt-1 inline-flex w-full sm:w-auto items-center justify-center px-4 py-2 rounded-xl bg-[var(--app-accent)] text-[var(--app-accent-contrast)] text-sm font-medium hover:brightness-110 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                    className="mt-1 inline-flex w-full sm:w-auto items-center justify-center px-4 py-2 rounded-xl bg-(--app-accent) text-(--app-accent-contrast) text-sm font-medium hover:brightness-110 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
                   >
                     {isUpdatingPassword ? 'Mise a jour...' : passwordPrimaryActionLabel}
                   </button>
                 </div>
               </section>
 
-              <section className="rounded-2xl p-4 sm:p-6 md:p-8 shadow-lg" style={cardStyle}>
-                <h3 className="text-xl font-bold mb-4" style={{ color: 'var(--app-text)' }}>Mode par défaut</h3>
-                <div className="rounded-2xl border p-5" style={insetCardStyle}>
+              <section className={`rounded-2xl p-4 sm:p-6 md:p-8 shadow-lg ${cardClassName}`}>
+                <h3 className="text-xl font-bold mb-4 text-(--app-text)">Mode par défaut</h3>
+                <div className={`rounded-2xl border p-5 ${insetCardClasses}`}>
                   <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                     <div className="relative flex-1">
                       <select
                         value={defaultMode}
                         onChange={(e) => setDefaultMode(e.target.value as 'light' | 'dark')}
-                        className={`${inputClasses} appearance-none pr-10`}
+                        className={`${inputClasses} ${inputToneClasses} appearance-none pr-10`}
                         title="Mode par défaut"
                         aria-label="Mode par défaut"
-                        style={inputTone}
                       >
                         <option value="light">Light mode</option>
                         <option value="dark">Dark mode</option>
                       </select>
                       {defaultMode === 'dark' ? (
-                        <Moon className="pointer-events-none absolute right-3 top-2.5 h-4 w-4 text-[var(--app-muted)]" />
+                        <Moon className="pointer-events-none absolute right-3 top-2.5 h-4 w-4 text-(--app-muted)" />
                       ) : (
-                        <Sun className="pointer-events-none absolute right-3 top-2.5 h-4 w-4 text-[var(--app-muted)]" />
+                        <Sun className="pointer-events-none absolute right-3 top-2.5 h-4 w-4 text-(--app-muted)" />
                       )}
                     </div>
                     <button
                       type="button"
                       onClick={handleSaveDefaultMode}
                       disabled={isSavingDefaultMode}
-                      className="w-full sm:w-auto px-4 py-2 rounded-xl bg-[var(--app-accent)] text-[var(--app-accent-contrast)] text-sm font-medium hover:brightness-110 disabled:opacity-60 transition-colors"
+                      className="w-full sm:w-auto px-4 py-2 rounded-xl bg-(--app-accent) text-(--app-accent-contrast) text-sm font-medium hover:brightness-110 disabled:opacity-60 transition-colors"
                     >
                       {isSavingDefaultMode ? 'Enregistrement...' : 'Enregistrer'}
                     </button>
@@ -1283,34 +1251,28 @@ export default function UserDashboard() {
                 </div>
               </section>
 
-              <section className="rounded-2xl p-4 sm:p-6 md:p-8 shadow-lg" style={cardStyle}>
-                  <h3 className="text-xl font-bold mb-4 flex items-center gap-2" style={{ color: 'var(--app-text)' }}>
-                    <Bell className="w-5 h-5 text-[var(--app-muted)]" />
+              <section className={`rounded-2xl p-4 sm:p-6 md:p-8 shadow-lg ${cardClassName}`}>
+                  <h3 className="text-xl font-bold mb-4 flex items-center gap-2 text-(--app-text)">
+                    <Bell className="w-5 h-5 text-(--app-muted)" />
                     Notifications ({unreadNotificationsCount} non lues)
                   </h3>
 
-                  <div className="rounded-2xl border p-5 space-y-3" style={insetCardStyle}>
+                  <div className={`rounded-2xl border p-5 space-y-3 ${insetCardClasses}`}>
                     {isLoadingNotifications ? (
-                      <p className="text-sm" style={subtleText}>Chargement des notifications...</p>
+                      <p className={`text-sm ${subtleTextClass}`}>Chargement des notifications...</p>
                     ) : notifications.length === 0 ? (
-                      <p className="text-sm" style={subtleText}>Aucune notification pour le moment.</p>
+                      <p className={`text-sm ${subtleTextClass}`}>Aucune notification pour le moment.</p>
                     ) : (
                       notifications.slice(0, 12).map((entry) => (
                         <div
                           key={entry.id}
-                          className="rounded-xl border px-3 sm:px-4 py-3"
-                          style={{
-                            ...insetCardStyle,
-                            borderColor: entry.isRead
-                              ? insetCardStyle.borderColor
-                              : 'color-mix(in oklab, var(--app-accent) 45%, var(--app-border) 55%)',
-                          }}
+                          className={`rounded-xl border px-3 sm:px-4 py-3 ${insetCardClasses} ${entry.isRead ? '' : 'border-[color-mix(in_oklab,var(--app-accent)_45%,var(--app-border)_55%)]'}`}
                         >
                           <div className="flex flex-wrap items-start justify-between gap-2">
                             <div>
-                              <p className="text-sm font-semibold text-[var(--app-text)]">{entry.title || 'Notification'}</p>
-                              <p className="text-xs mt-1" style={subtleText}>{entry.description || '-'}</p>
-                              <p className="text-[11px] mt-2" style={subtleText}>
+                              <p className="text-sm font-semibold text-(--app-text)">{entry.title || 'Notification'}</p>
+                              <p className={`text-xs mt-1 ${subtleTextClass}`}>{entry.description || '-'}</p>
+                              <p className={`text-[11px] mt-2 ${subtleTextClass}`}>
                                 {entry.createdAt ? new Date(entry.createdAt).toLocaleString() : '-'}
                               </p>
                             </div>
@@ -1319,7 +1281,7 @@ export default function UserDashboard() {
                               {entry.targetHref ? (
                                 <Link
                                   href={entry.targetHref}
-                                  className="text-xs font-semibold text-[var(--app-accent)] hover:underline"
+                                  className="text-xs font-semibold text-(--app-accent) hover:underline"
                                 >
                                   Ouvrir
                                 </Link>
@@ -1328,7 +1290,7 @@ export default function UserDashboard() {
                                 <button
                                   type="button"
                                   onClick={() => handleMarkNotificationAsRead(entry.id)}
-                                  className="text-xs font-semibold text-[var(--app-accent)] hover:underline"
+                                  className="text-xs font-semibold text-(--app-accent) hover:underline"
                                 >
                                   Marquer lue
                                 </button>
@@ -1343,24 +1305,19 @@ export default function UserDashboard() {
 
               {profile.role !== 'admin' && (
                 <section
-                  className="rounded-2xl shadow-lg border p-4 sm:p-6 md:p-8"
-                  style={{
-                    ...cardStyle,
-                    background: 'color-mix(in oklab, var(--app-surface) 88%, var(--app-danger) 12%)',
-                    borderColor: 'color-mix(in oklab, var(--app-danger) 52%, var(--app-border) 48%)',
-                  }}
+                  className="rounded-2xl border p-4 sm:p-6 md:p-8 shadow-[0_14px_48px_-24px_rgba(0,0,0,0.55)] bg-[color-mix(in_oklab,var(--app-surface)_88%,var(--app-danger)_12%)] border-[color-mix(in_oklab,var(--app-danger)_52%,var(--app-border)_48%)]"
                 >
-                  <h3 className="text-xl font-bold mb-2" style={{ color: 'var(--app-danger)' }}>
+                  <h3 className="text-xl font-bold mb-2 text-(--app-danger)">
                     Suppression définitive du compte
                   </h3>
-                  <p className="text-sm mb-4" style={subtleText}>
+                  <p className={`text-sm mb-4 ${subtleTextClass}`}>
                     Cette action est irréversible et supprime votre compte ainsi que vos données associées.
                   </p>
                   <button
                     type="button"
                     onClick={handleDeleteAccountPermanently}
                     disabled={isDeletingAccount}
-                    className="inline-flex w-full sm:w-auto items-center justify-center gap-2 px-4 py-2 rounded-xl bg-[var(--app-danger)] text-[var(--app-accent-contrast)] text-sm font-medium hover:brightness-110 disabled:opacity-60"
+                    className="inline-flex w-full sm:w-auto items-center justify-center gap-2 px-4 py-2 rounded-xl bg-(--app-danger) text-(--app-accent-contrast) text-sm font-medium hover:brightness-110 disabled:opacity-60"
                   >
                     <Trash2 className="w-4 h-4" />
                     {isDeletingAccount ? 'Suppression...' : 'Supprimer définitivement mon compte'}
@@ -1374,49 +1331,45 @@ export default function UserDashboard() {
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="rounded-2xl shadow-lg border p-4 sm:p-6 md:p-8"
-              style={cardStyle}
+              className={`rounded-2xl border p-4 sm:p-6 md:p-8 ${cardClassName}`}
             >
-              <h3 className="text-2xl font-bold mb-2" style={{ color: 'var(--app-text)' }}>Gestion de Stockage</h3>
-              <p className="text-sm mb-6" style={subtleText}>
+              <h3 className="text-2xl font-bold mb-2 text-(--app-text)">Gestion de Stockage</h3>
+              <p className={`text-sm mb-6 ${subtleTextClass}`}>
                 Ces identifiants Cloudinary sont propres a cet admin et servent aux uploads de contenu pedagogique
                 (videos, schemas et cas cliniques). Les avatars restent sur la configuration Cloudinary principale.
               </p>
 
               <div className="max-w-xl space-y-4">
                 <div>
-                  <label className="block text-sm font-medium mb-2" style={subtleText}>Cloudinary Cloud Name</label>
+                  <label className={`block text-sm font-medium mb-2 ${subtleTextClass}`}>Cloudinary Cloud Name</label>
                   <input
                     type="text"
                     value={storageSettings.cloudName}
                     onChange={(e) => setStorageSettings((prev) => ({ ...prev, cloudName: e.target.value }))}
-                    className={inputClasses}
+                    className={`${inputClasses} ${inputToneClasses}`}
                     placeholder="ex: demo-cloud"
-                    style={inputTone}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-2" style={subtleText}>CLOUDINARY_API_KEY</label>
+                  <label className={`block text-sm font-medium mb-2 ${subtleTextClass}`}>CLOUDINARY_API_KEY</label>
                   <input
                     type="text"
                     value={storageSettings.apiKey}
                     onChange={(e) => setStorageSettings((prev) => ({ ...prev, apiKey: e.target.value }))}
-                    className={inputClasses}
+                    className={`${inputClasses} ${inputToneClasses}`}
                     placeholder="ex: 123456789012345"
-                    style={inputTone}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-2" style={subtleText}>CLOUDINARY_API_SECRET</label>
+                  <label className={`block text-sm font-medium mb-2 ${subtleTextClass}`}>CLOUDINARY_API_SECRET</label>
                   <input
                     type="password"
                     value={storageSettings.apiSecret}
                     onChange={(e) => setStorageSettings((prev) => ({ ...prev, apiSecret: e.target.value }))}
-                    className={inputClasses}
+                    className={`${inputClasses} ${inputToneClasses}`}
                     placeholder="Secret API"
-                    style={inputTone}
                   />
                 </div>
 
@@ -1424,7 +1377,7 @@ export default function UserDashboard() {
                   type="button"
                   onClick={handleSaveStorageSettings}
                   disabled={isSavingStorageSettings || !hasCompleteStorageSettings}
-                  className="inline-flex w-full sm:w-auto items-center justify-center px-4 py-2 rounded-xl bg-[var(--app-accent)] text-[var(--app-accent-contrast)] text-sm font-medium hover:brightness-110 disabled:opacity-60"
+                  className="inline-flex w-full sm:w-auto items-center justify-center px-4 py-2 rounded-xl bg-(--app-accent) text-(--app-accent-contrast) text-sm font-medium hover:brightness-110 disabled:opacity-60"
                 >
                   {isSavingStorageSettings ? 'Enregistrement...' : 'Enregistrer les paramètres'}
                 </button>
@@ -1437,28 +1390,28 @@ export default function UserDashboard() {
 
       {avatarEditorOpen && avatarSource && (
         <div
-          className="fixed inset-0 z-[90] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+          className="fixed inset-0 z-90 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
           role="dialog"
           aria-modal="true"
           aria-label="Editeur de photo de profil"
         >
-          <div className="w-full max-w-3xl rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface)] shadow-2xl overflow-hidden">
-            <div className="px-5 py-4 border-b border-[var(--app-border)] flex items-center justify-between gap-3">
+          <div className="w-full max-w-3xl rounded-2xl border border-(--app-border) bg-(--app-surface) shadow-2xl overflow-hidden">
+            <div className="px-5 py-4 border-b border-(--app-border) flex items-center justify-between gap-3">
               <div>
-                <h3 className="text-lg font-bold text-[var(--app-text)]">Modifier la photo de profil</h3>
-                <p className="text-xs text-[var(--app-muted)]">Glissez l image, zoomez, faites pivoter, puis enregistrez.</p>
+                <h3 className="text-lg font-bold text-(--app-text)">Modifier la photo de profil</h3>
+                <p className="text-xs text-(--app-muted)">Glissez l image, zoomez, faites pivoter, puis enregistrez.</p>
               </div>
               <button
                 type="button"
                 onClick={resetAvatarEditor}
-                className="px-3 py-1.5 text-xs rounded-lg border border-[var(--app-border)] text-[var(--app-text)] hover:bg-[var(--app-surface-2)]"
+                className="px-3 py-1.5 text-xs rounded-lg border border-(--app-border) text-(--app-text) hover:bg-(--app-surface-2)"
               >
                 Annuler
               </button>
             </div>
 
             <div className="p-5 space-y-4">
-              <div className="relative h-[320px] md:h-[420px] rounded-xl overflow-hidden bg-black">
+              <div className="relative h-80 md:h-105 rounded-xl overflow-hidden bg-black">
                 <Cropper
                   image={avatarSource}
                   crop={avatarCrop}
@@ -1476,7 +1429,7 @@ export default function UserDashboard() {
 
               <div className="grid md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-[var(--app-muted)]">Zoom</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-(--app-muted)">Zoom</p>
                   <input
                     type="range"
                     min={1}
@@ -1490,7 +1443,7 @@ export default function UserDashboard() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-[var(--app-muted)]">Rotation ({Math.round(avatarRotation)}°)</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-(--app-muted)">Rotation ({Math.round(avatarRotation)}°)</p>
                   <input
                     type="range"
                     min={-180}
@@ -1511,8 +1464,8 @@ export default function UserDashboard() {
                   onClick={() => setAvatarAspectMode('square')}
                   className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border ${
                     avatarAspectMode === 'square'
-                      ? 'bg-[var(--app-accent)] text-[var(--app-accent-contrast)] border-[var(--app-accent)]'
-                      : 'border-[var(--app-border)] text-[var(--app-text)] hover:bg-[var(--app-surface-2)]'
+                      ? 'bg-(--app-accent) text-(--app-accent-contrast) border-(--app-accent)'
+                      : 'border-(--app-border) text-(--app-text) hover:bg-(--app-surface-2)'
                   }`}
                 >
                   <Square className="w-3.5 h-3.5" />
@@ -1523,8 +1476,8 @@ export default function UserDashboard() {
                   onClick={() => setAvatarAspectMode('free')}
                   className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border ${
                     avatarAspectMode === 'free'
-                      ? 'bg-[var(--app-accent)] text-[var(--app-accent-contrast)] border-[var(--app-accent)]'
-                      : 'border-[var(--app-border)] text-[var(--app-text)] hover:bg-[var(--app-surface-2)]'
+                      ? 'bg-(--app-accent) text-(--app-accent-contrast) border-(--app-accent)'
+                      : 'border-(--app-border) text-(--app-text) hover:bg-(--app-surface-2)'
                   }`}
                 >
                   <Crop className="w-3.5 h-3.5" />
@@ -1534,7 +1487,7 @@ export default function UserDashboard() {
                 <button
                   type="button"
                   onClick={() => setAvatarRotation((prev) => prev - 90)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-[var(--app-border)] text-[var(--app-text)] hover:bg-[var(--app-surface-2)]"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-(--app-border) text-(--app-text) hover:bg-(--app-surface-2)"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
                   -90°
@@ -1543,7 +1496,7 @@ export default function UserDashboard() {
                 <button
                   type="button"
                   onClick={() => setAvatarRotation((prev) => prev + 90)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-[var(--app-border)] text-[var(--app-text)] hover:bg-[var(--app-surface-2)]"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-(--app-border) text-(--app-text) hover:bg-(--app-surface-2)"
                 >
                   <RotateCw className="w-3.5 h-3.5" />
                   +90°
@@ -1551,12 +1504,12 @@ export default function UserDashboard() {
               </div>
             </div>
 
-            <div className="px-5 py-4 border-t border-[var(--app-border)] flex items-center justify-end gap-2">
+            <div className="px-5 py-4 border-t border-(--app-border) flex items-center justify-end gap-2">
               <button
                 type="button"
                 onClick={resetAvatarEditor}
                 disabled={avatarUploading}
-                className="px-4 py-2 rounded-xl border border-[var(--app-border)] text-sm font-medium text-[var(--app-text)] hover:bg-[var(--app-surface-2)] disabled:opacity-60"
+                className="px-4 py-2 rounded-xl border border-(--app-border) text-sm font-medium text-(--app-text) hover:bg-(--app-surface-2) disabled:opacity-60"
               >
                 Annuler
               </button>
@@ -1564,7 +1517,7 @@ export default function UserDashboard() {
                 type="button"
                 onClick={handleAvatarSave}
                 disabled={avatarUploading || !avatarCroppedAreaPixels}
-                className="px-4 py-2 rounded-xl bg-[var(--app-accent)] text-[var(--app-accent-contrast)] text-sm font-medium hover:brightness-110 disabled:opacity-60"
+                className="px-4 py-2 rounded-xl bg-(--app-accent) text-(--app-accent-contrast) text-sm font-medium hover:brightness-110 disabled:opacity-60"
               >
                 {avatarUploading ? 'Enregistrement...' : 'Enregistrer la photo'}
               </button>

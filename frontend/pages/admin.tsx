@@ -356,7 +356,7 @@ export default function AdminDashboard() {
         setDiscussions(nextDiscussions);
 
         const nextSupportChats = supportChatsSnap.docs
-          .map((entry) => ({ id: entry.id, ...(entry.data() as SupportChatEntry) }))
+          .map((entry) => ({ ...(entry.data() as SupportChatEntry), id: entry.id }))
           .sort((a, b) => {
             const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
             const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
@@ -383,7 +383,7 @@ export default function AdminDashboard() {
     try {
       const messagesSnap = await getDocs(query(collection(db, 'supportChatMessages'), where('chatId', '==', chatId)));
       const nextMessages = messagesSnap.docs
-        .map((entry) => ({ id: entry.id, ...(entry.data() as SupportChatMessageEntry) }))
+        .map((entry) => ({ ...(entry.data() as SupportChatMessageEntry), id: entry.id }))
         .sort((a, b) => {
           const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
           const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
@@ -413,7 +413,7 @@ export default function AdminDashboard() {
         try {
           const chatsSnap = await getDocs(collection(db, 'supportChats'));
           const nextChats = chatsSnap.docs
-            .map((entry) => ({ id: entry.id, ...(entry.data() as SupportChatEntry) }))
+            .map((entry) => ({ ...(entry.data() as SupportChatEntry), id: entry.id }))
             .sort((a, b) => {
               const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
               const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
@@ -2027,9 +2027,9 @@ export default function AdminDashboard() {
   if (profile?.role !== 'admin') return null;
 
   return (
-    <div className="flex-1 bg-gradient-to-br from-slate-100 via-stone-50 to-slate-100 text-[15px] md:text-base">
+    <div className="flex-1 bg-linear-to-br from-slate-100 via-stone-50 to-slate-100 text-[15px] md:text-base">
       <main className="p-8 md:p-12 overflow-y-auto">
-        <div className="max-w-[1500px] mx-auto">
+        <div className="max-w-375 mx-auto">
           <div className="mb-6">
             <div className="min-w-0 overflow-x-auto rounded-2xl sm:rounded-full border border-[color-mix(in_oklab,var(--app-border)_78%,transparent)] bg-[color-mix(in_oklab,var(--app-surface-2)_55%,transparent)] p-1 sm:p-1.5">
               <nav className="flex min-w-max sm:min-w-0 items-stretch sm:items-center gap-1.5 sm:gap-2 rounded-2xl sm:rounded-full">
@@ -2209,7 +2209,7 @@ export default function AdminDashboard() {
 
               <div className="bg-white rounded-2xl shadow-md border border-slate-200 overflow-hidden">
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[1040px] text-center border-collapse text-xs md:text-sm">
+                <table className="w-full min-w-260 text-center border-collapse text-xs md:text-sm">
                   <thead>
                     <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-medium text-sm">
                       <th className="p-3 text-center whitespace-nowrap">
@@ -2935,24 +2935,14 @@ export default function AdminDashboard() {
                             <p className="text-xs text-(--app-muted)">{selectedSupportChatUser?.email || selectedSupportChat.userEmail || '-'}</p>
                             <div className="mt-1">
                               <span
-                                className="inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-full border"
-                                style={{
-                                  borderColor: selectedSupportClientStatus.isOnline
-                                    ? 'color-mix(in oklab, #6b8e23 44%, var(--app-border) 56%)'
-                                    : 'color-mix(in oklab, #8b6f47 44%, var(--app-border) 56%)',
-                                  backgroundColor: selectedSupportClientStatus.isOnline
-                                    ? 'color-mix(in oklab, #7a8b52 18%, var(--app-surface) 82%)'
-                                    : 'color-mix(in oklab, #a27b56 16%, var(--app-surface) 84%)',
-                                  color: selectedSupportClientStatus.isOnline
-                                    ? 'color-mix(in oklab, #3f4f24 74%, var(--app-text) 26%)'
-                                    : 'color-mix(in oklab, #5f4630 74%, var(--app-text) 26%)',
-                                }}
+                                className={`inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-full border ${
+                                  selectedSupportClientStatus.isOnline
+                                    ? 'border-[color-mix(in_oklab,#6b8e23_44%,var(--app-border)_56%)] bg-[color-mix(in_oklab,#7a8b52_18%,var(--app-surface)_82%)] text-[color-mix(in_oklab,#3f4f24_74%,var(--app-text)_26%)]'
+                                    : 'border-[color-mix(in_oklab,#8b6f47_44%,var(--app-border)_56%)] bg-[color-mix(in_oklab,#a27b56_16%,var(--app-surface)_84%)] text-[color-mix(in_oklab,#5f4630_74%,var(--app-text)_26%)]'
+                                }`}
                               >
                                 <span
-                                  className="inline-block h-1.5 w-1.5 rounded-full"
-                                  style={{
-                                    backgroundColor: selectedSupportClientStatus.isOnline ? '#6b8e23' : '#8b6f47',
-                                  }}
+                                  className={`inline-block h-1.5 w-1.5 rounded-full ${selectedSupportClientStatus.isOnline ? 'bg-[#6b8e23]' : 'bg-[#8b6f47]'}`}
                                 />
                                 Statut client: {selectedSupportClientStatus.label}
                               </span>
