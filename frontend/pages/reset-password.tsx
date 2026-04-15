@@ -22,6 +22,41 @@ export default function ResetPasswordPage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
+  const pageStyle = {
+    background:
+      'linear-gradient(180deg, color-mix(in oklab, var(--app-surface) 95%, white 5%) 0%, color-mix(in oklab, var(--app-surface-alt) 78%, var(--app-accent) 22%) 100%)',
+  };
+
+  const panelStyle = {
+    borderColor: 'color-mix(in oklab, var(--app-accent) 24%, var(--app-border) 76%)',
+    background:
+      'linear-gradient(180deg, color-mix(in oklab, var(--app-surface) 96%, white 4%) 0%, color-mix(in oklab, var(--app-surface-alt) 84%, var(--app-accent) 16%) 100%)',
+  };
+
+  const chipStyle = {
+    borderColor: 'color-mix(in oklab, var(--app-warning) 36%, var(--app-border) 64%)',
+    background: 'color-mix(in oklab, var(--app-warning) 14%, var(--app-surface) 86%)',
+    color: 'color-mix(in oklab, var(--app-warning) 80%, var(--app-text) 20%)',
+  };
+
+  const inputStyle = {
+    background: 'color-mix(in oklab, var(--app-surface) 95%, var(--app-bg) 5%)',
+    borderColor: 'var(--app-border)',
+    color: 'var(--app-text)',
+  };
+
+  const dangerStyle = {
+    borderColor: 'color-mix(in oklab, var(--app-danger) 36%, var(--app-border) 64%)',
+    background: 'color-mix(in oklab, var(--app-danger) 12%, var(--app-surface) 88%)',
+    color: 'color-mix(in oklab, var(--app-danger) 78%, var(--app-text) 22%)',
+  };
+
+  const actionButtonStyle = {
+    background:
+      'linear-gradient(90deg, color-mix(in oklab, var(--app-accent) 74%, #5a3f2d 26%), color-mix(in oklab, var(--app-accent) 88%, #3a291d 12%))',
+    color: 'var(--app-accent-contrast)',
+  };
+
   const hasToken = tokenFromQuery.length > 0;
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -59,32 +94,32 @@ export default function ResetPasswordPage() {
   };
 
   return (
-    <div className="flex-1 py-14 px-4 bg-slate-100/80">
+    <div className="flex-1 py-14 px-4" style={pageStyle}>
       <div className="max-w-2xl mx-auto">
-        <section className="rounded-3xl border border-amber-200 bg-white p-8 shadow-md">
-          <div className="inline-flex items-center gap-2 rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-semibold mb-4 text-amber-900">
+        <section className="rounded-3xl border p-8 shadow-md" style={panelStyle}>
+          <div className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold mb-4" style={chipStyle}>
             <KeyRound className="h-3.5 w-3.5" />
             Nouveau mot de passe
           </div>
 
-          <h1 className="text-2xl font-bold text-slate-900 mb-2">Reinitialiser le mot de passe</h1>
-          <p className="text-slate-600 mb-6">
+          <h1 className="text-2xl font-bold mb-2" style={{ color: 'var(--app-text)' }}>Reinitialiser le mot de passe</h1>
+          <p className="mb-6" style={{ color: 'var(--app-muted)' }}>
             Definissez un nouveau mot de passe pour votre compte.
           </p>
 
           {!hasToken ? (
-            <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+            <div className="rounded-xl border p-3 text-sm" style={dangerStyle}>
               Le lien est incomplet ou invalide. Veuillez refaire une demande de reinitialisation.
             </div>
           ) : null}
 
           <form onSubmit={handleSubmit} className="space-y-4 mt-4">
             <div>
-              <label htmlFor="new-password" className="block text-sm font-medium text-slate-700 mb-1">
+              <label htmlFor="new-password" className="block text-sm font-medium mb-1" style={{ color: 'var(--app-text)' }}>
                 Nouveau mot de passe
               </label>
               <div className="relative">
-                <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" style={{ color: 'var(--app-muted)' }} />
                 <input
                   id="new-password"
                   type="password"
@@ -93,14 +128,19 @@ export default function ResetPasswordPage() {
                   autoComplete="new-password"
                   value={newPassword}
                   onChange={(event) => setNewPassword(event.target.value)}
-                  className="w-full rounded-xl border border-slate-300 pl-10 pr-4 py-3 outline-none focus:border-amber-600 focus:ring-2 focus:ring-amber-200"
+                  className="w-full rounded-xl border pl-10 pr-4 py-3 outline-none placeholder:text-slate-400 focus:ring-2 focus:border-amber-600 focus:ring-amber-200"
+                  style={{
+                    ...inputStyle,
+                    outlineColor: 'transparent',
+                    boxShadow: 'none',
+                  }}
                   placeholder="Minimum 6 caracteres"
                 />
               </div>
             </div>
 
             <div>
-              <label htmlFor="confirm-password" className="block text-sm font-medium text-slate-700 mb-1">
+              <label htmlFor="confirm-password" className="block text-sm font-medium mb-1" style={{ color: 'var(--app-text)' }}>
                 Confirmer le mot de passe
               </label>
               <input
@@ -111,26 +151,40 @@ export default function ResetPasswordPage() {
                 autoComplete="new-password"
                 value={confirmPassword}
                 onChange={(event) => setConfirmPassword(event.target.value)}
-                className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-amber-600 focus:ring-2 focus:ring-amber-200"
+                className="w-full rounded-xl border px-4 py-3 outline-none placeholder:text-slate-400 focus:ring-2 focus:border-amber-600 focus:ring-amber-200"
+                style={{
+                  ...inputStyle,
+                  outlineColor: 'transparent',
+                  boxShadow: 'none',
+                }}
                 placeholder="Retapez le mot de passe"
               />
             </div>
 
-            {error ? <p className="text-sm text-red-600">{error}</p> : null}
-            {success ? <p className="text-sm text-emerald-700">{success}</p> : null}
+            {error ? (
+              <p className="text-sm" style={{ color: 'var(--app-danger)' }}>
+                {error}
+              </p>
+            ) : null}
+            {success ? (
+              <p className="text-sm" style={{ color: 'var(--app-success)' }}>
+                {success}
+              </p>
+            ) : null}
 
             <button
               type="submit"
               disabled={isSubmitting || !hasToken}
-              className="w-full rounded-xl bg-amber-700 px-4 py-3 font-semibold text-white disabled:opacity-70 hover:bg-amber-800"
+              className="w-full rounded-xl px-4 py-3 font-semibold transition hover:brightness-95 disabled:opacity-70"
+              style={actionButtonStyle}
             >
               {isSubmitting ? 'Reinitialisation...' : 'Mettre a jour le mot de passe'}
             </button>
           </form>
 
-          <p className="mt-6 text-sm text-slate-600 text-center">
+          <p className="mt-6 text-sm text-center" style={{ color: 'var(--app-muted)' }}>
             Retour a la{' '}
-            <Link href="/sign-in" className="font-semibold auth-inline-link text-amber-700 hover:text-amber-800">
+            <Link href="/sign-in" className="font-semibold auth-inline-link" style={{ color: 'var(--app-accent)' }}>
               connexion
             </Link>
           </p>
