@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import express from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import mongoose from 'mongoose';
 import { env } from '../config/env.js';
 import {
   isGmailAppPasswordAuthError,
@@ -286,6 +287,115 @@ const issueToken = (uid) => jwt.sign({ uid }, env.jwtSecret, { expiresIn: env.jw
 const issuePasswordResetToken = () => crypto.randomBytes(32).toString('hex');
 const hashPasswordResetToken = (token) => crypto.createHash('sha256').update(String(token || '')).digest('hex');
 
+const buildSupportNotification = ({
+  userId,
+  type,
+  title,
+  description,
+  targetHref,
+  meta = {},
+}) => {
+  const now = new Date().toISOString();
+  return {
+    userId: String(userId || '').trim(),
+    type: String(type || 'system').trim(),
+    title: String(title || '').trim(),
+    description: String(description || '').trim(),
+    targetHref: String(targetHref || '/dashboard').trim(),
+    isRead: false,
+    createdAt: now,
+    updatedAt: now,
+    ...meta,
+  };
+};
+
+const notifyAdminsAboutNewAccount = async ({ createdUser, createdByUid = '' }) => {
+  const db = mongoose.connection?.db;
+  if (!db) {
+    return;
+  }
+
+  const createdUserId = String(createdUser?.uid || '').trim();
+  if (!createdUserId) {
+    return;
+  }
+
+  const admins = await User.find({ role: 'admin' }, { uid: 1, displayName: 1, email: 1 }).lean();
+  if (!Array.isArray(admins) || admins.length === 0) {
+    return;
+  }
+
+  const actorUid = String(createdByUid || '').trim();
+  const actorLabel = actorUid
+    ? `compte cree par ${actorUid}`
+    : 'inscription autonome';
+
+  const notificationDocs = admins
+    .map((admin) => String(admin?.uid || '').trim())
+    .filter((uid) => uid && uid !== createdUserId)
+    .map((adminUid) =>
+      buildSupportNotification({
+        userId: adminUid,
+        type: 'admin-account-created',
+        title: 'Nouveau compte cree',
+        description: `Un nouveau compte vient d'etre cree (${createdUser.displayName || createdUser.email || createdUser.uid}) - ${actorLabel}.`,
+        targetHref: '/admin',
+        meta: {
+          category: 'admin',
+          actorUid: createdUserId,
+          actorEmail: String(createdUser.email || '').trim().toLowerCase(),
+        },
+      }),
+    );
+
+  if (notificationDocs.length === 0) {
+    return;
+  }
+
+  await db.collection('notifications').insertMany(notificationDocs, { ordered: false });
+};
+
+const notifyUserWelcome = async (createdUser) => {
+  const db = mongoose.connection?.db;
+  if (!db) {
+    return;
+  }
+
+  const userId = String(createdUser?.uid || '').trim();
+  if (!userId || createdUser?.role === 'admin') {
+    return;
+  }
+
+  const existingWelcome = await db.collection('notifications').findOne({
+    userId,
+    type: 'welcome',
+  });
+
+  if (existingWelcome) {
+    return;
+  }
+
+  await db.collection('notifications').insertOne(
+    buildSupportNotification({
+      userId,
+      type: 'welcome',
+      title: 'Bienvenue Docteur',
+      description: `Bienvenue Docteur ${createdUser.displayName || ''}. Votre compte a bien ete cree.`,
+      targetHref: '/dashboard',
+      meta: { category: 'onboarding' },
+    }),
+  );
+};
+
+const emitAccountCreationNotifications = async ({ createdUser, createdByUid = '' }) => {
+  try {
+    await notifyUserWelcome(createdUser);
+    await notifyAdminsAboutNewAccount({ createdUser, createdByUid });
+  } catch (error) {
+    console.error('[auth] account creation notification error:', error);
+  }
+};
+
 const createUserWithPassword = async ({
   email,
   password,
@@ -293,6 +403,8 @@ const createUserWithPassword = async ({
   role = 'user',
   subscriptionApprovalStatus = 'none',
   phoneNumber = '',
+  notifyOnCreate = true,
+  createdByUid = '',
 }) => {
   const normalizedEmail = String(email || '').trim().toLowerCase();
   if (!normalizedEmail) {
@@ -330,6 +442,13 @@ const createUserWithPassword = async ({
     phoneNumber: String(phoneNumber || '').trim(),
     createdAt: now,
   });
+
+  if (notifyOnCreate) {
+    await emitAccountCreationNotifications({
+      createdUser: created,
+      createdByUid,
+    });
+  }
 
   return created;
 };
@@ -371,6 +490,8 @@ const createUserWithGoogle = async (googleIdentity) => {
     role: 'user',
     subscriptionApprovalStatus: 'none',
     phoneNumber: '',
+    notifyOnCreate: false,
+    createdByUid: '',
   });
 
   if (!created) {
@@ -387,37 +508,26 @@ const createUserWithGoogle = async (googleIdentity) => {
   };
   await created.save();
 
+  await emitAccountCreationNotifications({
+    createdUser: created,
+    createdByUid: '',
+  });
+
   return created;
 };
 
 const resolveUserFromGoogleSignIn = async (googleIdentity) => {
-  const candidates = await User.find({
-    $or: [
-      { 'googleAuth.sub': googleIdentity.sub },
-      { email: googleIdentity.email },
-    ],
-  }).limit(2);
-
-  const byGoogleSub = candidates.find(
-    (entry) => String(entry?.googleAuth?.sub || '').trim() === googleIdentity.sub,
-  );
-  const byEmail = candidates.find(
-    (entry) => String(entry?.email || '').trim().toLowerCase() === googleIdentity.email,
-  );
-
-  if (byGoogleSub && byEmail && byGoogleSub.uid !== byEmail.uid) {
-    throw new Error('Conflit de compte detecte pour cet email Google. Contactez le support.');
+  const byGoogleSub = await User.findOne({ 'googleAuth.sub': googleIdentity.sub });
+  if (byGoogleSub) {
+    const linked = await linkGoogleToUser(byGoogleSub, googleIdentity);
+    return linked || byGoogleSub;
   }
 
-  const targetUser = byGoogleSub || byEmail;
-  if (targetUser) {
-    const existingGoogleSub = String(targetUser?.googleAuth?.sub || '').trim();
-    if (existingGoogleSub && existingGoogleSub !== googleIdentity.sub) {
-      throw new Error('Cet email est deja lie a un autre compte Google.');
-    }
-
-    const linked = await linkGoogleToUser(targetUser, googleIdentity);
-    return linked || targetUser;
+  const existingByEmail = await User.findOne({ email: googleIdentity.email }).lean();
+  if (existingByEmail) {
+    throw new Error(
+      'Un compte existe deja avec cet email. Connectez-vous d abord avec email/mot de passe puis utilisez "Connexion Google" dans votre profil.',
+    );
   }
 
   const created = await createUserWithGoogle(googleIdentity);
@@ -634,7 +744,11 @@ router.get('/google/callback', async (req, res) => {
 
 router.post('/signup', async (req, res) => {
   try {
-    const created = await createUserWithPassword(req.body || {});
+    const created = await createUserWithPassword({
+      ...(req.body || {}),
+      notifyOnCreate: true,
+      createdByUid: '',
+    });
     if (!created) {
       return res.status(409).json({ message: 'Un compte existe deja avec cet email.' });
     }
@@ -857,6 +971,8 @@ router.post('/admin-create', adminRequired, async (req, res) => {
       ...req.body,
       role,
       subscriptionApprovalStatus,
+      notifyOnCreate: true,
+      createdByUid: req.authUser.uid,
     });
 
     if (!created) {
@@ -886,6 +1002,19 @@ router.delete('/users/:uid', authRequired, async (req, res) => {
 
   if (found.role === 'admin' && req.authUser.role !== 'admin') {
     return res.status(403).json({ message: 'Cannot delete admin account.' });
+  }
+
+  const db = mongoose.connection?.db;
+  if (db) {
+    try {
+      await Promise.all([
+        db.collection('notifications').deleteMany({ userId: uid }),
+        db.collection('supportChats').deleteMany({ userId: uid }),
+        db.collection('supportChatMessages').deleteMany({ userId: uid }),
+      ]);
+    } catch (cleanupError) {
+      console.error('[auth] user cleanup warning:', cleanupError);
+    }
   }
 
   await User.deleteOne({ uid });
@@ -919,6 +1048,8 @@ router.post('/seed-demo', async (_req, res) => {
           role: 'admin',
           subscriptionApprovalStatus: 'none',
           phoneNumber: account.phoneNumber,
+          notifyOnCreate: false,
+          createdByUid: '',
         });
 
         if (createdUser) {

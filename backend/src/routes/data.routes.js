@@ -80,6 +80,14 @@ const DUPLICATE_GUARDED_COLLECTIONS = new Set([
   'diagrams',
 ]);
 
+const CONTENT_NOTIFICATION_COLLECTIONS = new Set([
+  'videos',
+  'qcms',
+  'openQuestions',
+  'clinicalCases',
+  'diagrams',
+]);
+
 class DuplicateDataError extends Error {
   constructor(message, code, details = {}) {
     super(message);
@@ -638,6 +646,76 @@ const handleCollectionWriteError = (res, error, fallbackMessage) => {
   return res.status(500).json({ message: fallbackMessage });
 };
 
+const resolveContentNotificationPayload = ({ collection, payload, insertedId }) => {
+  const labelByCollection = {
+    videos: 'Video',
+    qcms: 'QCM',
+    openQuestions: 'QROC',
+    clinicalCases: 'Cas clinique',
+    diagrams: 'Schema',
+  };
+
+  const contentLabel = labelByCollection[collection] || 'Contenu';
+  const rawTitle = String(payload?.title || payload?.question || payload?.description || '').trim();
+  const title = rawTitle || `${contentLabel} ${insertedId}`;
+  const targetVideoId = String(payload?.videoId || insertedId || '').trim();
+
+  return {
+    title: 'Nouveau contenu disponible',
+    description: `${contentLabel} ajoute: "${title}".`,
+    targetHref: targetVideoId ? `/video-detail?id=${targetVideoId}` : '/videos',
+  };
+};
+
+const createNewContentNotifications = async ({ db, collection, payload, insertedId, actor }) => {
+  if (!CONTENT_NOTIFICATION_COLLECTIONS.has(collection)) {
+    return;
+  }
+
+  if (!actor || actor.role !== 'admin') {
+    return;
+  }
+
+  const publishedAt = new Date();
+  const usersToNotify = await User.find(
+    {
+      role: { $ne: 'admin' },
+      createdAt: { $lte: publishedAt },
+    },
+    { uid: 1 },
+  ).lean();
+
+  if (!Array.isArray(usersToNotify) || usersToNotify.length === 0) {
+    return;
+  }
+
+  const basePayload = resolveContentNotificationPayload({
+    collection,
+    payload,
+    insertedId,
+  });
+
+  const nowIso = publishedAt.toISOString();
+  const docs = usersToNotify
+    .map((user) => String(user?.uid || '').trim())
+    .filter(Boolean)
+    .map((uid) => ({
+      userId: uid,
+      type: 'content',
+      category: 'new-content',
+      isRead: false,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+      ...basePayload,
+    }));
+
+  if (docs.length === 0) {
+    return;
+  }
+
+  await db.collection('notifications').insertMany(docs, { ordered: false });
+};
+
 router.get('/:collection', async (req, res) => {
   try {
     const collection = normalizeCollectionName(req.params.collection);
@@ -751,7 +829,7 @@ router.get('/:collection/:id', authOptional, async (req, res) => {
   }
 });
 
-router.post('/:collection', async (req, res) => {
+router.post('/:collection', authOptional, async (req, res) => {
   try {
     const collection = normalizeCollectionName(req.params.collection);
     const rawPayload = req.body || {};
@@ -789,6 +867,15 @@ router.post('/:collection', async (req, res) => {
     };
 
     const result = await mongoose.connection.db.collection(collection).insertOne(enriched);
+
+    await createNewContentNotifications({
+      db: mongoose.connection.db,
+      collection,
+      payload: enriched,
+      insertedId: String(result.insertedId),
+      actor: req.authUser,
+    });
+
     return res.status(201).json({ id: String(result.insertedId) });
   } catch (error) {
     return handleCollectionWriteError(res, error, 'Unable to insert document.');

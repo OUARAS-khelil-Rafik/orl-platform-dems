@@ -5,7 +5,22 @@ import { useRouter } from 'next/router';
 import Image from 'next/image';
 import Link from 'next/link';
 import { motion } from 'motion/react';
-import { User, Star, Camera, LockKeyhole, Moon, Sun, Trash2, Crop, RotateCcw, RotateCw, Square, Link2, Unplug } from 'lucide-react';
+import {
+  User,
+  Star,
+  Camera,
+  LockKeyhole,
+  Moon,
+  Sun,
+  Trash2,
+  Crop,
+  RotateCcw,
+  RotateCw,
+  Square,
+  Link2,
+  Unplug,
+  Bell,
+} from 'lucide-react';
 import Cropper, { type Area } from 'react-easy-crop';
 import { useAuth } from '@/components/providers/auth-provider';
 import {
@@ -31,6 +46,38 @@ import { isSubscriptionActive } from '@/lib/security/access-control';
 import { formatFullName, normalizeNameParts, splitFullName } from '@/lib/utils/name-utils';
 import { AVATAR_FALLBACK_SRC, applyImageFallback } from '@/lib/utils/media-fallback';
 import { normalizeGoogleOAuthError } from '@/lib/utils/oauth-error';
+
+type UserNotification = {
+  id: string;
+  title?: string;
+  description?: string;
+  type?: string;
+  targetHref?: string;
+  isRead?: boolean;
+  createdAt?: string;
+};
+
+type SupportChat = {
+  id: string;
+  userId: string;
+  userEmail?: string;
+  problemType: 'billing' | 'access' | 'account' | 'other';
+  title?: string;
+  status?: 'open' | 'in_progress' | 'resolved';
+  lastMessage?: string;
+  lastSender?: 'user' | 'bot' | 'admin';
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+type SupportChatMessage = {
+  id: string;
+  chatId: string;
+  userId: string;
+  sender: 'user' | 'bot' | 'admin';
+  text: string;
+  createdAt?: string;
+};
 
 export default function UserDashboard() {
   const {
@@ -73,6 +120,16 @@ export default function UserDashboard() {
     apiSecret: '',
   });
   const [isSavingStorageSettings, setIsSavingStorageSettings] = useState(false);
+  const [notifications, setNotifications] = useState<UserNotification[]>([]);
+  const [isLoadingNotifications, setIsLoadingNotifications] = useState(false);
+  const [supportChats, setSupportChats] = useState<SupportChat[]>([]);
+  const [activeSupportChatId, setActiveSupportChatId] = useState('');
+  const [supportChatMessages, setSupportChatMessages] = useState<SupportChatMessage[]>([]);
+  const [supportProblemType, setSupportProblemType] = useState<'billing' | 'access' | 'account' | 'other'>('other');
+  const [newChatFirstMessage, setNewChatFirstMessage] = useState('');
+  const [chatComposer, setChatComposer] = useState('');
+  const [isStartingChat, setIsStartingChat] = useState(false);
+  const [isSendingChatMessage, setIsSendingChatMessage] = useState(false);
 
   const trimmedStorageSettings = {
     cloudName: storageSettings.cloudName.trim(),
@@ -335,6 +392,132 @@ export default function UserDashboard() {
     setThemeMode(defaultMode);
   }, [defaultMode]);
 
+  useEffect(() => {
+    const loadUserNotificationsAndSupport = async () => {
+      if (!user) {
+        setNotifications([]);
+        setSupportChats([]);
+        setSupportChatMessages([]);
+        setActiveSupportChatId('');
+        return;
+      }
+
+      setIsLoadingNotifications(true);
+      try {
+        const [notificationsSnap, chatsSnap] = await Promise.all([
+          getDocs(query(collection(db, 'notifications'), where('userId', '==', user.uid))),
+          getDocs(query(collection(db, 'supportChats'), where('userId', '==', user.uid))),
+        ]);
+
+        const nextNotifications = notificationsSnap.docs
+          .map((entry) => ({ id: entry.id, ...(entry.data() as UserNotification) }))
+          .sort((a, b) => {
+            const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+            const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+            return bTime - aTime;
+          });
+
+        const nextSupportChats = chatsSnap.docs
+          .map((entry) => ({ id: entry.id, ...(entry.data() as SupportChat) }))
+          .sort((a, b) => {
+            const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+            const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+            return bTime - aTime;
+          });
+
+        setNotifications(nextNotifications);
+        setSupportChats(nextSupportChats);
+        setActiveSupportChatId((current) => current || nextSupportChats[0]?.id || '');
+      } catch (error) {
+        console.error('Error loading notifications/support messages:', error);
+      } finally {
+        setIsLoadingNotifications(false);
+      }
+    };
+
+    void loadUserNotificationsAndSupport();
+  }, [user]);
+
+  const loadSupportMessagesByChatId = async (chatId: string) => {
+    if (!chatId || !user) {
+      setSupportChatMessages([]);
+      return;
+    }
+
+    try {
+      const messagesSnap = await getDocs(query(collection(db, 'supportChatMessages'), where('chatId', '==', chatId)));
+      const nextMessages = messagesSnap.docs
+        .map((entry) => ({ id: entry.id, ...(entry.data() as SupportChatMessage) }))
+        .sort((a, b) => {
+          const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          return aTime - bTime;
+        });
+
+      setSupportChatMessages(nextMessages);
+    } catch (error) {
+      console.error('Error loading support chat messages:', error);
+    }
+  };
+
+  useEffect(() => {
+    if (!activeSupportChatId) {
+      setSupportChatMessages([]);
+      return;
+    }
+    void loadSupportMessagesByChatId(activeSupportChatId);
+  }, [activeSupportChatId, user]);
+
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      void (async () => {
+        try {
+          const chatsSnap = await getDocs(query(collection(db, 'supportChats'), where('userId', '==', user.uid)));
+          const nextChats = chatsSnap.docs
+            .map((entry) => ({ id: entry.id, ...(entry.data() as SupportChat) }))
+            .sort((a, b) => {
+              const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+              const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+              return bTime - aTime;
+            });
+          setSupportChats(nextChats);
+
+          const selectedChatId = activeSupportChatId || nextChats[0]?.id || '';
+          if (!activeSupportChatId && selectedChatId) {
+            setActiveSupportChatId(selectedChatId);
+          }
+
+          if (selectedChatId) {
+            await loadSupportMessagesByChatId(selectedChatId);
+          }
+        } catch (error) {
+          console.error('Error polling support chat:', error);
+        }
+      })();
+    }, 4000);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [user, activeSupportChatId]);
+
+  const buildChatbotIntroByProblemType = (problemType: SupportChat['problemType']) => {
+    if (problemType === 'billing') {
+      return 'Assistant ORL: merci. Vous avez choisi Paiement/Abonnement. Precisez le numero de recu et la date si possible.';
+    }
+    if (problemType === 'access') {
+      return 'Assistant ORL: merci. Vous avez choisi Acces contenu. Indiquez la video ou section concernee.';
+    }
+    if (problemType === 'account') {
+      return 'Assistant ORL: merci. Vous avez choisi Compte/Connexion. Precisez ce qui bloque (Google, mot de passe, profil).';
+    }
+    return 'Assistant ORL: merci. Vous avez choisi Autre probleme. Decrivez le contexte et l impact.';
+  };
+
   const handleUpdateProfile = async () => {
     if (!user) return;
 
@@ -575,6 +758,165 @@ export default function UserDashboard() {
     }
   };
 
+  const handleMarkNotificationAsRead = async (notificationId: string) => {
+    try {
+      await updateDoc(doc(db, 'notifications', notificationId), {
+        isRead: true,
+        updatedAt: new Date().toISOString(),
+      });
+
+      setNotifications((prev) =>
+        prev.map((entry) => (entry.id === notificationId ? { ...entry, isRead: true } : entry)),
+      );
+    } catch (error) {
+      console.error('Error marking notification as read:', error);
+    }
+  };
+
+  const handleStartSupportChat = async () => {
+    if (!user || !profile) {
+      return;
+    }
+
+    const message = newChatFirstMessage.trim();
+    if (!message) {
+      alert('Saisissez votre message pour demarrer le chat.');
+      return;
+    }
+
+    try {
+      setIsStartingChat(true);
+      const nowIso = new Date().toISOString();
+      const chatId = `${user.uid}-${Date.now()}`;
+      const chatPayload: Omit<SupportChat, 'id'> = {
+        userId: user.uid,
+        userEmail: profile.email,
+        problemType: supportProblemType,
+        title: 'Support chat utilisateur',
+        status: 'open',
+        lastMessage: message,
+        lastSender: 'user',
+        createdAt: nowIso,
+        updatedAt: nowIso,
+      };
+
+      const botText = buildChatbotIntroByProblemType(supportProblemType);
+
+      await Promise.all([
+        setDoc(doc(db, 'supportChats', chatId), chatPayload),
+        setDoc(doc(db, 'supportChatMessages', `${chatId}-bot-${Date.now()}`), {
+          chatId,
+          userId: user.uid,
+          sender: 'bot',
+          text: botText,
+          createdAt: nowIso,
+        }),
+        setDoc(doc(db, 'supportChatMessages', `${chatId}-user-${Date.now()}`), {
+          chatId,
+          userId: user.uid,
+          sender: 'user',
+          text: message,
+          createdAt: nowIso,
+        }),
+      ]);
+
+      const nextChat: SupportChat = {
+        id: chatId,
+        ...chatPayload,
+      };
+      setSupportChats((prev) => [nextChat, ...prev]);
+      setActiveSupportChatId(chatId);
+      setSupportChatMessages([
+        {
+          id: `${chatId}-bot-local`,
+          chatId,
+          userId: user.uid,
+          sender: 'bot',
+          text: botText,
+          createdAt: nowIso,
+        },
+        {
+          id: `${chatId}-user-local`,
+          chatId,
+          userId: user.uid,
+          sender: 'user',
+          text: message,
+          createdAt: nowIso,
+        },
+      ]);
+      setNewChatFirstMessage('');
+    } catch (error) {
+      console.error('Error starting support chat:', error);
+      alert('Erreur lors du demarrage du chat support.');
+    } finally {
+      setIsStartingChat(false);
+    }
+  };
+
+  const handleSendChatMessage = async () => {
+    if (!user || !activeSupportChatId) {
+      return;
+    }
+
+    const message = chatComposer.trim();
+    if (!message) {
+      return;
+    }
+
+    try {
+      setIsSendingChatMessage(true);
+      const nowIso = new Date().toISOString();
+      const messageId = `${activeSupportChatId}-user-${Date.now()}`;
+
+      await Promise.all([
+        setDoc(doc(db, 'supportChatMessages', messageId), {
+          chatId: activeSupportChatId,
+          userId: user.uid,
+          sender: 'user',
+          text: message,
+          createdAt: nowIso,
+        }),
+        updateDoc(doc(db, 'supportChats', activeSupportChatId), {
+          lastMessage: message,
+          lastSender: 'user',
+          updatedAt: nowIso,
+          status: 'open',
+        }),
+      ]);
+
+      setSupportChatMessages((prev) => [
+        ...prev,
+        {
+          id: messageId,
+          chatId: activeSupportChatId,
+          userId: user.uid,
+          sender: 'user',
+          text: message,
+          createdAt: nowIso,
+        },
+      ]);
+      setSupportChats((prev) =>
+        prev.map((chat) =>
+          chat.id === activeSupportChatId
+            ? {
+                ...chat,
+                lastMessage: message,
+                lastSender: 'user',
+                updatedAt: nowIso,
+                status: 'open',
+              }
+            : chat,
+        ),
+      );
+      setChatComposer('');
+    } catch (error) {
+      console.error('Error sending support chat message:', error);
+      alert('Erreur lors de l envoi du message chat.');
+    } finally {
+      setIsSendingChatMessage(false);
+    }
+  };
+
   const handleDeleteAccountPermanently = async () => {
     if (!user || !profile || profile.role === 'admin') return;
 
@@ -587,10 +929,13 @@ export default function UserDashboard() {
     try {
       setIsDeletingAccount(true);
 
-      const [paymentsSnap, pedagogicalFeedbackSnap, clinicalCaseFeedbackSnap] = await Promise.all([
+      const [paymentsSnap, pedagogicalFeedbackSnap, clinicalCaseFeedbackSnap, notificationsSnap, supportChatsSnap, supportChatMessagesSnap] = await Promise.all([
         getDocs(query(collection(db, 'payments'), where('userId', '==', user.uid))),
         getDocs(query(collection(db, 'pedagogicalFeedback'), where('userId', '==', user.uid))),
         getDocs(query(collection(db, 'clinicalCaseFeedback'), where('userId', '==', user.uid))),
+        getDocs(query(collection(db, 'notifications'), where('userId', '==', user.uid))),
+        getDocs(query(collection(db, 'supportChats'), where('userId', '==', user.uid))),
+        getDocs(query(collection(db, 'supportChatMessages'), where('userId', '==', user.uid))),
       ]);
 
       await Promise.all([
@@ -601,10 +946,21 @@ export default function UserDashboard() {
         ...clinicalCaseFeedbackSnap.docs.map((feedbackDoc) =>
           deleteDoc(doc(db, 'clinicalCaseFeedback', feedbackDoc.id)),
         ),
+        ...notificationsSnap.docs.map((notificationDoc) =>
+          deleteDoc(doc(db, 'notifications', notificationDoc.id)),
+        ),
+        ...supportChatsSnap.docs.map((chatDoc) =>
+          deleteDoc(doc(db, 'supportChats', chatDoc.id)),
+        ),
+        ...supportChatMessagesSnap.docs.map((messageDoc) =>
+          deleteDoc(doc(db, 'supportChatMessages', messageDoc.id)),
+        ),
       ]);
 
-      await deleteDoc(doc(db, 'users', user.uid));
-      await deleteAuthAccountByUid(user.uid);
+      const deleted = await deleteAuthAccountByUid(user.uid);
+      if (!deleted) {
+        throw new Error('Compte introuvable ou deja supprime.');
+      }
       await signOut();
       router.push('/');
     } catch (error) {
@@ -623,6 +979,9 @@ export default function UserDashboard() {
 
   const isVipPlus = isSubscriptionActive(profile);
   const accountLevelLabel = isVipPlus ? 'VIP Plus' : profile.role === 'vip' ? 'VIP' : profile.role === 'admin' ? 'Admin' : 'Demo';
+  const unreadNotificationsCount = notifications.filter((entry) => !entry.isRead).length;
+  const activeSupportChat = supportChats.find((chat) => chat.id === activeSupportChatId) || null;
+  const isActiveSupportChatResolved = activeSupportChat?.status === 'resolved';
 
   return (
     <div
@@ -922,6 +1281,64 @@ export default function UserDashboard() {
                     </button>
                   </div>
                 </div>
+              </section>
+
+              <section className="rounded-2xl p-8 shadow-lg" style={cardStyle}>
+                  <h3 className="text-xl font-bold mb-4 flex items-center gap-2" style={{ color: 'var(--app-text)' }}>
+                    <Bell className="w-5 h-5 text-[var(--app-muted)]" />
+                    Notifications ({unreadNotificationsCount} non lues)
+                  </h3>
+
+                  <div className="rounded-2xl border p-5 space-y-3" style={insetCardStyle}>
+                    {isLoadingNotifications ? (
+                      <p className="text-sm" style={subtleText}>Chargement des notifications...</p>
+                    ) : notifications.length === 0 ? (
+                      <p className="text-sm" style={subtleText}>Aucune notification pour le moment.</p>
+                    ) : (
+                      notifications.slice(0, 12).map((entry) => (
+                        <div
+                          key={entry.id}
+                          className="rounded-xl border px-4 py-3"
+                          style={{
+                            ...insetCardStyle,
+                            borderColor: entry.isRead
+                              ? insetCardStyle.borderColor
+                              : 'color-mix(in oklab, var(--app-accent) 45%, var(--app-border) 55%)',
+                          }}
+                        >
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div>
+                              <p className="text-sm font-semibold text-[var(--app-text)]">{entry.title || 'Notification'}</p>
+                              <p className="text-xs mt-1" style={subtleText}>{entry.description || '-'}</p>
+                              <p className="text-[11px] mt-2" style={subtleText}>
+                                {entry.createdAt ? new Date(entry.createdAt).toLocaleString() : '-'}
+                              </p>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              {entry.targetHref ? (
+                                <Link
+                                  href={entry.targetHref}
+                                  className="text-xs font-semibold text-[var(--app-accent)] hover:underline"
+                                >
+                                  Ouvrir
+                                </Link>
+                              ) : null}
+                              {!entry.isRead ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleMarkNotificationAsRead(entry.id)}
+                                  className="text-xs font-semibold text-[var(--app-accent)] hover:underline"
+                                >
+                                  Marquer lue
+                                </button>
+                              ) : null}
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
               </section>
 
               {profile.role !== 'admin' && (

@@ -1,9 +1,10 @@
 'use client';
 
-import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, useScroll, useSpring } from 'motion/react';
 import Link from 'next/link';
 import {
+  ArrowUp,
   ArrowRight,
   BookOpen,
   PlayCircle,
@@ -21,10 +22,13 @@ import {
   Layers3,
   Target,
   GraduationCap,
+  MessageCircle,
+  Plus,
+  X,
 } from 'lucide-react';
 import Image from 'next/image';
 import { useAuth } from '@/components/providers/auth-provider';
-import { collection, db, getDocs } from '@/lib/data/local-data';
+import { collection, db, deleteDoc, doc, getDocs, query, setDoc, updateDoc, where } from '@/lib/data/local-data';
 import { IMAGE_FALLBACK_SRC, VIDEO_FALLBACK_SRC, applyImageFallback } from '@/lib/utils/media-fallback';
 
 interface DemoVideo {
@@ -55,6 +59,53 @@ type UnfinishedVideoItem = {
   duration: number;
   remainingSeconds: number;
   progressPercent: number;
+};
+
+type SupportProblemType = 'billing' | 'access' | 'account' | 'other';
+
+type SupportChat = {
+  id: string;
+  userId: string;
+  userEmail?: string;
+  problemType: SupportProblemType;
+  status?: 'open' | 'in_progress' | 'resolved';
+  lastMessage?: string;
+  lastSender?: 'user' | 'bot' | 'admin';
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+type SupportChatMessage = {
+  id: string;
+  chatId: string;
+  userId: string;
+  sender: 'user' | 'bot' | 'admin';
+  senderName?: string;
+  text: string;
+  createdAt?: string;
+};
+
+const buildWaitingBotSuggestion = () => {
+  return [
+    'Votre message est bien recu. Nous attendons la reponse de l\'admin.',
+    '',
+    'Pour accelerer la resolution, ajoutez si possible :',
+    '1. capture ecran ou etape exacte',
+    '+ numero de recu / transaction',
+    '- contexte (page, appareil, navigateur)',
+  ].join('\n');
+};
+
+const buildWelcomeBotMessage = () => {
+  return [
+    'Bienvenue. Je suis **DEMS-ORL-Bot**.',
+    'Une nouvelle discussion support est prete pour vous.',
+    '',
+    'Pour bien commencer, vous pouvez partager :',
+    '- le contexte du probleme',
+    '- le message d\'erreur exact',
+    '- ce que vous avez deja essaye',
+  ].join('\n');
 };
 
 declare global {
@@ -324,10 +375,126 @@ export default function HomePage() {
   const [previewPartDurations, setPreviewPartDurations] = useState<number[]>([]);
   const [areVideoControlsVisible, setAreVideoControlsVisible] = useState(true);
   const [unfinishedVideos, setUnfinishedVideos] = useState<UnfinishedVideoItem[]>([]);
-  const [isSupportRequestSubmitted, setIsSupportRequestSubmitted] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [supportChats, setSupportChats] = useState<SupportChat[]>([]);
+  const [activeSupportChatId, setActiveSupportChatId] = useState('');
+  const [supportChatMessages, setSupportChatMessages] = useState<SupportChatMessage[]>([]);
+  const [chatComposer, setChatComposer] = useState('');
+  const [isSendingChatMessage, setIsSendingChatMessage] = useState(false);
+  const [isUserAvatarFallback, setIsUserAvatarFallback] = useState(false);
   const lastNonZeroVolumeRef = useRef(0.8);
   const hideControlsTimeoutRef = useRef<number | null>(null);
   const hasAutoPlayedRef = useRef(false);
+  const supportMessagesContainerRef = useRef<HTMLDivElement | null>(null);
+  const chatComposerRef = useRef<HTMLTextAreaElement | null>(null);
+  const isEnsuringWelcomeChatRef = useRef(false);
+
+  const activeSupportChat = useMemo(
+    () => supportChats.find((chat) => chat.id === activeSupportChatId) || null,
+    [activeSupportChatId, supportChats],
+  );
+  const isActiveSupportChatResolved = activeSupportChat?.status === 'resolved';
+  const hasComposerWord = chatComposer.trim().length > 0;
+  const chatComposerRows = chatComposer.includes('\n') ? 2 : 1;
+  const showSendComposerAction = hasComposerWord && !isActiveSupportChatResolved;
+
+  const quickReplyOptions = useMemo(() => {
+    const transcript = supportChatMessages.map((message) => message.text.toLowerCase()).join(' ');
+    const lastMessage = supportChatMessages[supportChatMessages.length - 1];
+
+    if (lastMessage?.sender === 'admin') {
+      return [
+        {
+          label: 'Infos demandees',
+          message: '**Informations demandees**\n- Detail 1: \n- Detail 2: \n- Detail 3: ',
+        },
+        {
+          label: 'Probleme persiste',
+          message: '**Le probleme persiste**\n- Ce que je vois: \n- Quand cela arrive: ',
+        },
+        {
+          label: 'C est resolu',
+          message: '**Merci, le probleme est resolu de mon cote.**',
+        },
+      ];
+    }
+
+    if (/paiement|recu|transaction|abonnement/.test(transcript)) {
+      return [
+        {
+          label: 'Details paiement',
+          message: '**Paiement**\n- Numero de recu: \n- Date: \n- Montant: ',
+        },
+        {
+          label: 'Preuve envoyee',
+          message: 'Je confirme que la preuve de paiement est jointe.',
+        },
+        {
+          label: 'Acces toujours bloque',
+          message: '**Acces toujours bloque apres paiement**\n- Video/module: \n- Heure du test: ',
+        },
+      ];
+    }
+
+    if (/acces|video|lecture|contenu/.test(transcript)) {
+      return [
+        {
+          label: 'Details acces',
+          message: '**Probleme d acces**\n- Video ou module: \n- Message d erreur: \n- Navigateur/appareil: ',
+        },
+        {
+          label: 'Probleme persiste',
+          message: 'J ai teste a nouveau, le probleme persiste.',
+        },
+        {
+          label: 'C est resolu',
+          message: 'Merci, l acces fonctionne maintenant.',
+        },
+      ];
+    }
+
+    if (/connexion|compte|google|password|mot de passe/.test(transcript)) {
+      return [
+        {
+          label: 'Details connexion',
+          message: '**Probleme de connexion**\n- Email: \n- Etape bloquante: \n- Message affiche: ',
+        },
+        {
+          label: 'Reset non recu',
+          message: 'Je ne recois pas l email de reinitialisation.',
+        },
+        {
+          label: 'Connexion OK',
+          message: 'Merci, la connexion est retablie.',
+        },
+      ];
+    }
+
+    return [
+      {
+        label: 'Probleme paiement',
+        message: '**Probleme de paiement**\n- Numero de recu: \n- Date: \n- Montant: ',
+      },
+      {
+        label: 'Probleme acces video',
+        message: '**Probleme d acces video**\n- Titre de la video: \n- Message d erreur: ',
+      },
+      {
+        label: 'Probleme connexion',
+        message: '**Probleme de connexion**\n- Email: \n- Etape bloquante: ',
+      },
+    ];
+  }, [supportChatMessages]);
+
+  const userAvatarInitial = useMemo(() => {
+    const source = String(user?.displayName || user?.email || '').trim();
+    if (!source) {
+      return 'U';
+    }
+    return source.charAt(0).toUpperCase();
+  }, [user?.displayName, user?.email]);
+
+  const hasUserAvatarImage = Boolean(String(user?.photoURL || '').trim()) && !isUserAvatarFallback;
 
   const previewPartSources = useMemo(() => {
     const partUrls = Array.isArray(demoVideo?.parts)
@@ -981,10 +1148,540 @@ export default function HomePage() {
     }
   };
 
-  const handleSupportRequestSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    event.currentTarget.reset();
-    setIsSupportRequestSubmitted(true);
+  useEffect(() => {
+    const loadUserSupportChats = async () => {
+      if (!user) {
+        setSupportChats([]);
+        setActiveSupportChatId('');
+        setSupportChatMessages([]);
+        return;
+      }
+
+      try {
+        const chatsSnap = await getDocs(query(collection(db, 'supportChats'), where('userId', '==', user.uid)));
+        const nextSupportChats = chatsSnap.docs
+          .map((entry) => ({ id: entry.id, ...(entry.data() as SupportChat) }))
+          .sort((a, b) => {
+            const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+            const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+            return bTime - aTime;
+          });
+
+        if (nextSupportChats.length === 0) {
+          const welcomeChatId = await ensureWelcomeSupportChat();
+          if (welcomeChatId) {
+            await loadSupportMessagesByChatId(welcomeChatId);
+          }
+          return;
+        }
+
+        setSupportChats(nextSupportChats);
+        setActiveSupportChatId((current) => {
+          if (current && nextSupportChats.some((chat) => chat.id === current)) {
+            return current;
+          }
+          return nextSupportChats[0]?.id || '';
+        });
+      } catch (error) {
+        console.error('Error loading support chats:', error);
+      }
+    };
+
+    void loadUserSupportChats();
+  }, [user]);
+
+  const loadSupportMessagesByChatId = async (chatId: string) => {
+    if (!chatId || !user) {
+      setSupportChatMessages([]);
+      return;
+    }
+
+    try {
+      const messagesSnap = await getDocs(query(collection(db, 'supportChatMessages'), where('chatId', '==', chatId)));
+      const nextMessages = messagesSnap.docs
+        .map((entry) => ({ id: entry.id, ...(entry.data() as SupportChatMessage) }))
+        .sort((a, b) => {
+          const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          return aTime - bTime;
+        });
+      setSupportChatMessages(nextMessages);
+    } catch (error) {
+      console.error('Error loading support chat messages:', error);
+    }
+  };
+
+  useEffect(() => {
+    void loadSupportMessagesByChatId(activeSupportChatId);
+  }, [activeSupportChatId, user]);
+
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      void (async () => {
+        try {
+          const chatsSnap = await getDocs(query(collection(db, 'supportChats'), where('userId', '==', user.uid)));
+          const nextChats = chatsSnap.docs
+            .map((entry) => ({ id: entry.id, ...(entry.data() as SupportChat) }))
+            .sort((a, b) => {
+              const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+              const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+              return bTime - aTime;
+            });
+
+          if (nextChats.length === 0) {
+            const welcomeChatId = await ensureWelcomeSupportChat();
+            if (welcomeChatId) {
+              await loadSupportMessagesByChatId(welcomeChatId);
+            }
+            return;
+          }
+
+          setSupportChats(nextChats);
+
+          const selectedChatId = activeSupportChatId || nextChats[0]?.id || '';
+          if (!activeSupportChatId && selectedChatId) {
+            setActiveSupportChatId(selectedChatId);
+          }
+
+          if (selectedChatId) {
+            await loadSupportMessagesByChatId(selectedChatId);
+          }
+        } catch (error) {
+          console.error('Error polling support chat:', error);
+        }
+      })();
+    }, 4000);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [user, activeSupportChatId]);
+
+  useEffect(() => {
+    if (!isChatOpen) {
+      return;
+    }
+
+    const container = supportMessagesContainerRef.current;
+    if (!container) {
+      return;
+    }
+    container.scrollTop = container.scrollHeight;
+  }, [isChatOpen, supportChatMessages]);
+
+  useEffect(() => {
+    setIsUserAvatarFallback(false);
+  }, [user?.photoURL]);
+
+  useEffect(() => {
+    if (!isChatOpen || !user) {
+      return;
+    }
+
+    if (supportChats.length > 0) {
+      return;
+    }
+
+    void (async () => {
+      const chatId = await ensureWelcomeSupportChat();
+      if (chatId) {
+        await loadSupportMessagesByChatId(chatId);
+      }
+    })();
+  }, [isChatOpen, user, supportChats.length]);
+
+  const supportIntroMessage = () => {
+    return buildWelcomeBotMessage();
+  };
+
+  const applyQuickReply = (template: string) => {
+    setChatComposer((current) => (current.trim() ? `${current}\n${template}` : template));
+  };
+
+  const renderSenderAvatar = (sender: SupportChatMessage['sender']) => {
+    if (sender === 'user') {
+      if (hasUserAvatarImage) {
+        return (
+          <img
+            src={String(user?.photoURL || '')}
+            alt="Avatar utilisateur"
+            className="h-8 w-8 rounded-full object-cover ring-1 ring-slate-300"
+            referrerPolicy="no-referrer"
+            onError={() => setIsUserAvatarFallback(true)}
+          />
+        );
+      }
+
+      return (
+        <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white ring-1 ring-slate-300">
+          {userAvatarInitial}
+        </span>
+      );
+    }
+
+    if (sender === 'admin') {
+      return (
+        <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-emerald-700 text-xs font-semibold text-white ring-1 ring-emerald-200">
+          A
+        </span>
+      );
+    }
+
+    return (
+      <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-amber-700 text-xs font-semibold text-white ring-1 ring-amber-200">
+        B
+      </span>
+    );
+  };
+
+  const resolveSenderLabel = (message: SupportChatMessage) => {
+    if (message.sender === 'bot') {
+      return message.senderName || 'DEMS-ORL-Bot';
+    }
+    if (message.sender === 'admin') {
+      return message.senderName || 'Admin';
+    }
+    return 'Vous';
+  };
+
+  const formatInlineMarkdown = (text: string): ReactNode[] => {
+    const parts = text.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/g);
+    return parts.map((part, index) => {
+      if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
+        return <strong key={`strong-${index}`}>{part.slice(2, -2)}</strong>;
+      }
+      if (part.startsWith('*') && part.endsWith('*') && part.length > 2) {
+        return <em key={`em-${index}`}>{part.slice(1, -1)}</em>;
+      }
+      return <span key={`span-${index}`}>{part}</span>;
+    });
+  };
+
+  const renderMessageMarkdown = (raw: string) => {
+    const lines = raw.replace(/\r\n/g, '\n').split('\n');
+    const nodes: ReactNode[] = [];
+
+    let cursor = 0;
+    while (cursor < lines.length) {
+      const line = lines[cursor] || '';
+      const orderedMatch = line.match(/^\s*\d+\.\s+(.+)$/);
+      const unorderedMatch = line.match(/^\s*[-+]\s+(.+)$/);
+
+      if (!line.trim()) {
+        nodes.push(<div key={`space-${cursor}`} className="h-2" />);
+        cursor += 1;
+        continue;
+      }
+
+      if (orderedMatch) {
+        const items: string[] = [];
+        let nextCursor = cursor;
+        while (nextCursor < lines.length) {
+          const nextLine = lines[nextCursor] || '';
+          const nextMatch = nextLine.match(/^\s*\d+\.\s+(.+)$/);
+          if (!nextMatch) {
+            break;
+          }
+          items.push(nextMatch[1]);
+          nextCursor += 1;
+        }
+
+        nodes.push(
+          <ol key={`ol-${cursor}`} className="list-decimal pl-5 space-y-1">
+            {items.map((item, index) => (
+              <li key={`ol-item-${cursor}-${index}`}>{formatInlineMarkdown(item)}</li>
+            ))}
+          </ol>,
+        );
+        cursor = nextCursor;
+        continue;
+      }
+
+      if (unorderedMatch) {
+        const items: string[] = [];
+        let nextCursor = cursor;
+        while (nextCursor < lines.length) {
+          const nextLine = lines[nextCursor] || '';
+          const nextMatch = nextLine.match(/^\s*[-+]\s+(.+)$/);
+          if (!nextMatch) {
+            break;
+          }
+          items.push(nextMatch[1]);
+          nextCursor += 1;
+        }
+
+        nodes.push(
+          <ul key={`ul-${cursor}`} className="list-disc pl-5 space-y-1">
+            {items.map((item, index) => (
+              <li key={`ul-item-${cursor}-${index}`}>{formatInlineMarkdown(item)}</li>
+            ))}
+          </ul>,
+        );
+        cursor = nextCursor;
+        continue;
+      }
+
+      nodes.push(
+        <p key={`p-${cursor}`} className="leading-relaxed">
+          {formatInlineMarkdown(line)}
+        </p>,
+      );
+      cursor += 1;
+    }
+
+    return <div className="space-y-1">{nodes}</div>;
+  };
+
+  const createSupportChatFromFirstMessage = async (firstMessage: string) => {
+    if (!user) {
+      return null;
+    }
+
+    const now = new Date().toISOString();
+    const newChatId = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const userMessageId = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(16).slice(2)}-u`;
+    const botMessageId = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(16).slice(2)}-b`;
+    const introText = supportIntroMessage();
+
+    await setDoc(doc(db, 'supportChats', newChatId), {
+      userId: user.uid,
+      userEmail: user.email || '',
+      problemType: 'other' as SupportProblemType,
+      status: 'open',
+      lastMessage: firstMessage,
+      lastSender: 'user',
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    await setDoc(doc(db, 'supportChatMessages', userMessageId), {
+      chatId: newChatId,
+      userId: user.uid,
+      sender: 'user',
+      senderName: user.displayName || user.email || 'Utilisateur',
+      text: firstMessage,
+      createdAt: now,
+    });
+
+    await setDoc(doc(db, 'supportChatMessages', botMessageId), {
+      chatId: newChatId,
+      userId: user.uid,
+      sender: 'bot',
+      senderName: 'DEMS-ORL-Bot',
+      text: introText,
+      createdAt: new Date(Date.now() + 250).toISOString(),
+    });
+
+    await updateDoc(doc(db, 'supportChats', newChatId), {
+      lastMessage: introText,
+      lastSender: 'bot',
+      updatedAt: new Date(Date.now() + 250).toISOString(),
+    });
+
+    return newChatId;
+  };
+
+  const ensureWelcomeSupportChat = async (): Promise<string> => {
+    if (!user || isEnsuringWelcomeChatRef.current) {
+      return '';
+    }
+
+    isEnsuringWelcomeChatRef.current = true;
+    try {
+      const existingChatsSnap = await getDocs(query(collection(db, 'supportChats'), where('userId', '==', user.uid)));
+      const existingChats = existingChatsSnap.docs
+        .map((entry) => ({ id: entry.id, ...(entry.data() as SupportChat) }))
+        .sort((a, b) => {
+          const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+          const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+          return bTime - aTime;
+        });
+
+      if (existingChats.length > 0) {
+        const selectedId = activeSupportChatId && existingChats.some((chat) => chat.id === activeSupportChatId)
+          ? activeSupportChatId
+          : existingChats[0].id;
+        setSupportChats(existingChats);
+        setActiveSupportChatId(selectedId);
+        return selectedId;
+      }
+
+      const now = new Date().toISOString();
+      const newChatId = typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      const welcomeMessageId = typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(16).slice(2)}-welcome`;
+      const welcomeText = buildWelcomeBotMessage();
+
+      await setDoc(doc(db, 'supportChats', newChatId), {
+        userId: user.uid,
+        userEmail: user.email || '',
+        problemType: 'other' as SupportProblemType,
+        status: 'open',
+        lastMessage: welcomeText,
+        lastSender: 'bot',
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      await setDoc(doc(db, 'supportChatMessages', welcomeMessageId), {
+        chatId: newChatId,
+        userId: user.uid,
+        sender: 'bot',
+        senderName: 'DEMS-ORL-Bot',
+        text: welcomeText,
+        createdAt: now,
+      });
+
+      setSupportChats([
+        {
+          id: newChatId,
+          userId: user.uid,
+          userEmail: user.email || '',
+          problemType: 'other',
+          status: 'open',
+          lastMessage: welcomeText,
+          lastSender: 'bot',
+          createdAt: now,
+          updatedAt: now,
+        },
+      ]);
+      setActiveSupportChatId(newChatId);
+      return newChatId;
+    } catch (error) {
+      console.error('Error ensuring welcome support chat:', error);
+      return '';
+    } finally {
+      isEnsuringWelcomeChatRef.current = false;
+    }
+  };
+
+  const deleteSupportChatById = async (chatId: string) => {
+    if (!chatId) {
+      return;
+    }
+
+    const messagesSnap = await getDocs(query(collection(db, 'supportChatMessages'), where('chatId', '==', chatId)));
+    await Promise.all(messagesSnap.docs.map((entry) => deleteDoc(doc(db, 'supportChatMessages', entry.id))));
+    await deleteDoc(doc(db, 'supportChats', chatId));
+  };
+
+  const handleResolveAndDeleteSupportChat = async () => {
+    if (!activeSupportChatId) {
+      return;
+    }
+
+    const shouldDelete = window.confirm('Marquer ce probleme comme resolu et supprimer la discussion ?');
+    if (!shouldDelete) {
+      return;
+    }
+
+    try {
+      const removedChatId = activeSupportChatId;
+      await deleteSupportChatById(removedChatId);
+
+      setSupportChats((prev) => prev.filter((chat) => chat.id !== removedChatId));
+      setActiveSupportChatId('');
+      setSupportChatMessages([]);
+
+      const nextChatId = await ensureWelcomeSupportChat();
+      if (nextChatId) {
+        await loadSupportMessagesByChatId(nextChatId);
+      }
+    } catch (error) {
+      console.error('Error deleting support chat:', error);
+      alert('Impossible de supprimer cette discussion.');
+    }
+  };
+
+  const handleSendChatMessage = async () => {
+    if (!user || isSendingChatMessage || isActiveSupportChatResolved) {
+      return;
+    }
+
+    const trimmedMessage = chatComposer.trim();
+    if (!trimmedMessage) {
+      return;
+    }
+
+    setIsSendingChatMessage(true);
+    try {
+      if (!activeSupportChatId) {
+        const createdChatId = await createSupportChatFromFirstMessage(trimmedMessage);
+        if (!createdChatId) {
+          return;
+        }
+
+        setActiveSupportChatId(createdChatId);
+        setChatComposer('');
+        setIsChatOpen(true);
+
+        const chatsSnap = await getDocs(query(collection(db, 'supportChats'), where('userId', '==', user.uid)));
+        const nextChats = chatsSnap.docs
+          .map((entry) => ({ id: entry.id, ...(entry.data() as SupportChat) }))
+          .sort((a, b) => {
+            const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+            const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+            return bTime - aTime;
+          });
+        setSupportChats(nextChats);
+        await loadSupportMessagesByChatId(createdChatId);
+      } else {
+        const now = new Date().toISOString();
+        const messageId = typeof crypto !== 'undefined' && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(16).slice(2)}-m`;
+        const botMessageId = typeof crypto !== 'undefined' && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(16).slice(2)}-bot`;
+        const botWaitingText = buildWaitingBotSuggestion();
+
+        await setDoc(doc(db, 'supportChatMessages', messageId), {
+          chatId: activeSupportChatId,
+          userId: user.uid,
+          sender: 'user',
+          senderName: user.displayName || user.email || 'Utilisateur',
+          text: trimmedMessage,
+          createdAt: now,
+        });
+
+        await setDoc(doc(db, 'supportChatMessages', botMessageId), {
+          chatId: activeSupportChatId,
+          userId: user.uid,
+          sender: 'bot',
+          senderName: 'DEMS-ORL-Bot',
+          text: botWaitingText,
+          createdAt: new Date(Date.now() + 250).toISOString(),
+        });
+
+        await updateDoc(doc(db, 'supportChats', activeSupportChatId), {
+          lastMessage: botWaitingText,
+          lastSender: 'bot',
+          updatedAt: new Date(Date.now() + 250).toISOString(),
+          status: activeSupportChat?.status === 'resolved' ? 'open' : activeSupportChat?.status || 'open',
+        });
+
+        setChatComposer('');
+        await loadSupportMessagesByChatId(activeSupportChatId);
+      }
+    } catch (error) {
+      console.error('Error sending support message:', error);
+      alert('Impossible d envoyer votre message.');
+    } finally {
+      setIsSendingChatMessage(false);
+    }
   };
 
   const effectivePlaybackDuration = isYouTubeDemo ? duration : Math.max(duration, previewTotalDuration);
@@ -1655,183 +2352,243 @@ export default function HomePage() {
         </div>
       ) : null}
 
-      <div id="support-contact" className="relative pb-24 pt-6">
-        <div className="container mx-auto px-4">
+      <div className="fixed bottom-5 right-5 z-[70]">
+        <motion.button
+          type="button"
+          whileHover={{ scale: 1.04 }}
+          whileTap={{ scale: 0.96 }}
+          onClick={() => setIsChatOpen((current) => !current)}
+          className="h-14 w-14 rounded-full shadow-xl flex items-center justify-center"
+          style={{
+            background: 'linear-gradient(135deg, color-mix(in oklab, var(--app-accent) 90%, #ffe5c6 10%), color-mix(in oklab, var(--app-accent) 70%, #1e1e1e 30%))',
+            color: 'var(--app-accent-contrast)',
+          }}
+          aria-label={isChatOpen ? 'Fermer le chatbot support' : 'Ouvrir le chatbot support'}
+        >
+          {isChatOpen ? <X className="h-6 w-6" /> : <MessageCircle className="h-6 w-6" />}
+        </motion.button>
+
+        {isChatOpen ? (
           <motion.div
-            initial={{ opacity: 0, y: 24 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.55 }}
-            className="relative overflow-hidden rounded-3xl border"
+            initial={{ opacity: 0, y: 14, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 10, scale: 0.98 }}
+            transition={{ duration: 0.2 }}
+            className="absolute bottom-16 right-0 flex h-[min(74vh,640px)] w-[min(92vw,390px)] flex-col rounded-3xl border shadow-2xl overflow-hidden"
             style={{
-              borderColor: 'color-mix(in oklab, var(--app-accent) 30%, var(--app-border) 70%)',
-              background: 'linear-gradient(140deg, color-mix(in oklab, var(--app-surface) 96%, white 4%) 0%, color-mix(in oklab, var(--app-surface-alt) 76%, var(--app-accent) 24%) 100%)',
-              boxShadow: 'var(--shadow-elevated)',
+              borderColor: 'color-mix(in oklab, var(--app-border) 84%, var(--app-accent) 16%)',
+              background: 'color-mix(in oklab, var(--app-surface) 96%, white 4%)',
             }}
           >
-            <div className="absolute -right-20 -top-20 h-64 w-64 rounded-full blur-3xl" style={{ background: 'color-mix(in oklab, var(--app-accent) 26%, transparent)' }} />
-            <div className="absolute -bottom-16 -left-14 h-56 w-56 rounded-full blur-3xl" style={{ background: 'color-mix(in oklab, var(--app-accent) 18%, transparent)' }} />
+            <div
+              className="px-4 py-3 border-b"
+              style={{
+                borderColor: 'color-mix(in oklab, var(--app-border) 88%, var(--app-accent) 12%)',
+                background: 'color-mix(in oklab, var(--app-surface) 98%, white 2%)',
+              }}
+            >
+              <p className="text-sm font-semibold" style={{ color: 'var(--app-text)' }}>Support DEMS ENT</p>
+              <p className="text-xs" style={{ color: 'var(--app-muted)' }}>Chat en direct avec suivi admin.</p>
+              {activeSupportChat ? (
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  <span className="text-[11px] px-2 py-1 rounded-full" style={{ backgroundColor: 'color-mix(in oklab, var(--app-surface-alt) 80%, var(--app-accent) 20%)', color: 'var(--app-text)' }}>
+                    Statut: {activeSupportChat.status || 'open'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void handleResolveAndDeleteSupportChat()}
+                    className="text-[11px] px-2 py-1 rounded-md border"
+                    style={{ borderColor: 'color-mix(in oklab, var(--app-danger) 42%, var(--app-border) 58%)', color: 'var(--app-danger)' }}
+                  >
+                    Resolu et supprimer
+                  </button>
+                </div>
+              ) : null}
+            </div>
 
-            <div className="relative grid grid-cols-1 lg:grid-cols-[0.9fr_1.1fr]">
-              <div
-                className="p-8 md:p-10"
-                style={{
-                  borderRight: '1px solid color-mix(in oklab, var(--app-accent) 20%, var(--app-border) 80%)',
-                  background: 'linear-gradient(160deg, color-mix(in oklab, var(--hero-bg-start) 88%, transparent 12%) 0%, color-mix(in oklab, var(--hero-bg-end) 76%, var(--app-accent) 24%) 100%)',
-                }}
-              >
-                <span
-                  className="inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em]"
-                  style={{
-                    color: 'var(--hero-title)',
-                    borderColor: 'var(--hero-chip-border)',
-                    backgroundColor: 'var(--hero-chip-bg)',
-                  }}
-                >
-                  Assistance et support
-                </span>
-
-                <h2 className="mt-4 text-3xl font-bold leading-tight" style={{ color: 'var(--hero-title)' }}>
-                  Un probleme technique ou une question ?
-                </h2>
-                <p className="mt-3 text-base leading-relaxed" style={{ color: 'var(--hero-body)' }}>
-                  Remplissez ce formulaire et notre equipe vous repondra rapidement avec une solution claire.
+            {!isAuthReady ? (
+              <div className="p-4 text-sm" style={{ color: 'var(--app-muted)' }}>Chargement...</div>
+            ) : !user ? (
+              <div className="p-4 space-y-3">
+                <p className="text-sm" style={{ color: 'var(--app-text)' }}>
+                  Connectez-vous pour discuter avec le support et recevoir les reponses admin en temps reel.
                 </p>
-
-                <div className="mt-8 space-y-4">
-                  <div className="rounded-2xl border px-4 py-3" style={{ borderColor: 'color-mix(in oklab, var(--hero-chip-border) 74%, transparent)' }}>
-                    <p className="text-sm font-semibold" style={{ color: 'var(--hero-title)' }}>Demandes traitees</p>
-                    <p className="text-xs" style={{ color: 'var(--hero-body)' }}>Probleme technique, compte, paiement, contenu, suggestion.</p>
-                  </div>
-                  <div className="rounded-2xl border px-4 py-3" style={{ borderColor: 'color-mix(in oklab, var(--hero-chip-border) 74%, transparent)' }}>
-                    <p className="text-sm font-semibold" style={{ color: 'var(--hero-title)' }}>Canal prioritaire</p>
-                    <p className="text-xs" style={{ color: 'var(--hero-body)' }}>Support centralise pour garder un suivi clair de chaque demande.</p>
-                  </div>
+                <div className="flex gap-2">
+                  <Link href="/sign-in" className="rounded-xl px-4 py-2 text-sm font-semibold" style={{ backgroundColor: 'var(--app-accent)', color: 'var(--app-accent-contrast)' }}>
+                    Se connecter
+                  </Link>
+                  <Link href="/sign-up" className="rounded-xl px-4 py-2 text-sm font-semibold border" style={{ borderColor: 'var(--app-border)', color: 'var(--app-text)' }}>
+                    Creer un compte
+                  </Link>
                 </div>
               </div>
-
-              <div className="p-8 md:p-10">
-                <form className="space-y-5" onSubmit={handleSupportRequestSubmit}>
-                  <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-                    <label className="block">
-                      <span className="mb-2 block text-sm font-semibold" style={{ color: 'var(--app-text)' }}>
-                        Nom complet
-                      </span>
-                      <input
-                        type="text"
-                        name="fullName"
-                        required
-                        placeholder="Ex: Dr. Ahmed Benali"
-                        className="w-full rounded-xl border px-4 py-3 text-sm transition outline-none"
-                        style={{
-                          color: 'var(--app-text)',
-                          borderColor: 'color-mix(in oklab, var(--app-accent) 24%, var(--app-border) 76%)',
-                          backgroundColor: 'color-mix(in oklab, var(--app-surface) 96%, white 4%)',
-                        }}
-                        onChange={() => setIsSupportRequestSubmitted(false)}
-                      />
-                    </label>
-
-                    <label className="block">
-                      <span className="mb-2 block text-sm font-semibold" style={{ color: 'var(--app-text)' }}>
-                        Email
-                      </span>
-                      <input
-                        type="email"
-                        name="email"
-                        required
-                        placeholder="nom@exemple.com"
-                        className="w-full rounded-xl border px-4 py-3 text-sm transition outline-none"
-                        style={{
-                          color: 'var(--app-text)',
-                          borderColor: 'color-mix(in oklab, var(--app-accent) 24%, var(--app-border) 76%)',
-                          backgroundColor: 'color-mix(in oklab, var(--app-surface) 96%, white 4%)',
-                        }}
-                        onChange={() => setIsSupportRequestSubmitted(false)}
-                      />
-                    </label>
+            ) : (
+              <>
+                {supportChats.length > 1 ? (
+                  <div className="px-4 py-2 border-b" style={{ borderColor: 'color-mix(in oklab, var(--app-border) 88%, var(--app-accent) 12%)' }}>
+                    <div className="flex gap-2 overflow-x-auto">
+                      {supportChats.map((chat) => (
+                        <button
+                          key={chat.id}
+                          type="button"
+                          onClick={() => setActiveSupportChatId(chat.id)}
+                          className="shrink-0 rounded-full border px-3 py-1 text-[11px] font-semibold"
+                          style={{
+                            borderColor: activeSupportChatId === chat.id ? 'var(--app-accent)' : 'var(--app-border)',
+                            backgroundColor: activeSupportChatId === chat.id ? 'color-mix(in oklab, var(--app-accent) 14%, var(--app-surface) 86%)' : 'var(--app-surface)',
+                            color: 'var(--app-text)',
+                          }}
+                        >
+                          {chat.problemType}
+                        </button>
+                      ))}
+                    </div>
                   </div>
+                ) : null}
 
-                  <label className="block">
-                    <span className="mb-2 block text-sm font-semibold" style={{ color: 'var(--app-text)' }}>
-                      Type de demande
-                    </span>
-                    <select
-                      name="requestType"
-                      required
-                      defaultValue="probleme-technique"
-                      className="w-full rounded-xl border px-4 py-3 text-sm transition outline-none"
-                      style={{
-                        color: 'var(--app-text)',
-                        borderColor: 'color-mix(in oklab, var(--app-accent) 24%, var(--app-border) 76%)',
-                        backgroundColor: 'color-mix(in oklab, var(--app-surface) 96%, white 4%)',
-                      }}
-                      onChange={() => setIsSupportRequestSubmitted(false)}
-                    >
-                      <option value="probleme-technique">Probleme technique</option>
-                      <option value="compte-acces">Compte et acces</option>
-                      <option value="abonnement-paiement">Abonnement et paiement</option>
-                      <option value="contenu-pedagogique">Contenu pedagogique</option>
-                      <option value="suggestion">Suggestion d'amelioration</option>
-                      <option value="autre">Autre demande</option>
-                    </select>
-                  </label>
-
-                  <label className="block">
-                    <span className="mb-2 block text-sm font-semibold" style={{ color: 'var(--app-text)' }}>
-                      Votre message
-                    </span>
-                    <textarea
-                      name="message"
-                      required
-                      rows={6}
-                      placeholder="Decrivez clairement votre probleme ou votre demande..."
-                      className="w-full resize-none rounded-xl border px-4 py-3 text-sm leading-relaxed transition outline-none"
-                      style={{
-                        color: 'var(--app-text)',
-                        borderColor: 'color-mix(in oklab, var(--app-accent) 24%, var(--app-border) 76%)',
-                        backgroundColor: 'color-mix(in oklab, var(--app-surface) 96%, white 4%)',
-                      }}
-                      onChange={() => setIsSupportRequestSubmitted(false)}
-                    />
-                  </label>
-
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <button
-                      type="submit"
-                      className="inline-flex items-center justify-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold transition-all hover:translate-y-[-1px]"
-                      style={{
-                        backgroundColor: 'var(--app-accent)',
-                        color: 'var(--app-accent-contrast)',
-                        boxShadow: '0 12px 24px color-mix(in oklab, var(--app-accent) 28%, transparent)',
-                      }}
-                    >
-                      Envoyer la demande
-                      <ArrowRight className="h-4 w-4" />
-                    </button>
-
-                    <p className="text-xs" style={{ color: 'var(--app-muted)' }}>
-                      Pour une urgence: kh.ouaras@univ-alger.dz
+                <div
+                  ref={supportMessagesContainerRef}
+                  className="flex-1 overflow-y-auto px-4 py-4 space-y-4"
+                  style={{ backgroundColor: 'color-mix(in oklab, var(--app-surface-alt) 36%, var(--app-surface) 64%)' }}
+                >
+                  {supportChatMessages.length === 0 ? (
+                    <p className="text-sm" style={{ color: 'var(--app-muted)' }}>
+                      Aucun message pour le moment. Demarrez une conversation.
                     </p>
-                  </div>
+                  ) : (
+                    supportChatMessages.map((message) => {
+                      const isUserMessage = message.sender === 'user';
 
-                  {isSupportRequestSubmitted ? (
-                    <p
-                      className="rounded-xl border px-4 py-3 text-sm font-medium"
-                      style={{
-                        color: 'color-mix(in oklab, var(--app-success) 82%, var(--app-text) 18%)',
-                        borderColor: 'color-mix(in oklab, var(--app-success) 36%, var(--app-border) 64%)',
-                        backgroundColor: 'color-mix(in oklab, var(--app-success) 10%, var(--app-surface) 90%)',
-                      }}
-                    >
-                      Merci, votre demande a bien ete enregistree. Nous revenons vers vous rapidement.
-                    </p>
+                      return (
+                      <div
+                        key={message.id}
+                        className={`flex ${isUserMessage ? 'justify-end' : 'justify-start'}`}
+                      >
+                        <div className={`flex max-w-[94%] gap-3 ${isUserMessage ? 'flex-row-reverse' : 'flex-row'}`}>
+                          <div className="pt-0.5">{renderSenderAvatar(message.sender)}</div>
+                          <div
+                            className="rounded-2xl border px-3 py-2 text-sm"
+                            style={{
+                              backgroundColor: isUserMessage
+                                ? 'color-mix(in oklab, var(--app-surface) 90%, white 10%)'
+                                : message.sender === 'admin'
+                                  ? 'color-mix(in oklab, var(--app-surface-alt) 72%, var(--app-accent) 28%)'
+                                  : 'var(--app-surface)',
+                              color: 'var(--app-text)',
+                              borderColor: 'color-mix(in oklab, var(--app-border) 88%, var(--app-accent) 12%)',
+                            }}
+                          >
+                            <p className="text-[10px] uppercase tracking-wide opacity-70 mb-1">{resolveSenderLabel(message)}</p>
+                            <div>{renderMessageMarkdown(message.text)}</div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                    })
+                  )}
+
+                  {!isActiveSupportChatResolved && quickReplyOptions.length > 0 ? (
+                    <div className="flex justify-start">
+                      <div className="flex max-w-[94%] gap-3">
+                        <div className="pt-0.5">{renderSenderAvatar('bot')}</div>
+                        <div
+                          className="rounded-2xl border px-3 py-2"
+                          style={{
+                            backgroundColor: 'var(--app-surface)',
+                            color: 'var(--app-text)',
+                            borderColor: 'color-mix(in oklab, var(--app-border) 88%, var(--app-accent) 12%)',
+                          }}
+                        >
+                          <p className="text-[10px] uppercase tracking-wide opacity-70 mb-1">DEMS-ORL-Bot</p>
+                          <p className="text-xs mb-2" style={{ color: 'var(--app-muted)' }}>Suggestions selon votre contexte</p>
+                          <div className="flex flex-wrap gap-2">
+                      {quickReplyOptions.map((option) => (
+                        <button
+                          key={option.label}
+                          type="button"
+                          onClick={() => applyQuickReply(option.message)}
+                          className="shrink-0 rounded-full border px-3 py-1 text-xs font-semibold"
+                          style={{ borderColor: 'var(--app-border)', backgroundColor: 'var(--app-surface)', color: 'var(--app-text)' }}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   ) : null}
-                </form>
-              </div>
-            </div>
+                </div>
+
+                <div className="border-t px-2.5 pb-2 pt-1.5" style={{ borderColor: 'color-mix(in oklab, var(--app-border) 88%, var(--app-accent) 12%)', backgroundColor: 'color-mix(in oklab, var(--app-surface) 98%, white 2%)' }}>
+                  <div
+                    className="mx-0.5 flex flex-col rounded-[18px] border transition-all duration-200 hover:shadow-lg focus-within:shadow-xl"
+                    style={{
+                      borderColor: 'color-mix(in oklab, var(--app-border) 86%, var(--app-accent) 14%)',
+                      backgroundColor: 'var(--app-surface)',
+                      boxShadow: '0 0.25rem 1.25rem color-mix(in oklab, black 6%, transparent), 0 0 0 0.5px color-mix(in oklab, var(--app-border) 82%, transparent)',
+                    }}
+                  >
+                    <div className="m-2.5 flex flex-col gap-2">
+                      <div className="relative">
+                        <textarea
+                          ref={chatComposerRef}
+                          value={chatComposer}
+                          onChange={(event) => setChatComposer(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+                              event.preventDefault();
+                              void handleSendChatMessage();
+                            }
+                          }}
+                          disabled={isActiveSupportChatResolved}
+                          placeholder={
+                            isActiveSupportChatResolved
+                              ? 'Conversation resolue'
+                              : 'Ecrivez votre message...'
+                          }
+                          rows={chatComposerRows}
+                          className="w-full max-h-24 min-h-0 border-0 bg-transparent text-sm leading-5 resize-none outline-none focus:outline-none focus-visible:outline-none focus:ring-0 focus-visible:ring-0 focus:border-transparent"
+                          style={{ color: 'var(--app-text)' }}
+                        />
+                      </div>
+
+                      <div className="relative flex w-full items-center gap-2">
+                        <div className="relative flex min-w-0 flex-1 items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => chatComposerRef.current?.focus()}
+                            className="h-7 w-7 rounded-lg flex items-center justify-center transition-colors"
+                            style={{ color: 'var(--app-text)', backgroundColor: 'color-mix(in oklab, var(--app-surface-alt) 64%, var(--app-surface) 36%)' }}
+                            aria-label="Ajouter"
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+
+                        <div className={`transition-all duration-200 ease-out ${showSendComposerAction ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-1 pointer-events-none'}`}>
+                          <button
+                            type="button"
+                            onClick={() => void handleSendChatMessage()}
+                            disabled={isSendingChatMessage || !showSendComposerAction}
+                            className="h-7 w-7 rounded-lg disabled:opacity-60 flex items-center justify-center"
+                            style={{ backgroundColor: 'var(--app-accent)', color: 'var(--app-accent-contrast)' }}
+                            aria-label="Envoyer"
+                          >
+                            <ArrowUp className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <p className="mt-1 px-2 text-[10px]" style={{ color: 'var(--app-muted)' }}>
+                    Ctrl/Cmd + Entree pour envoyer
+                  </p>
+                </div>
+              </>
+            )}
           </motion.div>
-        </div>
+        ) : null}
       </div>
     </div>
   );

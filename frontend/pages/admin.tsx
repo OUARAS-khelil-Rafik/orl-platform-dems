@@ -150,6 +150,29 @@ type DiscussionEntry = {
   message: string;
 };
 
+type SupportChatEntry = {
+  id: string;
+  userId: string;
+  userEmail?: string;
+  problemType?: 'billing' | 'access' | 'account' | 'other';
+  title?: string;
+  status?: 'open' | 'in_progress' | 'resolved';
+  lastMessage?: string;
+  lastSender?: 'user' | 'bot' | 'admin';
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+type SupportChatMessageEntry = {
+  id: string;
+  chatId: string;
+  userId: string;
+  sender: 'user' | 'bot' | 'admin';
+  senderName?: string;
+  text: string;
+  createdAt?: string;
+};
+
 export default function AdminDashboard() {
   const { profile, loading: authLoading } = useAuth();
   const router = useRouter();
@@ -164,6 +187,10 @@ export default function AdminDashboard() {
   const [clinicalCases, setClinicalCases] = useState<AdminClinicalCase[]>([]);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [discussions, setDiscussions] = useState<DiscussionEntry[]>([]);
+  const [supportChats, setSupportChats] = useState<SupportChatEntry[]>([]);
+  const [selectedSupportChatId, setSelectedSupportChatId] = useState('');
+  const [supportChatMessages, setSupportChatMessages] = useState<SupportChatMessageEntry[]>([]);
+  const [supportReplyDraft, setSupportReplyDraft] = useState('');
   const [purchaseModalUserId, setPurchaseModalUserId] = useState<string | null>(null);
   const [isCreateUserModalOpen, setIsCreateUserModalOpen] = useState(false);
   const [cloudinaryModalUserId, setCloudinaryModalUserId] = useState<string | null>(null);
@@ -246,6 +273,7 @@ export default function AdminDashboard() {
           clinicalCasesSnap,
           pedagogicalFeedbackSnap,
           clinicalCaseFeedbackSnap,
+          supportChatsSnap,
         ] = await Promise.all([
           getDocs(query(collection(db, 'payments'), where('status', '==', 'pending'))),
           getDocs(collection(db, 'payments')),
@@ -257,6 +285,7 @@ export default function AdminDashboard() {
           getDocs(collection(db, 'clinicalCases')),
           getDocs(collection(db, 'pedagogicalFeedback')),
           getDocs(collection(db, 'clinicalCaseFeedback')),
+          getDocs(collection(db, 'supportChats')),
         ]);
 
         setPayments(paymentsSnap.docs.map(d => ({ id: d.id, ...d.data() } as AdminPayment)));
@@ -310,6 +339,16 @@ export default function AdminDashboard() {
           return bTime - aTime;
         });
         setDiscussions(nextDiscussions);
+
+        const nextSupportChats = supportChatsSnap.docs
+          .map((entry) => ({ id: entry.id, ...(entry.data() as SupportChatEntry) }))
+          .sort((a, b) => {
+            const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+            const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+            return bTime - aTime;
+          });
+        setSupportChats(nextSupportChats);
+        setSelectedSupportChatId((current) => current || nextSupportChats[0]?.id || '');
       } catch (error) {
         console.error('Error fetching admin data:', error);
       } finally {
@@ -319,6 +358,73 @@ export default function AdminDashboard() {
 
     if (!authLoading) fetchData();
   }, [profile, authLoading]);
+
+  const loadSupportMessagesForChat = useCallback(async (chatId: string) => {
+    if (!chatId) {
+      setSupportChatMessages([]);
+      return;
+    }
+
+    try {
+      const messagesSnap = await getDocs(query(collection(db, 'supportChatMessages'), where('chatId', '==', chatId)));
+      const nextMessages = messagesSnap.docs
+        .map((entry) => ({ id: entry.id, ...(entry.data() as SupportChatMessageEntry) }))
+        .sort((a, b) => {
+          const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          return aTime - bTime;
+        });
+      setSupportChatMessages(nextMessages);
+    } catch (error) {
+      console.error('Error loading support chat messages:', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!selectedSupportChatId) {
+      setSupportChatMessages([]);
+      return;
+    }
+    void loadSupportMessagesForChat(selectedSupportChatId);
+  }, [selectedSupportChatId, loadSupportMessagesForChat]);
+
+  useEffect(() => {
+    if (profile?.role !== 'admin') {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      void (async () => {
+        try {
+          const chatsSnap = await getDocs(collection(db, 'supportChats'));
+          const nextChats = chatsSnap.docs
+            .map((entry) => ({ id: entry.id, ...(entry.data() as SupportChatEntry) }))
+            .sort((a, b) => {
+              const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+              const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+              return bTime - aTime;
+            });
+
+          setSupportChats(nextChats);
+
+          const targetChatId = selectedSupportChatId || nextChats[0]?.id || '';
+          if (!selectedSupportChatId && targetChatId) {
+            setSelectedSupportChatId(targetChatId);
+          }
+
+          if (targetChatId) {
+            await loadSupportMessagesForChat(targetChatId);
+          }
+        } catch (error) {
+          console.error('Error polling support chats:', error);
+        }
+      })();
+    }, 4000);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [profile?.role, selectedSupportChatId, loadSupportMessagesForChat]);
 
   const getCreationDate = useCallback((user: AdminUser) => {
     if (!user.createdAt) {
@@ -799,14 +905,29 @@ export default function AdminDashboard() {
 
     try {
       const userPayments = await getDocs(query(collection(db, 'payments'), where('userId', '==', userId)));
+      const userSupportChats = await getDocs(query(collection(db, 'supportChats'), where('userId', '==', userId)));
+      const userSupportMessages = await getDocs(query(collection(db, 'supportChatMessages'), where('userId', '==', userId)));
       await Promise.all(userPayments.docs.map((paymentDoc) => deleteDoc(doc(db, 'payments', paymentDoc.id))));
+      await Promise.all([
+        ...userSupportChats.docs.map((chatDoc) => deleteDoc(doc(db, 'supportChats', chatDoc.id))),
+        ...userSupportMessages.docs.map((messageDoc) =>
+          deleteDoc(doc(db, 'supportChatMessages', messageDoc.id)),
+        ),
+      ]);
 
-      await deleteDoc(doc(db, 'users', userId));
-      await deleteAuthAccountByUid(userId);
+      const deleted = await deleteAuthAccountByUid(userId);
+      if (!deleted) {
+        throw new Error('Compte utilisateur introuvable ou deja supprime.');
+      }
 
       setUsers((prev) => prev.filter((user) => user.id !== userId));
       setAllPayments((prev) => prev.filter((payment) => payment.userId !== userId));
       setPayments((prev) => prev.filter((payment) => payment.userId !== userId));
+      setSupportChats((prev) => prev.filter((chat) => chat.userId !== userId));
+      setSupportChatMessages((prev) => prev.filter((message) => message.userId !== userId));
+      if (selectedSupportChatUser?.id === userId) {
+        setSelectedSupportChatId('');
+      }
     } catch (error) {
       console.error('Error deleting user:', error);
       alert('Erreur lors de la suppression de l utilisateur.');
@@ -1336,6 +1457,144 @@ export default function AdminDashboard() {
   };
 
   const unreadDiscussionCount = discussions.filter((entry) => !entry.isRead).length;
+  const openProblemCount = supportChats.filter((entry) => entry.status !== 'resolved').length;
+  const selectedSupportChat = supportChats.find((entry) => entry.id === selectedSupportChatId) || null;
+  const selectedSupportChatUser = selectedSupportChat
+    ? users.find((entry) => entry.id === selectedSupportChat.userId) || null
+    : null;
+
+  const handleUpdateSupportChat = async (
+    chat: SupportChatEntry,
+    updates: Partial<Pick<SupportChatEntry, 'status'>>,
+  ) => {
+    try {
+      await updateDoc(doc(db, 'supportChats', chat.id), {
+        ...updates,
+        updatedAt: new Date().toISOString(),
+      });
+
+      setSupportChats((prev) =>
+        prev.map((item) => (item.id === chat.id ? { ...item, ...updates } : item)),
+      );
+    } catch (error) {
+      console.error('Error updating support chat:', error);
+      alert('Erreur lors de la mise a jour du statut.');
+    }
+  };
+
+  const deleteSupportChatById = async (chatId: string) => {
+    const messagesSnap = await getDocs(query(collection(db, 'supportChatMessages'), where('chatId', '==', chatId)));
+
+    await Promise.all([
+      ...messagesSnap.docs.map((entry) => deleteDoc(doc(db, 'supportChatMessages', entry.id))),
+      deleteDoc(doc(db, 'supportChats', chatId)),
+    ]);
+
+    setSupportChats((prev) => {
+      const filtered = prev.filter((entry) => entry.id !== chatId);
+      const nextSelected = filtered[0]?.id || '';
+      setSelectedSupportChatId(nextSelected);
+      return filtered;
+    });
+    setSupportChatMessages([]);
+  };
+
+  const handleDeleteSupportChat = async (chat: SupportChatEntry) => {
+    const shouldDelete = window.confirm('Supprimer cette discussion probleme ?');
+    if (!shouldDelete) {
+      return;
+    }
+
+    try {
+      await deleteSupportChatById(chat.id);
+    } catch (error) {
+      console.error('Error deleting support chat:', error);
+      alert('Erreur lors de la suppression de la discussion probleme.');
+    }
+  };
+
+  const handleResolveSupportChat = async (chat: SupportChatEntry) => {
+    const shouldResolve = window.confirm('Marquer comme resolu et supprimer cette discussion ?');
+    if (!shouldResolve) {
+      return;
+    }
+
+    try {
+      await deleteSupportChatById(chat.id);
+    } catch (error) {
+      console.error('Error resolving support chat:', error);
+      alert('Erreur lors de la resolution de la discussion probleme.');
+    }
+  };
+
+  const handleSendAdminSupportReply = async () => {
+    const activeChat = supportChats.find((entry) => entry.id === selectedSupportChatId);
+    if (!activeChat) {
+      return;
+    }
+
+    const reply = String(supportReplyDraft || '').trim();
+    if (!reply) {
+      alert('Saisissez une reponse admin.');
+      return;
+    }
+
+    try {
+      const nowIso = new Date().toISOString();
+      const messageId = `${activeChat.id}-admin-${Date.now()}`;
+      const adminSenderName = String(profile?.displayName || '').trim() || 'Admin';
+
+      await Promise.all([
+        setDoc(doc(db, 'supportChatMessages', messageId), {
+          chatId: activeChat.id,
+          userId: activeChat.userId,
+          sender: 'admin',
+          senderName: adminSenderName,
+          text: reply,
+          createdAt: nowIso,
+        }),
+        updateDoc(doc(db, 'supportChats', activeChat.id), {
+          lastMessage: reply,
+          lastSender: 'admin',
+          status: activeChat.status === 'resolved' ? 'resolved' : 'in_progress',
+          updatedAt: nowIso,
+        }),
+      ]);
+
+      setSupportChatMessages((prev) => [
+        ...prev,
+        {
+          id: messageId,
+          chatId: activeChat.id,
+          userId: activeChat.userId,
+          sender: 'admin',
+          senderName: adminSenderName,
+          text: reply,
+          createdAt: nowIso,
+        },
+      ]);
+
+      setSupportChats((prev) =>
+        prev.map((entry) =>
+          entry.id === activeChat.id
+            ? {
+                ...entry,
+                lastMessage: reply,
+                lastSender: 'admin',
+                status: entry.status === 'resolved' ? 'resolved' : 'in_progress',
+                updatedAt: nowIso,
+              }
+            : entry,
+        ),
+      );
+
+      setSupportReplyDraft('');
+    } catch (error) {
+      console.error('Error sending admin reply:', error);
+      alert('Erreur lors de l envoi de la reponse admin.');
+    }
+  };
+
   const cloudinaryModalUser = users.find((entry) => entry.id === cloudinaryModalUserId) || null;
 
   const adminTabs: Array<{
@@ -2193,11 +2452,12 @@ export default function AdminDashboard() {
           )}
 
           {activeTab === 'discussions' && (
-            <div className="bg-white rounded-2xl shadow-md border border-slate-200 overflow-hidden">
-              {discussions.length === 0 ? (
-                <div className="p-10 text-center text-slate-500">Aucune discussion envoyée pour le moment.</div>
-              ) : (
-                <div className="overflow-x-auto">
+            <div className="space-y-4">
+              <div className="bg-white rounded-2xl shadow-md border border-slate-200 overflow-hidden">
+                {discussions.length === 0 ? (
+                  <div className="p-10 text-center text-slate-500">Aucune discussion pedagogique envoyee pour le moment.</div>
+                ) : (
+                  <div className="overflow-x-auto">
                   <table className="w-full text-left border-collapse">
                     <thead>
                       <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-medium text-sm">
@@ -2277,10 +2537,141 @@ export default function AdminDashboard() {
                       })}
                     </tbody>
                   </table>
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-white rounded-2xl shadow-md border border-slate-200 overflow-hidden">
+                <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-base md:text-lg font-bold text-slate-900">Gestion des problemes support</h3>
+                    <p className="text-xs text-slate-500">{openProblemCount} probleme(s) actif(s)</p>
+                  </div>
                 </div>
-              )}
+
+                <div className="grid gap-4 p-4 lg:grid-cols-[320px_minmax(0,1fr)]">
+                  <div className="rounded-2xl border border-slate-200 overflow-hidden">
+                    {supportChats.length === 0 ? (
+                      <div className="p-6 text-sm text-slate-500">Aucune discussion probleme.</div>
+                    ) : (
+                      <div className="max-h-[480px] overflow-y-auto p-2 space-y-2">
+                        {supportChats.map((chat) => {
+                          const linkedUser = users.find((entry) => entry.id === chat.userId);
+                          const splitName = splitFullName(linkedUser?.displayName || '');
+                          const displayName = formatFullName(
+                            linkedUser?.lastName || splitName.lastName,
+                            linkedUser?.firstName || splitName.firstName,
+                          ) || linkedUser?.displayName || chat.userEmail || chat.userId;
+
+                          return (
+                            <button
+                              key={chat.id}
+                              type="button"
+                              onClick={() => setSelectedSupportChatId(chat.id)}
+                              className={`w-full text-left rounded-xl border px-3 py-2 transition-colors ${
+                                selectedSupportChatId === chat.id
+                                  ? 'border-medical-500 bg-medical-50'
+                                  : 'border-slate-200 bg-white hover:bg-slate-50'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="text-sm font-semibold text-slate-900 truncate">{displayName}</p>
+                                <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">{chat.status || 'open'}</span>
+                              </div>
+                              <p className="text-xs text-slate-500 mt-1 truncate">{chat.lastMessage || '-'}</p>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-200 overflow-hidden">
+                    {!selectedSupportChat ? (
+                      <div className="p-8 text-sm text-slate-500">Selectionnez une discussion probleme.</div>
+                    ) : (
+                      <div className="p-4 space-y-4">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <p className="text-sm font-semibold text-slate-900">
+                              {(() => {
+                                const splitName = splitFullName(selectedSupportChatUser?.displayName || '');
+                                return formatFullName(
+                                  selectedSupportChatUser?.lastName || splitName.lastName,
+                                  selectedSupportChatUser?.firstName || splitName.firstName,
+                                ) || selectedSupportChatUser?.displayName || selectedSupportChat.userEmail || selectedSupportChat.userId;
+                              })()}
+                            </p>
+                            <p className="text-xs text-slate-500">{selectedSupportChatUser?.email || selectedSupportChat.userEmail || '-'}</p>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleResolveSupportChat(selectedSupportChat)}
+                              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-100 text-emerald-800 hover:bg-emerald-200"
+                            >
+                              Resoudre (supprimer)
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteSupportChat(selectedSupportChat)}
+                              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-100 text-red-700 hover:bg-red-200"
+                            >
+                              Supprimer
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="rounded-xl border border-slate-200 p-3 h-[360px] overflow-y-auto space-y-3">
+                          {supportChatMessages.length === 0 ? (
+                            <p className="text-sm text-slate-500">Aucun message dans cette discussion.</p>
+                          ) : (
+                            supportChatMessages.map((message) => (
+                              <div
+                                key={message.id}
+                                className={`max-w-[88%] rounded-xl px-3 py-2 text-sm whitespace-pre-wrap ${
+                                  message.sender === 'admin'
+                                    ? 'ml-auto bg-medical-600 text-white'
+                                    : message.sender === 'user'
+                                      ? 'mr-auto bg-slate-100 text-slate-900 border border-slate-200'
+                                      : 'mr-auto bg-amber-50 text-amber-900 border border-amber-200'
+                                }`}
+                              >
+                                <p className="text-[11px] font-semibold uppercase tracking-wide opacity-80 mb-1">
+                                  {message.senderName || (message.sender === 'bot' ? 'DEMS-ORL-Bot' : message.sender === 'admin' ? 'Admin' : 'User')}
+                                </p>
+                                <p>{message.text}</p>
+                              </div>
+                            ))
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={supportReplyDraft}
+                            onChange={(event) => setSupportReplyDraft(event.target.value)}
+                            className="flex-1 px-3 py-2 rounded-lg border border-slate-300 text-sm"
+                            placeholder="Repondre dans le chat probleme..."
+                          />
+                          <button
+                            type="button"
+                            onClick={handleSendAdminSupportReply}
+                            className="px-4 py-2 rounded-lg text-sm font-semibold bg-medical-600 text-white hover:bg-medical-700"
+                          >
+                            Envoyer
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
             </div>
           )}
+
         </div>
       </main>
     </div>
