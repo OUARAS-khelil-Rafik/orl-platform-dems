@@ -21,6 +21,32 @@ const parseDoc = (doc) => {
   };
 };
 
+const isNamespaceNotFoundError = (error) => {
+  const code = Number(error?.code);
+  const codeName = String(error?.codeName || '').toLowerCase();
+  const message = String(error?.message || '').toLowerCase();
+
+  if (code === 26 || codeName === 'namespacenotfound') {
+    return true;
+  }
+
+  return (
+    (message.includes('namespace') && message.includes('not found')) ||
+    message.includes('ns does not exist')
+  );
+};
+
+const findCollectionDocsOrEmpty = async ({ db, collection, filter = {} }) => {
+  try {
+    return await db.collection(collection).find(filter).toArray();
+  } catch (error) {
+    if (isNamespaceNotFoundError(error)) {
+      return [];
+    }
+    throw error;
+  }
+};
+
 const toMongoFilter = (constraints = []) => {
   const filter = {};
 
@@ -735,7 +761,11 @@ router.get('/:collection', async (req, res) => {
       return res.json({ docs });
     }
 
-    const docs = await mongoose.connection.db.collection(collection).find({}).toArray();
+    const docs = await findCollectionDocsOrEmpty({
+      db: mongoose.connection.db,
+      collection,
+      filter: {},
+    });
     return res.json({ docs: docs.map(parseDoc).filter(Boolean) });
   } catch {
     return res.status(500).json({ message: 'Unable to fetch collection.' });
@@ -763,7 +793,11 @@ router.post('/query', async (req, res) => {
       return res.json({ docs });
     }
 
-    const docs = await mongoose.connection.db.collection(collection).find(filter).toArray();
+    const docs = await findCollectionDocsOrEmpty({
+      db: mongoose.connection.db,
+      collection,
+      filter,
+    });
     return res.json({ docs: docs.map(parseDoc).filter(Boolean) });
   } catch {
     return res.status(500).json({ message: 'Unable to execute query.' });
