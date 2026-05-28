@@ -1401,23 +1401,31 @@ html[data-theme='dark'] .from-slate-900\/60 {
   .notification-panel-footer {
     padding: 0.45rem 0.75rem 0.65rem;
     border-top: 1px solid color-mix(in oklab, var(--app-border) 78%, transparent);
+    display: flex;
+    justify-content: center;
+    align-items: center;
   }
 
   .notification-footer-action {
-    width: 100%;
-    border-radius: 10px;
-    border: 1px solid color-mix(in oklab, var(--app-border) 82%, transparent);
-    background: color-mix(in oklab, var(--app-surface) 94%, white 6%);
+    width: auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: transparent;
     color: var(--app-accent);
     font-size: 0.76rem;
     font-weight: 700;
-    padding: 0.45rem 0.75rem;
-    transition: border-color 150ms ease, background-color 150ms ease;
+    padding: 0.35rem 0.25rem;
+    text-align: center;
+    text-decoration: none;
+    transition: color 150ms ease, text-decoration-color 150ms ease;
   }
 
   .notification-footer-action:hover {
-    border-color: color-mix(in oklab, var(--app-accent) 42%, var(--app-border) 58%);
-    background: color-mix(in oklab, var(--app-accent) 8%, var(--app-surface) 92%);
+    text-decoration: underline;
+    text-decoration-thickness: 2px;
+    text-underline-offset: 4px;
   }
 
   /* Dark mode notification adjustments */
@@ -1598,13 +1606,13 @@ html[data-theme='dark'] .from-slate-900\/60 {
 
   html[data-theme='dark'] .notification-footer-action {
     color: color-mix(in oklab, var(--app-accent) 86%, white 14%);
-    border-color: color-mix(in oklab, var(--app-accent) 30%, var(--app-border) 70%);
-    background: color-mix(in oklab, var(--app-deep-surface) 92%, rgba(255,255,255,0.03));
+    background: transparent;
   }
 
   html[data-theme='dark'] .notification-footer-action:hover {
-    border-color: color-mix(in oklab, var(--app-accent) 60%, var(--app-border) 40%);
-    background: color-mix(in oklab, var(--app-accent) 16%, var(--app-deep-surface) 84%);
+    text-decoration: underline;
+    text-decoration-thickness: 2px;
+    text-underline-offset: 4px;
   }
 
 

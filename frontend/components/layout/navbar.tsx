@@ -61,7 +61,6 @@ export function Navbar() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
-  const [showAllNotifications, setShowAllNotifications] = useState(false);
   const [isLoadingNotifications, setIsLoadingNotifications] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isSearchHover, setIsSearchHover] = useState(false);
@@ -155,15 +154,9 @@ export function Navbar() {
 
     const rootTheme = document.documentElement.getAttribute('data-theme');
     const storedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
-    const profileTheme = profile?.defaultMode;
-
-    // Account preference must win on sign-in so each user gets their own default mode.
-    const hasProfileTheme = profileTheme === 'light' || profileTheme === 'dark';
 
     const nextTheme =
-      (hasProfileTheme
-        ? profileTheme
-        : storedTheme === 'light' || storedTheme === 'dark'
+      (storedTheme === 'light' || storedTheme === 'dark'
         ? storedTheme
         : rootTheme === 'light' || rootTheme === 'dark'
           ? rootTheme
@@ -172,7 +165,7 @@ export function Navbar() {
     setThemeMode(nextTheme);
     document.documentElement.setAttribute('data-theme', nextTheme);
     window.localStorage.setItem(THEME_STORAGE_KEY, nextTheme);
-  }, [profile?.defaultMode]);
+  }, []);
 
   const getNotificationStorageKey = (uid: string) => `${NOTIFICATION_STORAGE_PREFIX}-${uid}`;
 
@@ -395,7 +388,6 @@ export function Navbar() {
     setNotificationDeletedIds((prev) => Array.from(new Set([...prev, ...visibleIds])));
     setNotificationReadIds((prev) => prev.filter((id) => !visibleIds.includes(id)));
     setNotifications([]);
-    setShowAllNotifications(false);
   };
 
   const openNotification = (notification: NavbarNotification) => {
@@ -410,7 +402,7 @@ export function Navbar() {
   };
 
   const unreadNotificationCount = notifications.filter((item) => !notificationReadIds.includes(item.id)).length;
-  const visibleNotifications = showAllNotifications ? notifications : notifications.slice(0, 5);
+  const visibleNotifications = notifications.slice(0, 5);
 
   const notificationTypeLabels: Record<NavbarNotification['type'], string> = {
     payment: 'Paiement',
@@ -574,17 +566,19 @@ export function Navbar() {
         )}
       </div>
 
-      {notifications.length > 5 && (
-        <div className="notification-panel-footer">
-          <button
-            type="button"
-            onClick={() => setShowAllNotifications((v) => !v)}
-            className="notification-footer-action"
-          >
-            {showAllNotifications ? 'Voir moins' : 'Voir toutes les notifications'}
-          </button>
-        </div>
-      )}
+      <div className="notification-panel-footer">
+        <Link
+          href="/notifications"
+          onClick={() => {
+            setIsNotificationsOpen(false);
+            setIsUserMenuOpen(false);
+            setIsMobileMenuOpen(false);
+          }}
+          className="notification-footer-action"
+        >
+          Voir toutes les notifications
+        </Link>
+      </div>
     </div>
   );
 
@@ -765,7 +759,6 @@ export function Navbar() {
                     onClick={() => {
                       setIsNotificationsOpen((v) => !v);
                       setIsUserMenuOpen(false);
-                      setShowAllNotifications(false);
                     }}
                     className="no-fly-style relative p-2 text-(--app-muted) hover:text-(--app-text) rounded-full transition-colors focus:bg-transparent active:bg-transparent"
                     title="Notifications"
@@ -934,7 +927,6 @@ export function Navbar() {
                   setIsNotificationsOpen((v) => !v);
                   setIsMobileMenuOpen(false);
                   setIsUserMenuOpen(false);
-                  setShowAllNotifications(false);
                 }}
                 className="no-fly-style relative p-2 rounded-full bg-white/75 text-(--app-muted) hover:text-(--app-text) hover:bg-white transition-colors"
                 title="Notifications"

@@ -10,8 +10,6 @@ import {
   Star,
   Camera,
   LockKeyhole,
-  Moon,
-  Sun,
   Trash2,
   Crop,
   RotateCcw,
@@ -19,7 +17,6 @@ import {
   Square,
   Link2,
   Unplug,
-  Bell,
 } from 'lucide-react';
 import Cropper, { type Area } from 'react-easy-crop';
 import { useAuth } from '@/components/providers/auth-provider';
@@ -46,16 +43,6 @@ import { isSubscriptionActive } from '@/lib/security/access-control';
 import { formatFullName, normalizeNameParts, splitFullName } from '@/lib/utils/name-utils';
 import { AVATAR_FALLBACK_SRC, applyImageFallback } from '@/lib/utils/media-fallback';
 import { normalizeGoogleOAuthError } from '@/lib/utils/oauth-error';
-
-type UserNotification = {
-  id: string;
-  title?: string;
-  description?: string;
-  type?: string;
-  targetHref?: string;
-  isRead?: boolean;
-  createdAt?: string;
-};
 
 type SupportChat = {
   id: string;
@@ -95,8 +82,6 @@ export default function UserDashboard() {
   const [lastName, setLastName] = useState('');
   const [firstName, setFirstName] = useState('');
   const [themeMode, setThemeMode] = useState<'light' | 'dark'>('light');
-  const [defaultMode, setDefaultMode] = useState<'light' | 'dark'>('light');
-  const [isSavingDefaultMode, setIsSavingDefaultMode] = useState(false);
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [avatarEditorOpen, setAvatarEditorOpen] = useState(false);
   const [avatarSource, setAvatarSource] = useState<string | null>(null);
@@ -120,8 +105,6 @@ export default function UserDashboard() {
     apiSecret: '',
   });
   const [isSavingStorageSettings, setIsSavingStorageSettings] = useState(false);
-  const [notifications, setNotifications] = useState<UserNotification[]>([]);
-  const [isLoadingNotifications, setIsLoadingNotifications] = useState(false);
   const [supportChats, setSupportChats] = useState<SupportChat[]>([]);
   const [activeSupportChatId, setActiveSupportChatId] = useState('');
   const [supportChatMessages, setSupportChatMessages] = useState<SupportChatMessage[]>([]);
@@ -328,7 +311,6 @@ export default function UserDashboard() {
       const splitName = splitFullName(profile.displayName || '');
       setLastName(profile.lastName || splitName.lastName);
       setFirstName(profile.firstName || splitName.firstName);
-      setDefaultMode(profile.defaultMode || 'light');
     }
   }, [profile]);
 
@@ -370,34 +352,18 @@ export default function UserDashboard() {
   }, [profile]);
 
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', defaultMode);
-    setThemeMode(defaultMode);
-  }, [defaultMode]);
-
-  useEffect(() => {
-    const loadUserNotificationsAndSupport = async () => {
+    const loadSupportChats = async () => {
       if (!user) {
-        setNotifications([]);
         setSupportChats([]);
         setSupportChatMessages([]);
         setActiveSupportChatId('');
         return;
       }
 
-      setIsLoadingNotifications(true);
       try {
-        const [notificationsSnap, chatsSnap] = await Promise.all([
-          getDocs(query(collection(db, 'notifications'), where('userId', '==', user.uid))),
-          getDocs(query(collection(db, 'supportChats'), where('userId', '==', user.uid))),
-        ]);
-
-        const nextNotifications = notificationsSnap.docs
-          .map((entry) => ({ ...(entry.data() as UserNotification), id: entry.id }))
-          .sort((a, b) => {
-            const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-            const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-            return bTime - aTime;
-          });
+        const chatsSnap = await getDocs(
+          query(collection(db, 'supportChats'), where('userId', '==', user.uid)),
+        );
 
         const nextSupportChats = chatsSnap.docs
           .map((entry) => ({ ...(entry.data() as SupportChat), id: entry.id }))
@@ -407,17 +373,14 @@ export default function UserDashboard() {
             return bTime - aTime;
           });
 
-        setNotifications(nextNotifications);
         setSupportChats(nextSupportChats);
         setActiveSupportChatId((current) => current || nextSupportChats[0]?.id || '');
       } catch (error) {
-        console.error('Error loading notifications/support messages:', error);
-      } finally {
-        setIsLoadingNotifications(false);
+        console.error('Error loading support chats:', error);
       }
     };
 
-    void loadUserNotificationsAndSupport();
+    void loadSupportChats();
   }, [user]);
 
   const loadSupportMessagesByChatId = useCallback(async (chatId: string) => {
@@ -699,21 +662,6 @@ export default function UserDashboard() {
     }
   };
 
-  const handleSaveDefaultMode = async () => {
-    if (!user) return;
-
-    try {
-      setIsSavingDefaultMode(true);
-      await updateDoc(doc(db, 'users', user.uid), { defaultMode });
-      alert('Mode par défaut enregistré.');
-    } catch (error) {
-      console.error('Error saving default mode:', error);
-      alert('Erreur lors de l\'enregistrement du mode.');
-    } finally {
-      setIsSavingDefaultMode(false);
-    }
-  };
-
   const handleSaveStorageSettings = async () => {
     if (!profile || profile.role !== 'admin') return;
 
@@ -737,21 +685,6 @@ export default function UserDashboard() {
       alert('Erreur lors de l\'enregistrement des paramètres de stockage.');
     } finally {
       setIsSavingStorageSettings(false);
-    }
-  };
-
-  const handleMarkNotificationAsRead = async (notificationId: string) => {
-    try {
-      await updateDoc(doc(db, 'notifications', notificationId), {
-        isRead: true,
-        updatedAt: new Date().toISOString(),
-      });
-
-      setNotifications((prev) =>
-        prev.map((entry) => (entry.id === notificationId ? { ...entry, isRead: true } : entry)),
-      );
-    } catch (error) {
-      console.error('Error marking notification as read:', error);
     }
   };
 
@@ -961,7 +894,6 @@ export default function UserDashboard() {
 
   const isVipPlus = isSubscriptionActive(profile);
   const accountLevelLabel = isVipPlus ? 'VIP Plus' : profile.role === 'vip' ? 'VIP' : profile.role === 'admin' ? 'Admin' : 'Demo';
-  const unreadNotificationsCount = notifications.filter((entry) => !entry.isRead).length;
   const activeSupportChat = supportChats.find((chat) => chat.id === activeSupportChatId) || null;
   const isActiveSupportChatResolved = activeSupportChat?.status === 'resolved';
 
@@ -1216,91 +1148,6 @@ export default function UserDashboard() {
                     {isUpdatingPassword ? 'Mise a jour...' : passwordPrimaryActionLabel}
                   </button>
                 </div>
-              </section>
-
-              <section className={`rounded-2xl p-4 sm:p-6 md:p-8 shadow-lg ${cardClassName}`}>
-                <h3 className="text-xl font-bold mb-4 text-(--app-text)">Mode par défaut</h3>
-                <div className={`rounded-2xl border p-5 ${insetCardClasses}`}>
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                    <div className="relative flex-1">
-                      <select
-                        value={defaultMode}
-                        onChange={(e) => setDefaultMode(e.target.value as 'light' | 'dark')}
-                        className={`${inputClasses} ${inputToneClasses} appearance-none pr-10`}
-                        title="Mode par défaut"
-                        aria-label="Mode par défaut"
-                      >
-                        <option value="light">Light mode</option>
-                        <option value="dark">Dark mode</option>
-                      </select>
-                      {defaultMode === 'dark' ? (
-                        <Moon className="pointer-events-none absolute right-3 top-2.5 h-4 w-4 text-(--app-muted)" />
-                      ) : (
-                        <Sun className="pointer-events-none absolute right-3 top-2.5 h-4 w-4 text-(--app-muted)" />
-                      )}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleSaveDefaultMode}
-                      disabled={isSavingDefaultMode}
-                      className="w-full sm:w-auto px-4 py-2 rounded-xl bg-(--app-accent) text-(--app-accent-contrast) text-sm font-medium hover:brightness-110 disabled:opacity-60 transition-colors"
-                    >
-                      {isSavingDefaultMode ? 'Enregistrement...' : 'Enregistrer'}
-                    </button>
-                  </div>
-                </div>
-              </section>
-
-              <section className={`rounded-2xl p-4 sm:p-6 md:p-8 shadow-lg ${cardClassName}`}>
-                  <h3 className="text-xl font-bold mb-4 flex items-center gap-2 text-(--app-text)">
-                    <Bell className="w-5 h-5 text-(--app-muted)" />
-                    Notifications ({unreadNotificationsCount} non lues)
-                  </h3>
-
-                  <div className={`rounded-2xl border p-5 space-y-3 ${insetCardClasses}`}>
-                    {isLoadingNotifications ? (
-                      <p className={`text-sm ${subtleTextClass}`}>Chargement des notifications...</p>
-                    ) : notifications.length === 0 ? (
-                      <p className={`text-sm ${subtleTextClass}`}>Aucune notification pour le moment.</p>
-                    ) : (
-                      notifications.slice(0, 12).map((entry) => (
-                        <div
-                          key={entry.id}
-                          className={`rounded-xl border px-3 sm:px-4 py-3 ${insetCardClasses} ${entry.isRead ? '' : 'border-[color-mix(in_oklab,var(--app-accent)_45%,var(--app-border)_55%)]'}`}
-                        >
-                          <div className="flex flex-wrap items-start justify-between gap-2">
-                            <div>
-                              <p className="text-sm font-semibold text-(--app-text)">{entry.title || 'Notification'}</p>
-                              <p className={`text-xs mt-1 ${subtleTextClass}`}>{entry.description || '-'}</p>
-                              <p className={`text-[11px] mt-2 ${subtleTextClass}`}>
-                                {entry.createdAt ? new Date(entry.createdAt).toLocaleString() : '-'}
-                              </p>
-                            </div>
-
-                            <div className="flex items-center gap-2">
-                              {entry.targetHref ? (
-                                <Link
-                                  href={entry.targetHref}
-                                  className="text-xs font-semibold text-(--app-accent) hover:underline"
-                                >
-                                  Ouvrir
-                                </Link>
-                              ) : null}
-                              {!entry.isRead ? (
-                                <button
-                                  type="button"
-                                  onClick={() => handleMarkNotificationAsRead(entry.id)}
-                                  className="text-xs font-semibold text-(--app-accent) hover:underline"
-                                >
-                                  Marquer lue
-                                </button>
-                              ) : null}
-                            </div>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
               </section>
 
               {profile.role !== 'admin' && (

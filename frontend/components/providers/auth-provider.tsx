@@ -30,7 +30,6 @@ export interface UserProfile {
   firstName?: string;
   lastName?: string;
   photoURL: string;
-  defaultMode?: 'light' | 'dark';
   role: UserRole;
   subscriptionEndDate?: string;
   subscriptionApprovalStatus: SubscriptionApprovalStatus;
@@ -140,7 +139,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       firstName: normalizedNames.firstName,
       lastName: normalizedNames.lastName,
       photoURL: profile.photoURL || authUser?.photoURL || '',
-      defaultMode: profile.defaultMode === 'dark' ? 'dark' : 'light',
       role: profile.role || 'user',
       subscriptionApprovalStatus: profile.subscriptionApprovalStatus || 'none',
       purchasedVideos: uniquePurchasedVideos,
@@ -184,7 +182,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       firstName: splitFullName(authUser.displayName || 'Utilisateur').firstName,
       lastName: splitFullName(authUser.displayName || 'Utilisateur').lastName,
       photoURL: authUser.photoURL || '',
-      defaultMode: 'light',
       role: 'user',
       subscriptionApprovalStatus: 'none',
       purchasedVideos: [],
