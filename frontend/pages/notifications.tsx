@@ -3,9 +3,21 @@
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { Bell, Mail, MailOpen, Trash2, ExternalLink } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/components/providers/auth-provider';
-import { db, collection, doc, getDocs, query, updateDoc, where } from '@/lib/data/local-data';
+import {
+  db,
+  collection,
+  doc,
+  getDocs,
+  loadNotificationStorageState,
+  query,
+  saveNotificationStorageState,
+  subscribeToDataChanges,
+  subscribeToNotificationStorageChanges,
+  updateDoc,
+  where,
+} from '@/lib/data/local-data';
 
 type UserNotification = {
   id: string;
@@ -31,6 +43,14 @@ const parseIsoToMs = (value: unknown) => {
   return Number.isNaN(parsed) ? 0 : parsed;
 };
 
+const areStringArraysEqual = (left: string[], right: string[]) => {
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  return left.every((value, index) => value === right[index]);
+};
+
 export default function NotificationsPage() {
   const { user, profile, loading: authLoading } = useAuth();
   const router = useRouter();
@@ -39,6 +59,7 @@ export default function NotificationsPage() {
   const [notificationReadIds, setNotificationReadIds] = useState<string[]>([]);
   const [notificationDeletedIds, setNotificationDeletedIds] = useState<string[]>([]);
   const [isNotificationStorageHydrated, setIsNotificationStorageHydrated] = useState(false);
+  const loadRequestIdRef = useRef(0);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -46,14 +67,21 @@ export default function NotificationsPage() {
     }
   }, [authLoading, user, router]);
 
-  useEffect(() => {
-    const loadNotifications = async () => {
+  const loadNotifications = useCallback(
+    async (options: { showLoading?: boolean } = {}) => {
+      const { showLoading = false } = options;
+      const loadId = ++loadRequestIdRef.current;
+
       if (!user || !profile) {
         setNotifications([]);
+        setIsLoadingNotifications(false);
         return;
       }
 
-      setIsLoadingNotifications(true);
+      if (showLoading) {
+        setIsLoadingNotifications(true);
+      }
+
       try {
         const [videosSnap, qcmsSnap, openQuestionsSnap, diagramsSnap, clinicalCasesSnap, userNotificationsSnap] =
           await Promise.all([
@@ -79,7 +107,6 @@ export default function NotificationsPage() {
 
         const nextNotifications: UserNotification[] = [];
 
-        // Videos
         allowedVideos.forEach((video) => {
           nextNotifications.push({
             id: `video:${video.id}`,
@@ -92,7 +119,6 @@ export default function NotificationsPage() {
           });
         });
 
-        // QCM
         qcmsSnap.docs.forEach((d) => {
           const data = d.data() as Record<string, any>;
           if (!allowedVideoIds.has(String(data.videoId || ''))) return;
@@ -108,7 +134,6 @@ export default function NotificationsPage() {
           });
         });
 
-        // Open questions
         openQuestionsSnap.docs.forEach((d) => {
           const data = d.data() as Record<string, any>;
           if (!allowedVideoIds.has(String(data.videoId || ''))) return;
@@ -124,7 +149,6 @@ export default function NotificationsPage() {
           });
         });
 
-        // Diagrams
         diagramsSnap.docs.forEach((d) => {
           const data = d.data() as Record<string, any>;
           if (!allowedVideoIds.has(String(data.videoId || ''))) return;
@@ -140,7 +164,6 @@ export default function NotificationsPage() {
           });
         });
 
-        // Clinical cases
         clinicalCasesSnap.docs.forEach((d) => {
           const data = d.data() as Record<string, any>;
           if (!allowedVideoIds.has(String(data.videoId || ''))) return;
@@ -156,7 +179,6 @@ export default function NotificationsPage() {
           });
         });
 
-        // User notifications stored in DB
         userNotificationsSnap.docs.forEach((d) => {
           const data = d.data() as Record<string, any>;
           const rawType = String(data.type || '').toLowerCase();
@@ -172,47 +194,98 @@ export default function NotificationsPage() {
           });
         });
 
-        // Apply deleted filter and sort
-        // hydrate storage if not yet
-        const storageKey = `dems-navbar-notifications-v1-${user.uid}`;
-        let stored = { readIds: [] as string[], deletedIds: [] as string[] };
-        try {
-          const raw = typeof window !== 'undefined' ? window.localStorage.getItem(storageKey) : null;
-          if (raw) {
-            const parsed = JSON.parse(raw) as { readIds?: string[]; deletedIds?: string[] };
-            stored.readIds = Array.isArray(parsed.readIds) ? parsed.readIds : [];
-            stored.deletedIds = Array.isArray(parsed.deletedIds) ? parsed.deletedIds : [];
-          }
-        } catch {
-          // ignore
-        }
+        const stored = loadNotificationStorageState(user.uid);
 
-        // include server-side isRead flags for user notifications
         const serverReadIds = userNotificationsSnap.docs
           .filter((d) => Boolean((d.data() as any).isRead))
           .map((d) => `userNotification:${d.id}`);
 
         const initialReadIds = Array.from(new Set([...stored.readIds, ...serverReadIds]));
-
         const filtered = nextNotifications
           .filter((item) => !stored.deletedIds.includes(item.id))
           .sort((a, b) => parseIsoToMs(String(b.createdAt || '')) - parseIsoToMs(String(a.createdAt || '')));
 
+        if (loadRequestIdRef.current !== loadId) {
+          return;
+        }
+
         setNotificationReadIds(initialReadIds);
         setNotificationDeletedIds(stored.deletedIds);
         setIsNotificationStorageHydrated(true);
-
         setNotifications(filtered);
       } catch (error) {
-        console.error('Error loading notifications:', error);
-        setNotifications([]);
+        if (loadRequestIdRef.current === loadId) {
+          console.error('Error loading notifications:', error);
+          setNotifications([]);
+        }
       } finally {
-        setIsLoadingNotifications(false);
+        if (loadRequestIdRef.current === loadId && showLoading) {
+          setIsLoadingNotifications(false);
+        }
       }
-    };
+    },
+    [profile, user],
+  );
 
-    void loadNotifications();
-  }, [user, profile]);
+  useEffect(() => {
+    if (!user) {
+      setNotifications([]);
+      setNotificationReadIds([]);
+      setNotificationDeletedIds([]);
+      setIsNotificationStorageHydrated(false);
+      setIsLoadingNotifications(false);
+      return;
+    }
+
+    if (!profile) {
+      setNotifications([]);
+      setIsLoadingNotifications(false);
+      return;
+    }
+
+    void loadNotifications({ showLoading: true });
+
+    const relevantCollections = new Set(['videos', 'qcms', 'openQuestions', 'diagrams', 'clinicalCases', 'notifications']);
+    const unsubscribe = subscribeToDataChanges((event) => {
+      if (!relevantCollections.has(event.collection)) {
+        return;
+      }
+
+      void loadNotifications({ showLoading: false });
+    });
+
+    const timer = window.setInterval(() => {
+      void loadNotifications({ showLoading: false });
+    }, 60000);
+
+    return () => {
+      unsubscribe();
+      window.clearInterval(timer);
+    };
+  }, [loadNotifications, profile, user]);
+
+  useEffect(() => {
+    if (!user || !isNotificationStorageHydrated) {
+      return;
+    }
+
+    const unsubscribe = subscribeToNotificationStorageChanges((event) => {
+      if (event.uid !== user.uid) {
+        return;
+      }
+
+      setNotificationReadIds((prev) => (areStringArraysEqual(prev, event.state.readIds) ? prev : event.state.readIds));
+      setNotificationDeletedIds((prev) =>
+        areStringArraysEqual(prev, event.state.deletedIds) ? prev : event.state.deletedIds,
+      );
+      setNotifications((prev) => {
+        const nextNotifications = prev.filter((item) => !event.state.deletedIds.includes(item.id));
+        return nextNotifications.length === prev.length ? prev : nextNotifications;
+      });
+    });
+
+    return unsubscribe;
+  }, [user, isNotificationStorageHydrated]);
 
   const unreadNotificationsCount = useMemo(() => {
     if (!isNotificationStorageHydrated) {
@@ -220,6 +293,10 @@ export default function NotificationsPage() {
     }
     return notifications.filter((entry) => !notificationReadIds.includes(entry.id)).length;
   }, [notifications, notificationReadIds, isNotificationStorageHydrated]);
+  const unreadNotificationsLabel =
+    unreadNotificationsCount > 0
+      ? `${unreadNotificationsCount} non lue${unreadNotificationsCount > 1 ? 's' : ''}`
+      : '';
 
   const getTypeToneClass = (type?: string) => {
     const normalized = String(type || '').toLowerCase();
@@ -308,11 +385,10 @@ export default function NotificationsPage() {
       }).catch((error) => console.error('Error updating notification:', error));
     }
 
-    // save to localStorage avec la valeur calculée
-    const storageKey = `dems-navbar-notifications-v1-${user.uid}`;
-    try {
-      window.localStorage.setItem(storageKey, JSON.stringify({ readIds: nextRead, deletedIds: notificationDeletedIds }));
-    } catch {}
+    saveNotificationStorageState(user.uid, {
+      readIds: nextRead,
+      deletedIds: notificationDeletedIds,
+    });
   };
 
   const handleDeleteNotification = (notificationId: string) => {
@@ -328,11 +404,10 @@ export default function NotificationsPage() {
     setNotificationReadIds(nextRead);
     setNotifications(nextNotifications);
 
-    // save to localStorage avec les valeurs calculées
-    const storageKey = `dems-navbar-notifications-v1-${user.uid}`;
-    try {
-      window.localStorage.setItem(storageKey, JSON.stringify({ readIds: nextRead, deletedIds: nextDeleted }));
-    } catch {}
+    saveNotificationStorageState(user.uid, {
+      readIds: nextRead,
+      deletedIds: nextDeleted,
+    });
   };
 
   // Marquer toutes comme lues
@@ -341,11 +416,10 @@ export default function NotificationsPage() {
     const visibleIds = notifications.map((n) => n.id);
     const nextRead = Array.from(new Set([...notificationReadIds, ...visibleIds]));
     setNotificationReadIds(nextRead);
-
-    const storageKey = `dems-navbar-notifications-v1-${user.uid}`;
-    try {
-      window.localStorage.setItem(storageKey, JSON.stringify({ readIds: nextRead, deletedIds: notificationDeletedIds }));
-    } catch {}
+    saveNotificationStorageState(user.uid, {
+      readIds: nextRead,
+      deletedIds: notificationDeletedIds,
+    });
   };
 
   // Supprimer toutes
@@ -362,11 +436,10 @@ export default function NotificationsPage() {
     setNotificationDeletedIds(nextDeleted);
     setNotificationReadIds(nextRead);
     setNotifications(nextNotifications);
-
-    const storageKey = `dems-navbar-notifications-v1-${user.uid}`;
-    try {
-      window.localStorage.setItem(storageKey, JSON.stringify({ readIds: nextRead, deletedIds: nextDeleted }));
-    } catch {}
+    saveNotificationStorageState(user.uid, {
+      readIds: nextRead,
+      deletedIds: nextDeleted,
+    });
   };
 
   if (!profile) return null;
@@ -383,9 +456,11 @@ export default function NotificationsPage() {
               </div>
               <div>
                 <h1 className="text-2xl sm:text-3xl font-bold text-(--app-text)">Notifications</h1>
-                <p className="text-sm text-[color-mix(in_oklab,var(--app-text)_70%,var(--app-muted)_30%)]">
-                  {unreadNotificationsCount} non lue{unreadNotificationsCount > 1 ? 's' : ''}
-                </p>
+                {unreadNotificationsLabel && (
+                  <p className="text-sm text-[color-mix(in_oklab,var(--app-text)_70%,var(--app-muted)_30%)]">
+                    {unreadNotificationsLabel}
+                  </p>
+                )}
               </div>
             </div>
 

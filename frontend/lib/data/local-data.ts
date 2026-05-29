@@ -67,6 +67,15 @@ interface ApiHttpError extends Error {
   serverMessage?: string;
 }
 
+type DataChangeOperation = 'add' | 'set' | 'update' | 'delete';
+
+export type DataChangeEvent = {
+  collection: string;
+  id?: string;
+  operation: DataChangeOperation;
+  timestamp: number;
+};
+
 export interface LocalAuthUser {
   uid: string;
   email: string;
@@ -76,6 +85,17 @@ export interface LocalAuthUser {
 }
 
 export type CloudinaryResourceType = 'image' | 'video' | 'raw';
+
+export type NotificationStorageState = {
+  readIds: string[];
+  deletedIds: string[];
+};
+
+export type NotificationStorageChangeEvent = {
+  uid: string;
+  state: NotificationStorageState;
+  timestamp: number;
+};
 
 export interface CloudinaryCleanupAsset {
   publicId?: string;
@@ -124,6 +144,9 @@ const getApiBaseUrlCandidates = () => {
 
 const AUTH_SESSION_KEY = 'dems-auth-session-v1';
 const AUTH_SESSION_TEMP_KEY = 'dems-auth-session-temp-v1';
+const DATA_CHANGE_EVENT_NAME = 'dems-data-change-v1';
+const DATA_CHANGE_CHANNEL_NAME = 'dems-data-change-channel-v1';
+const NOTIFICATION_STORAGE_EVENT_NAME = 'dems-notification-storage-v1';
 
 const authListeners = new Set<(user: LocalAuthUser | null) => void>();
 
@@ -199,6 +222,172 @@ const getSessionPersistence = (): 'local' | 'session' => {
 
 const notifyAuthListeners = (user: LocalAuthUser | null) => {
   authListeners.forEach((listener) => listener(user));
+};
+
+const emitDataChange = (event: Omit<DataChangeEvent, 'timestamp'>) => {
+  if (!isBrowser()) {
+    return;
+  }
+
+  const payload: DataChangeEvent = {
+    ...event,
+    timestamp: Date.now(),
+  };
+
+  window.dispatchEvent(new CustomEvent<DataChangeEvent>(DATA_CHANGE_EVENT_NAME, { detail: payload }));
+
+  if (typeof BroadcastChannel !== 'undefined') {
+    const channel = new BroadcastChannel(DATA_CHANGE_CHANNEL_NAME);
+    channel.postMessage(payload);
+    channel.close();
+  }
+};
+
+const getNotificationStorageKey = (uid: string) => `dems-navbar-notifications-v1-${uid}`;
+
+const normalizeNotificationStorageState = (state: Partial<NotificationStorageState>): NotificationStorageState => {
+  const readIds = Array.isArray(state.readIds)
+    ? Array.from(new Set(state.readIds.filter((id) => typeof id === 'string' && id.trim().length > 0))).sort()
+    : [];
+  const deletedIds = Array.isArray(state.deletedIds)
+    ? Array.from(new Set(state.deletedIds.filter((id) => typeof id === 'string' && id.trim().length > 0))).sort()
+    : [];
+
+  return { readIds, deletedIds };
+};
+
+const areNotificationStorageStatesEqual = (left: NotificationStorageState, right: NotificationStorageState) => {
+  if (left.readIds.length !== right.readIds.length || left.deletedIds.length !== right.deletedIds.length) {
+    return false;
+  }
+
+  return (
+    left.readIds.every((id, index) => id === right.readIds[index]) &&
+    left.deletedIds.every((id, index) => id === right.deletedIds[index])
+  );
+};
+
+export const loadNotificationStorageState = (uid: string): NotificationStorageState => {
+  if (!isBrowser()) {
+    return { readIds: [], deletedIds: [] };
+  }
+
+  try {
+    const raw = window.localStorage.getItem(getNotificationStorageKey(uid));
+    if (!raw) {
+      return { readIds: [], deletedIds: [] };
+    }
+
+    const parsed = JSON.parse(raw) as Partial<NotificationStorageState>;
+    return normalizeNotificationStorageState(parsed);
+  } catch {
+    return { readIds: [], deletedIds: [] };
+  }
+};
+
+export const saveNotificationStorageState = (uid: string, nextState: NotificationStorageState) => {
+  if (!isBrowser()) {
+    return;
+  }
+
+  const normalizedNextState = normalizeNotificationStorageState(nextState);
+  const currentState = loadNotificationStorageState(uid);
+
+  if (areNotificationStorageStatesEqual(currentState, normalizedNextState)) {
+    return;
+  }
+
+  window.localStorage.setItem(getNotificationStorageKey(uid), JSON.stringify(normalizedNextState));
+
+  const payload: NotificationStorageChangeEvent = {
+    uid,
+    state: normalizedNextState,
+    timestamp: Date.now(),
+  };
+
+  window.dispatchEvent(new CustomEvent<NotificationStorageChangeEvent>(NOTIFICATION_STORAGE_EVENT_NAME, { detail: payload }));
+};
+
+export const subscribeToNotificationStorageChanges = (
+  listener: (event: NotificationStorageChangeEvent) => void,
+) => {
+  if (!isBrowser()) {
+    return () => {};
+  }
+
+  const handleCustomEvent = (event: Event) => {
+    const payload = (event as CustomEvent<NotificationStorageChangeEvent>).detail;
+    if (payload?.uid) {
+      listener(payload);
+    }
+  };
+
+  const handleStorageEvent = (event: StorageEvent) => {
+    if (!event.key || !event.key.startsWith('dems-navbar-notifications-v1-')) {
+      return;
+    }
+
+    const uid = event.key.replace('dems-navbar-notifications-v1-', '');
+    if (!uid) {
+      return;
+    }
+
+    try {
+      const parsed = event.newValue ? (JSON.parse(event.newValue) as Partial<NotificationStorageState>) : undefined;
+      listener({
+        uid,
+        state: normalizeNotificationStorageState(parsed || {}),
+        timestamp: Date.now(),
+      });
+    } catch {
+      listener({
+        uid,
+        state: { readIds: [], deletedIds: [] },
+        timestamp: Date.now(),
+      });
+    }
+  };
+
+  window.addEventListener(NOTIFICATION_STORAGE_EVENT_NAME, handleCustomEvent as EventListener);
+  window.addEventListener('storage', handleStorageEvent);
+
+  return () => {
+    window.removeEventListener(NOTIFICATION_STORAGE_EVENT_NAME, handleCustomEvent as EventListener);
+    window.removeEventListener('storage', handleStorageEvent);
+  };
+};
+
+export const subscribeToDataChanges = (listener: (event: DataChangeEvent) => void) => {
+  if (!isBrowser()) {
+    return () => {};
+  }
+
+  const handleCustomEvent = (event: Event) => {
+    const payload = (event as CustomEvent<DataChangeEvent>).detail;
+    if (payload?.collection) {
+      listener(payload);
+    }
+  };
+
+  window.addEventListener(DATA_CHANGE_EVENT_NAME, handleCustomEvent as EventListener);
+
+  let channel: BroadcastChannel | null = null;
+  if (typeof BroadcastChannel !== 'undefined') {
+    channel = new BroadcastChannel(DATA_CHANGE_CHANNEL_NAME);
+    channel.onmessage = (event) => {
+      const payload = event.data as DataChangeEvent | undefined;
+      if (payload?.collection) {
+        listener(payload);
+      }
+    };
+  }
+
+  return () => {
+    window.removeEventListener(DATA_CHANGE_EVENT_NAME, handleCustomEvent as EventListener);
+    if (channel) {
+      channel.close();
+    }
+  };
 };
 
 const getAuthToken = () => getStoredSession()?.token || '';
@@ -378,7 +567,7 @@ export const addDoc = async <TData extends LocalDocumentData = LocalDocumentData
   collectionRef: CollectionReference,
   data: TData,
 ): Promise<{ id: string }> => {
-  return apiRequest<{ id: string }>(
+  const response = await apiRequest<{ id: string }>(
     `/data/${encodeURIComponent(collectionRef.name)}`,
     {
       method: 'POST',
@@ -386,6 +575,14 @@ export const addDoc = async <TData extends LocalDocumentData = LocalDocumentData
     },
     false,
   );
+
+  emitDataChange({
+    collection: collectionRef.name,
+    id: response.id,
+    operation: 'add',
+  });
+
+  return response;
 };
 
 export const deleteDoc = async (docRef: DocReference): Promise<void> => {
@@ -394,6 +591,12 @@ export const deleteDoc = async (docRef: DocReference): Promise<void> => {
     { method: 'DELETE' },
     false,
   );
+
+  emitDataChange({
+    collection: docRef.collection,
+    id: docRef.id,
+    operation: 'delete',
+  });
 };
 
 export const getDoc = async <TData extends LocalDocumentData = LocalDocumentData>(
@@ -424,6 +627,12 @@ export const setDoc = async <TData extends LocalDocumentData = LocalDocumentData
     },
     false,
   );
+
+  emitDataChange({
+    collection: docRef.collection,
+    id: docRef.id,
+    operation: 'set',
+  });
 };
 
 export const updateDoc = async (
@@ -438,6 +647,12 @@ export const updateDoc = async (
     },
     false,
   );
+
+  emitDataChange({
+    collection: docRef.collection,
+    id: docRef.id,
+    operation: 'update',
+  });
 };
 
 export const arrayUnion = (...values: unknown[]): ArrayUnionMarker => {

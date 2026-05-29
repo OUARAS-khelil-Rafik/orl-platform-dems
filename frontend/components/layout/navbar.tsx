@@ -23,10 +23,21 @@ import {
   Moon,
   Search,
 } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import Image from 'next/image';
-import { db, collection, getDocs, query, where } from '@/lib/data/local-data';
+import {
+  db,
+  collection,
+  getDocs,
+  loadNotificationStorageState,
+  query,
+  saveNotificationStorageState,
+  subscribeToDataChanges,
+  subscribeToNotificationStorageChanges,
+  type NotificationStorageState,
+  where,
+} from '@/lib/data/local-data';
 import { SearchModal } from '@/components/features/search/search-modal';
 import { AVATAR_FALLBACK_SRC, applyImageFallback } from '@/lib/utils/media-fallback';
 
@@ -46,12 +57,6 @@ type VideoNotificationSource = {
   createdAt?: string;
 };
 
-type NotificationStorageState = {
-  readIds: string[];
-  deletedIds: string[];
-};
-
-const NOTIFICATION_STORAGE_PREFIX = 'dems-navbar-notifications-v1';
 const THEME_STORAGE_KEY = 'dems-theme-mode-v1';
 
 export function Navbar() {
@@ -68,9 +73,12 @@ export function Navbar() {
   const [isPathHydrated, setIsPathHydrated] = useState(false);
   const [themeMode, setThemeMode] = useState<'light' | 'dark'>('light');
   const [notifications, setNotifications] = useState<NavbarNotification[]>([]);
-  const [notificationReadIds, setNotificationReadIds] = useState<string[]>([]);
-  const [notificationDeletedIds, setNotificationDeletedIds] = useState<string[]>([]);
+  const [notificationStorage, setNotificationStorage] = useState<NotificationStorageState>({
+    readIds: [],
+    deletedIds: [],
+  });
   const [isNotificationStorageHydrated, setIsNotificationStorageHydrated] = useState(false);
+  const loadRequestIdRef = useRef(0);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
   const notificationDesktopRef = useRef<HTMLDivElement | null>(null);
   const notificationMobileRef = useRef<HTMLDivElement | null>(null);
@@ -167,34 +175,6 @@ export function Navbar() {
     window.localStorage.setItem(THEME_STORAGE_KEY, nextTheme);
   }, []);
 
-  const getNotificationStorageKey = (uid: string) => `${NOTIFICATION_STORAGE_PREFIX}-${uid}`;
-
-  const loadNotificationStorage = useCallback((uid: string): NotificationStorageState => {
-    if (typeof window === 'undefined') {
-      return { readIds: [], deletedIds: [] };
-    }
-
-    try {
-      const raw = window.localStorage.getItem(getNotificationStorageKey(uid));
-      if (!raw) {
-        return { readIds: [], deletedIds: [] };
-      }
-
-      const parsed = JSON.parse(raw) as NotificationStorageState;
-      return {
-        readIds: Array.isArray(parsed.readIds) ? parsed.readIds : [],
-        deletedIds: Array.isArray(parsed.deletedIds) ? parsed.deletedIds : [],
-      };
-    } catch {
-      return { readIds: [], deletedIds: [] };
-    }
-  }, []);
-
-  const saveNotificationStorage = useCallback((uid: string, nextState: NotificationStorageState) => {
-    if (typeof window === 'undefined') return;
-    window.localStorage.setItem(getNotificationStorageKey(uid), JSON.stringify(nextState));
-  }, []);
-
   const parseDateToMs = (value: unknown) => {
     if (typeof value === 'number' && Number.isFinite(value)) {
       return value;
@@ -205,14 +185,20 @@ export function Navbar() {
     return Number.isNaN(parsed) ? 0 : parsed;
   };
 
-  const fetchNotifications = useCallback(async () => {
+  const fetchNotifications = useCallback(async (options: { showLoading?: boolean } = {}) => {
+    const { showLoading = false } = options;
+    const loadId = ++loadRequestIdRef.current;
+
     if (!user || !profile) {
       setNotifications([]);
+      setIsLoadingNotifications(false);
       return;
     }
 
     try {
-      setIsLoadingNotifications(true);
+      if (showLoading) {
+        setIsLoadingNotifications(true);
+      }
 
       const [videosSnap, qcmsSnap, openQuestionsSnap, diagramsSnap, clinicalCasesSnap, userNotificationsSnap] = await Promise.all([
         getDocs(collection(db, 'videos')),
@@ -337,63 +323,98 @@ export function Navbar() {
         });
       });
 
+      const stored = loadNotificationStorageState(user.uid);
       const filtered = nextNotifications
-        .filter((item) => !notificationDeletedIds.includes(item.id))
+        .filter((item) => !stored.deletedIds.includes(item.id))
         .sort((a, b) => b.createdAt - a.createdAt);
+
+      if (loadRequestIdRef.current !== loadId) {
+        return;
+      }
 
       setNotifications(filtered);
     } catch (error) {
-      console.error('Error fetching notifications:', error);
+      if (loadRequestIdRef.current === loadId) {
+        console.error('Error fetching notifications:', error);
+      }
     } finally {
-      setIsLoadingNotifications(false);
+      if (loadRequestIdRef.current === loadId && showLoading) {
+        setIsLoadingNotifications(false);
+      }
     }
-  }, [user, profile, notificationDeletedIds]);
+  }, [user, profile]);
 
   const toggleNotificationRead = (notificationId: string) => {
     if (!user) return;
 
-    setNotificationReadIds((prev) => {
-      if (prev.includes(notificationId)) {
-        return prev.filter((id) => id !== notificationId);
-      }
-      return [...prev, notificationId];
-    });
+    const isCurrentlyRead = notificationStorage.readIds.includes(notificationId);
+    const nextReadIds = isCurrentlyRead
+      ? notificationStorage.readIds.filter((id) => id !== notificationId)
+      : [...notificationStorage.readIds, notificationId];
+    const nextState = {
+      readIds: nextReadIds,
+      deletedIds: notificationStorage.deletedIds,
+    };
+
+    setNotificationStorage(nextState);
+    saveNotificationStorageState(user.uid, nextState);
   };
 
   const deleteNotification = (notificationId: string) => {
     if (!user) return;
 
-    setNotificationDeletedIds((prev) => {
-      if (prev.includes(notificationId)) {
-        return prev;
-      }
-      return [...prev, notificationId];
-    });
-    setNotificationReadIds((prev) => prev.filter((id) => id !== notificationId));
+    const nextDeletedIds = Array.from(new Set([...notificationStorage.deletedIds, notificationId]));
+    const nextReadIds = notificationStorage.readIds.filter((id) => id !== notificationId);
+    const nextState = {
+      readIds: nextReadIds,
+      deletedIds: nextDeletedIds,
+    };
+
+    setNotificationStorage(nextState);
     setNotifications((prev) => prev.filter((item) => item.id !== notificationId));
+    saveNotificationStorageState(user.uid, nextState);
   };
 
   const markAllNotificationsRead = () => {
     if (!user || notifications.length === 0) return;
 
     const visibleIds = notifications.map((item) => item.id);
-    setNotificationReadIds((prev) => Array.from(new Set([...prev, ...visibleIds])));
+    const nextState = {
+      readIds: Array.from(new Set([...notificationStorage.readIds, ...visibleIds])),
+      deletedIds: notificationStorage.deletedIds,
+    };
+
+    setNotificationStorage(nextState);
+    saveNotificationStorageState(user.uid, nextState);
   };
 
   const deleteAllNotifications = () => {
     if (!user || notifications.length === 0) return;
 
     const visibleIds = notifications.map((item) => item.id);
+    const nextState = {
+      readIds: notificationStorage.readIds.filter((id) => !visibleIds.includes(id)),
+      deletedIds: Array.from(new Set([...notificationStorage.deletedIds, ...visibleIds])),
+    };
 
-    setNotificationDeletedIds((prev) => Array.from(new Set([...prev, ...visibleIds])));
-    setNotificationReadIds((prev) => prev.filter((id) => !visibleIds.includes(id)));
+    setNotificationStorage(nextState);
     setNotifications([]);
+    saveNotificationStorageState(user.uid, nextState);
   };
 
   const openNotification = (notification: NavbarNotification) => {
     if (!user) return;
 
-    setNotificationReadIds((prev) => (prev.includes(notification.id) ? prev : [...prev, notification.id]));
+    const nextReadIds = notificationStorage.readIds.includes(notification.id)
+      ? notificationStorage.readIds
+      : [...notificationStorage.readIds, notification.id];
+    const nextState = {
+      readIds: nextReadIds,
+      deletedIds: notificationStorage.deletedIds,
+    };
+
+    setNotificationStorage(nextState);
+    saveNotificationStorageState(user.uid, nextState);
 
     setIsNotificationsOpen(false);
     setIsUserMenuOpen(false);
@@ -401,7 +422,15 @@ export function Navbar() {
     router.push(notification.targetHref);
   };
 
-  const unreadNotificationCount = notifications.filter((item) => !notificationReadIds.includes(item.id)).length;
+  const unreadNotificationCount = useMemo(() => {
+    if (!isNotificationStorageHydrated) {
+      return 0;
+    }
+
+    return notifications.filter((item) => !notificationStorage.readIds.includes(item.id)).length;
+  }, [notifications, notificationStorage.readIds, isNotificationStorageHydrated]);
+  const unreadNotificationLabel =
+    unreadNotificationCount > 0 ? `${unreadNotificationCount} non lue${unreadNotificationCount > 1 ? 's' : ''}` : '';
   const visibleNotifications = notifications.slice(0, 5);
 
   const notificationTypeLabels: Record<NavbarNotification['type'], string> = {
@@ -473,9 +502,7 @@ export function Navbar() {
           </div>
           <div className="min-w-0">
             <p className="text-sm font-semibold text-(--app-text)">Notifications</p>
-            <span className="text-xs text-(--app-muted)">
-              {unreadNotificationCount} non lue{unreadNotificationCount > 1 ? 's' : ''}
-            </span>
+            {unreadNotificationLabel && <span className="text-xs text-(--app-muted)">{unreadNotificationLabel}</span>}
           </div>
         </div>
 
@@ -514,7 +541,7 @@ export function Navbar() {
         ) : (
           <ul className="space-y-2 p-2">
             {visibleNotifications.map((notification) => {
-              const isRead = notificationReadIds.includes(notification.id);
+              const isRead = notificationStorage.readIds.includes(notification.id);
 
               return (
                 <li key={notification.id} className={`notification-card ${isRead ? 'is-read' : 'is-unread'}`}>
@@ -584,37 +611,81 @@ export function Navbar() {
 
   useEffect(() => {
     if (!user) {
-      setNotificationReadIds([]);
-      setNotificationDeletedIds([]);
+      setNotificationStorage({ readIds: [], deletedIds: [] });
       setNotifications([]);
       setIsNotificationStorageHydrated(false);
       return;
     }
 
+    if (!profile) {
+      return;
+    }
+
     setIsNotificationStorageHydrated(false);
-    const stored = loadNotificationStorage(user.uid);
-    setNotificationReadIds(Array.from(new Set(stored.readIds)));
-    setNotificationDeletedIds(Array.from(new Set(stored.deletedIds)));
+    const stored = loadNotificationStorageState(user.uid);
+    setNotificationStorage(stored);
     setIsNotificationStorageHydrated(true);
-  }, [user, loadNotificationStorage]);
+  }, [user, profile]);
 
   useEffect(() => {
     if (!user || !isNotificationStorageHydrated) return;
 
-    saveNotificationStorage(user.uid, {
-      readIds: Array.from(new Set(notificationReadIds)),
-      deletedIds: Array.from(new Set(notificationDeletedIds)),
+    const unsubscribe = subscribeToNotificationStorageChanges((event) => {
+      if (event.uid !== user.uid) {
+        return;
+      }
+
+      setNotificationStorage((prev) => {
+        const sameRead = prev.readIds.length === event.state.readIds.length &&
+          prev.readIds.every((value, index) => value === event.state.readIds[index]);
+        const sameDeleted = prev.deletedIds.length === event.state.deletedIds.length &&
+          prev.deletedIds.every((value, index) => value === event.state.deletedIds[index]);
+
+        return sameRead && sameDeleted ? prev : event.state;
+      });
+      setNotifications((prev) => {
+        const nextNotifications = prev.filter((item) => !event.state.deletedIds.includes(item.id));
+        return nextNotifications.length === prev.length ? prev : nextNotifications;
+      });
     });
-  }, [user, isNotificationStorageHydrated, notificationReadIds, notificationDeletedIds, saveNotificationStorage]);
+
+    return unsubscribe;
+  }, [user, isNotificationStorageHydrated]);
 
   useEffect(() => {
-    if (!user || !profile) return;
-    fetchNotifications();
+    if (!user) {
+      setNotifications([]);
+      setNotificationStorage({ readIds: [], deletedIds: [] });
+      setIsNotificationStorageHydrated(false);
+      setIsLoadingNotifications(false);
+      return;
+    }
+
+    if (!profile) {
+      setNotifications([]);
+      setIsLoadingNotifications(false);
+      return;
+    }
+
+    void fetchNotifications({ showLoading: true });
+
+    const relevantCollections = new Set(['videos', 'qcms', 'openQuestions', 'diagrams', 'clinicalCases', 'notifications', 'payments']);
+    const unsubscribe = subscribeToDataChanges((event) => {
+      if (!relevantCollections.has(event.collection)) {
+        return;
+      }
+
+      void fetchNotifications({ showLoading: false });
+    });
+
     const timer = window.setInterval(() => {
-      fetchNotifications();
+      void fetchNotifications({ showLoading: false });
     }, 60000);
 
-    return () => window.clearInterval(timer);
+    return () => {
+      unsubscribe();
+      window.clearInterval(timer);
+    };
   }, [user, profile, fetchNotifications]);
 
   useEffect(() => {
