@@ -2949,12 +2949,12 @@ export default function AdminDashboard() {
                   </div>
                 </div>
 
-                <div className="grid gap-4 p-4 lg:grid-cols-[320px_minmax(0,1fr)]">
+                <div className="grid gap-6 p-5 sm:p-6 lg:grid-cols-[440px_minmax(0,1fr)]">
                   <div className="rounded-2xl border border-(--app-border) overflow-hidden">
                     {supportChats.length === 0 ? (
-                      <div className="p-6 text-sm text-(--app-muted)">Aucune discussion probleme.</div>
+                      <div className="p-8 text-sm text-(--app-muted)">Aucune discussion probleme.</div>
                     ) : (
-                      <div className="max-h-120 overflow-y-auto p-2 space-y-2">
+                      <div className="max-h-[34rem] overflow-y-auto p-3 space-y-2">
                         {supportChats.map((chat) => {
                           const linkedUser = users.find((entry) => entry.id === chat.userId);
                           const splitName = splitFullName(linkedUser?.displayName || '');
@@ -3039,11 +3039,11 @@ export default function AdminDashboard() {
                           </div>
                         </div>
 
-                          <div className="rounded-xl border border-(--app-border) bg-[color-mix(in_oklab,var(--app-surface-2)_60%,var(--app-surface)_40%)] p-3 h-96 flex flex-col">
+                          <div className="rounded-xl border border-(--app-border) bg-[color-mix(in_oklab,var(--app-surface-2)_60%,var(--app-surface)_40%)] p-4 h-[34rem] lg:h-[42rem] flex flex-col">
                           <div
                             ref={supportMessagesContainerRef}
                             onScroll={handleAdminSupportMessagesScroll}
-                              className="min-h-0 flex-1 overflow-y-auto space-y-3 pr-1"
+                              className="min-h-0 flex-1 overflow-y-auto space-y-4 pr-2"
                           >
                             {supportChatMessages.length === 0 ? (
                               <p className="text-sm text-(--app-muted)">Aucun message dans cette discussion.</p>
@@ -3084,7 +3084,7 @@ export default function AdminDashboard() {
                             )}
                           </div>
 
-                            <div className="mt-0 shrink-0 border-(--app-border) pb-2 pt-3">
+                            <div className="mt-0 shrink-0 border-(--app-border) pb-2 pt-4">
                             <div className="mx-0.5 flex flex-col rounded-[18px] border border-[color-mix(in_oklab,var(--app-border)_86%,var(--app-accent)_14%)] bg-(--app-surface) transition-all duration-200 hover:shadow-lg focus-within:shadow-xl shadow-[0_0.25rem_1.25rem_color-mix(in_oklab,black_6%,transparent),0_0_0_0.5px_color-mix(in_oklab,var(--app-border)_82%,transparent)]">
                               <div className="m-2.5 flex flex-col gap-2">
                                 <div className="relative">
