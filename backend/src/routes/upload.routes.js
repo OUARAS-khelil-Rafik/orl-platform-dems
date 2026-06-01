@@ -123,6 +123,19 @@ const normalizeCleanupResourceType = (value) => {
   return null;
 };
 
+const isAllowedChatAttachmentMimeType = (mimeType, resourceType) => {
+  const normalizedMimeType = String(mimeType || '').trim().toLowerCase();
+  if (resourceType === 'raw') {
+    return normalizedMimeType === 'application/pdf';
+  }
+
+  if (resourceType === 'image') {
+    return normalizedMimeType.startsWith('image/');
+  }
+
+  return false;
+};
+
 const normalizeCleanupAsset = (entry) => {
   if (!entry || typeof entry !== 'object') {
     return null;
@@ -757,14 +770,28 @@ router.post('/cloudinary', authRequired, withSingleFile(cloudinaryUpload), async
 
     temporaryPath = req.file.path;
 
-    const resourceType = req.query.resourceType === 'video' ? 'video' : 'image';
+    const requestedResourceType = String(req.query.resourceType || '').trim().toLowerCase();
+    const resourceType =
+      requestedResourceType === 'video'
+        ? 'video'
+        : requestedResourceType === 'raw'
+          ? 'raw'
+          : 'image';
     const folder = (req.query.folder ? String(req.query.folder) : UPLOAD_FOLDER)
       .trim()
       .replace(/^\/+|\/+$/g, '') || UPLOAD_FOLDER;
+    const purpose = String(req.query.purpose || '').trim().toLowerCase();
     const requestedUploadNameRaw = Array.isArray(req.query.fileName)
       ? String(req.query.fileName[0] || '')
       : String(req.query.fileName || '');
     const contentCloudinaryOptions = resolveContentCloudinaryOptions(req.authUser);
+
+    if (purpose === 'support-chat' && !isAllowedChatAttachmentMimeType(req.file.mimetype, resourceType)) {
+      return res.status(400).json({
+        message: 'Seuls les fichiers PDF et les images sont autorises dans le chat support.',
+      });
+    }
+
     const uploadBaseName = normalizeUploadBaseName(
       requestedUploadNameRaw
       || req.file.originalname
@@ -818,9 +845,10 @@ router.post('/cloudinary', authRequired, withSingleFile(cloudinaryUpload), async
       }
 
       if (assetExists) {
+        const duplicateLabel = resourceType === 'raw' ? 'document' : 'image';
         return res.status(409).json({
           message:
-            'Un fichier image portant ce nom existe deja dans Cloudinary. Renommez le fichier ou supprimez la version existante avant de reessayer.',
+            `Un fichier ${duplicateLabel} portant ce nom existe deja dans Cloudinary. Renommez le fichier ou supprimez la version existante avant de reessayer.`,
         });
       }
     }

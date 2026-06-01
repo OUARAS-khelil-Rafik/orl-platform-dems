@@ -442,17 +442,17 @@ export default function SeamlessPlayer({
           className="relative h-1 hover:h-2 transition-all cursor-pointer mb-3 group/bar"
           onClick={handleSeek}
         >
-          <div className="absolute inset-0 bg-white/30 rounded-full" />
+          <div className="h-full w-full absolute inset-0 bg-white/30 rounded-full" />
           <div
-            className="absolute inset-y-0 left-0 bg-white/50 rounded-full"
+            className="h-full w-full absolute inset-y-0 left-0 bg-white/50 rounded-full"
             style={{ width: `${bufferedPct}%` }}
           />
           <div
-            className="absolute inset-y-0 left-0 bg-blue-500 rounded-full"
+            className="h-full w-full absolute inset-y-0 left-0 bg-(--app-accent) opacity-55 rounded-full"
             style={{ width: `${progressPct}%` }}
           />
           <div
-            className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3 h-3 bg-blue-500 rounded-full opacity-0 group-hover/bar:opacity-100 transition-opacity"
+            className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3 h-3 bg-(--app-accent) opacity-55 rounded-full opacity-0 group-hover/bar:opacity-100 transition-opacity"
             style={{ left: `${progressPct}%` }}
           />
         </div>

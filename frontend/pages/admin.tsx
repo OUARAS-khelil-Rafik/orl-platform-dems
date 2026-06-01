@@ -1,6 +1,6 @@
 'use client';
 
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type ChangeEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/components/providers/auth-provider';
 import {
   db,
@@ -14,6 +14,7 @@ import {
   where,
   deleteDoc,
   setDoc,
+  uploadCloudinaryAsset,
   createAuthAccountByAdmin,
   deleteAuthAccountByUid,
 } from '@/lib/data/local-data';
@@ -45,11 +46,21 @@ import {
   Settings,
   ArrowUp,
   ArrowUpDown,
+  Paperclip,
+  Loader2,
   Search,
 } from 'lucide-react';
 import { useRouter } from 'next/router';
 import { AdminContentManager } from '@/components/features/admin/content-manager';
+import { SupportChatAttachmentCard } from '@/components/features/support/support-chat-attachment';
 import { formatFullName, normalizeNameParts, splitFullName } from '@/lib/utils/name-utils';
+import {
+  buildSupportChatAttachment,
+  buildSupportChatLastMessage,
+  getSupportChatAttachmentKind,
+  isSupportChatAttachmentFile,
+  type SupportChatAttachment,
+} from '@/lib/utils/support-chat-attachments';
 
 type AdminUser = {
   id: string;
@@ -177,6 +188,7 @@ type SupportChatMessageEntry = {
   sender: 'user' | 'bot' | 'admin';
   senderName?: string;
   text: string;
+  attachment?: SupportChatAttachment | null;
   createdAt?: string;
 };
 
@@ -198,9 +210,12 @@ export default function AdminDashboard() {
   const [selectedSupportChatId, setSelectedSupportChatId] = useState('');
   const [supportChatMessages, setSupportChatMessages] = useState<SupportChatMessageEntry[]>([]);
   const [supportReplyDraft, setSupportReplyDraft] = useState('');
+  const [pendingSupportReplyAttachment, setPendingSupportReplyAttachment] = useState<SupportChatAttachment | null>(null);
+  const [isUploadingSupportReplyAttachment, setIsUploadingSupportReplyAttachment] = useState(false);
   const [isSendingSupportReply, setIsSendingSupportReply] = useState(false);
   const [failedSupportAvatarKeys, setFailedSupportAvatarKeys] = useState<Record<string, true>>({});
   const supportReplyComposerRef = useRef<HTMLTextAreaElement | null>(null);
+  const supportReplyAttachmentInputRef = useRef<HTMLInputElement | null>(null);
   const supportMessagesContainerRef = useRef<HTMLDivElement | null>(null);
   const shouldStickAdminSupportScrollRef = useRef(true);
   const previousSelectedSupportChatIdRef = useRef('');
@@ -1189,8 +1204,15 @@ export default function AdminDashboard() {
             ...payload,
             createdAt: new Date().toISOString(),
           });
+          
+          // Success feedback for admin
+          alert(isNowBlocked 
+            ? `Video "${videoTitle}" bloquee pour ${user.displayName || user.email}.`
+            : `Video "${videoTitle}" debloquee pour ${user.displayName || user.email}.`
+          );
         } catch (notificationError) {
           console.error('Error creating video block notification:', notificationError);
+          alert('Erreur: Impossible de creer la notification de blocage.');
         }
     } catch (error) {
       console.error('Error blocking video for user:', error);
@@ -1582,7 +1604,7 @@ export default function AdminDashboard() {
     selectedSupportChatUser?.supportClientDisconnectedAt,
     now,
   ]);
-  const hasSupportReplyWord = supportReplyDraft.trim().length > 0;
+  const hasSupportReplyWord = supportReplyDraft.trim().length > 0 || Boolean(pendingSupportReplyAttachment);
   const supportReplyRows = supportReplyDraft.includes('\n') ? 2 : 1;
   const showSupportSendAction = hasSupportReplyWord && Boolean(selectedSupportChatId);
 
@@ -1633,15 +1655,17 @@ export default function AdminDashboard() {
 
       if (adminAvatarUrl && !failedSupportAvatarKeys[adminAvatarKey]) {
         return (
-          <Image
-            src={adminAvatarUrl}
-            alt="Avatar admin"
-            width={32}
-            height={32}
-            className="h-8 w-8 rounded-full object-cover ring-1 ring-emerald-200"
-            referrerPolicy="no-referrer"
-            onError={() => markSupportAvatarFailed(adminAvatarKey)}
-          />
+          <span className="relative inline-block h-8 w-8 overflow-hidden rounded-full ring-1 ring-emerald-200">
+            <Image
+              src={adminAvatarUrl}
+              alt="Avatar admin"
+              fill
+              sizes="32px"
+              className="object-cover"
+              referrerPolicy="no-referrer"
+              onError={() => markSupportAvatarFailed(adminAvatarKey)}
+            />
+          </span>
         );
       }
 
@@ -1670,15 +1694,17 @@ export default function AdminDashboard() {
 
     if (userAvatarUrl && !failedSupportAvatarKeys[userAvatarKey]) {
       return (
-        <Image
-          src={userAvatarUrl}
-          alt="Avatar utilisateur"
-          width={32}
-          height={32}
-          className="h-8 w-8 rounded-full object-cover ring-1 ring-slate-300"
-          referrerPolicy="no-referrer"
-          onError={() => markSupportAvatarFailed(userAvatarKey)}
-        />
+        <span className="relative inline-block h-8 w-8 overflow-hidden rounded-full ring-1 ring-slate-300">
+          <Image
+            src={userAvatarUrl}
+            alt="Avatar utilisateur"
+            fill
+            sizes="32px"
+            className="object-cover"
+            referrerPolicy="no-referrer"
+            onError={() => markSupportAvatarFailed(userAvatarKey)}
+          />
+        </span>
       );
     }
 
@@ -1843,6 +1869,47 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleSupportReplyAttachmentSelection = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] || null;
+    event.target.value = '';
+
+    if (!file || isUploadingSupportReplyAttachment || isSendingSupportReply) {
+      return;
+    }
+
+    if (!isSupportChatAttachmentFile(file)) {
+      alert('Seuls les fichiers PDF et les images sont autorises dans le chat support.');
+      return;
+    }
+
+    try {
+      setIsUploadingSupportReplyAttachment(true);
+      const attachmentKind = getSupportChatAttachmentKind(file);
+      const response = await uploadCloudinaryAsset(file, {
+        resourceType: attachmentKind === 'pdf' ? 'raw' : 'image',
+        folder: 'orl-platform/support-chat',
+        fileName: file.name,
+        purpose: 'support-chat',
+      });
+      const attachment = buildSupportChatAttachment(file, response.secureUrl);
+
+      if (!attachment) {
+        throw new Error('Impossible de preparer la piece jointe.');
+      }
+
+      setPendingSupportReplyAttachment(attachment);
+    } catch (error) {
+      console.error('Error uploading support reply attachment:', error);
+      alert('Impossible de televerser ce fichier dans le chat.');
+    } finally {
+      setIsUploadingSupportReplyAttachment(false);
+    }
+  };
+
+  const clearSupportReplyAttachment = () => {
+    setPendingSupportReplyAttachment(null);
+  };
+
   const handleSendAdminSupportReply = async () => {
     if (isSendingSupportReply) {
       return;
@@ -1854,7 +1921,8 @@ export default function AdminDashboard() {
     }
 
     const reply = String(supportReplyDraft || '').trim();
-    if (!reply) {
+    const attachment = pendingSupportReplyAttachment;
+    if (!reply && !attachment) {
       alert('Saisissez une reponse admin.');
       return;
     }
@@ -1864,6 +1932,7 @@ export default function AdminDashboard() {
       const nowIso = new Date().toISOString();
       const messageId = `${activeChat.id}-admin-${Date.now()}`;
       const adminSenderName = String(profile?.displayName || '').trim() || 'Admin';
+      const replySummary = buildSupportChatLastMessage(reply, attachment);
 
       await Promise.all([
         setDoc(doc(db, 'supportChatMessages', messageId), {
@@ -1872,10 +1941,11 @@ export default function AdminDashboard() {
           sender: 'admin',
           senderName: adminSenderName,
           text: reply,
+          attachment,
           createdAt: nowIso,
         }),
         updateDoc(doc(db, 'supportChats', activeChat.id), {
-          lastMessage: reply,
+          lastMessage: replySummary || reply,
           lastSender: 'admin',
           status: activeChat.status === 'resolved' ? 'resolved' : 'in_progress',
           updatedAt: nowIso,
@@ -1891,6 +1961,7 @@ export default function AdminDashboard() {
           sender: 'admin',
           senderName: adminSenderName,
           text: reply,
+          attachment,
           createdAt: nowIso,
         },
       ]);
@@ -1900,7 +1971,7 @@ export default function AdminDashboard() {
           entry.id === activeChat.id
             ? {
                 ...entry,
-                lastMessage: reply,
+                lastMessage: replySummary || reply,
                 lastSender: 'admin',
                 status: entry.status === 'resolved' ? 'resolved' : 'in_progress',
                 updatedAt: nowIso,
@@ -1910,6 +1981,7 @@ export default function AdminDashboard() {
       );
 
       setSupportReplyDraft('');
+      setPendingSupportReplyAttachment(null);
     } catch (error) {
       console.error('Error sending admin reply:', error);
       alert('Erreur lors de l envoi de la reponse admin.');
@@ -2998,7 +3070,12 @@ export default function AdminDashboard() {
                                         <p className="text-[10px] uppercase tracking-wide opacity-70 mb-1">
                                           {resolveSupportSenderLabel(message)}
                                         </p>
-                                        <div>{renderSupportMessageMarkdown(message.text)}</div>
+                                        {message.text.trim() ? <div>{renderSupportMessageMarkdown(message.text)}</div> : null}
+                                        {message.attachment ? (
+                                          <div className="mt-2">
+                                            <SupportChatAttachmentCard attachment={message.attachment} />
+                                          </div>
+                                        ) : null}
                                       </div>
                                     </div>
                                   </div>
@@ -3028,23 +3105,46 @@ export default function AdminDashboard() {
                                   />
                                 </div>
 
+                                {pendingSupportReplyAttachment ? (
+                                  <div className="px-0.5">
+                                    <SupportChatAttachmentCard
+                                      attachment={pendingSupportReplyAttachment}
+                                      onRemove={clearSupportReplyAttachment}
+                                    />
+                                  </div>
+                                ) : null}
+
                                 <div className="relative flex w-full items-center gap-2">
                                   <div className="relative flex min-w-0 flex-1 items-center gap-1">
                                     <button
                                       type="button"
-                                      onClick={() => supportReplyComposerRef.current?.focus()}
-                                      className="h-7 w-7 rounded-lg flex items-center justify-center transition-colors text-(--app-text) bg-[color-mix(in_oklab,var(--app-surface-2)_64%,var(--app-surface)_36%)]"
-                                      aria-label="Ajouter"
+                                      onClick={() => supportReplyAttachmentInputRef.current?.click()}
+                                      disabled={isSendingSupportReply || isUploadingSupportReplyAttachment}
+                                      className="h-7 w-7 rounded-lg flex items-center justify-center transition-colors text-(--app-text) bg-[color-mix(in_oklab,var(--app-surface-2)_64%,var(--app-surface)_36%)] disabled:opacity-60"
+                                      aria-label="Ajouter une piece jointe"
+                                      title="Ajouter une piece jointe"
                                     >
-                                      <Plus className="h-3.5 w-3.5" />
+                                      {isUploadingSupportReplyAttachment ? (
+                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                      ) : (
+                                        <Paperclip className="h-3.5 w-3.5" />
+                                      )}
                                     </button>
+                                    <input
+                                      ref={supportReplyAttachmentInputRef}
+                                      type="file"
+                                      accept=".pdf,image/*"
+                                      className="hidden"
+                                      onChange={(event) => void handleSupportReplyAttachmentSelection(event)}
+                                      disabled={isSendingSupportReply || isUploadingSupportReplyAttachment}
+                                    />
                                   </div>
 
                                   <div className={`transition-all duration-200 ease-out ${showSupportSendAction ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-1 pointer-events-none'}`}>
                                     <button
                                       type="button"
                                       onClick={() => void handleSendAdminSupportReply()}
-                                      disabled={isSendingSupportReply || !showSupportSendAction}
+                                      disabled={isSendingSupportReply || isUploadingSupportReplyAttachment || !showSupportSendAction}
                                       className="h-7 w-7 rounded-lg disabled:opacity-60 flex items-center justify-center bg-(--app-accent) text-(--app-accent-contrast)"
                                       aria-label="Envoyer"
                                     >

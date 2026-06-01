@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/components/providers/auth-provider';
+import { AlertModal } from '@/components/ui/alert-modal';
 import { LogIn, ShieldCheck, Stethoscope } from 'lucide-react';
 import { normalizeGoogleOAuthError } from '@/lib/utils/oauth-error';
 
@@ -16,11 +17,21 @@ export default function SignInPage() {
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isErrorModalOpen, setIsErrorModalOpen] = useState(false);
+  const [errorTitle, setErrorTitle] = useState('');
 
   const oauthErrorRaw = Array.isArray(router.query.oauthError)
     ? router.query.oauthError[0]
     : router.query.oauthError;
   const oauthError = useMemo(() => normalizeGoogleOAuthError(oauthErrorRaw), [oauthErrorRaw]);
+
+  useEffect(() => {
+    if (oauthError) {
+      setError(oauthError);
+      setErrorTitle('Erreur d\'authentification');
+      setIsErrorModalOpen(true);
+    }
+  }, [oauthError]);
 
   useEffect(() => {
     if (!loading && user) {
@@ -39,6 +50,15 @@ export default function SignInPage() {
     } catch (submitError) {
       const message = submitError instanceof Error ? submitError.message : 'Connexion impossible.';
       setError(message);
+      
+      // Déterminer le type d'erreur et le titre
+      if (message.includes('suspendu')) {
+        setErrorTitle('Compte suspendu');
+      } else {
+        setErrorTitle('Erreur de connexion');
+      }
+      
+      setIsErrorModalOpen(true);
     } finally {
       setIsSubmitting(false);
     }
@@ -49,6 +69,13 @@ export default function SignInPage() {
       className="flex-1 py-14 px-4"
       style={{ background: 'linear-gradient(180deg, color-mix(in oklab, var(--app-surface) 94%, white 6%) 0%, color-mix(in oklab, var(--app-surface-alt) 74%, var(--app-accent) 26%) 100%)' }}
     >
+      <AlertModal
+        isOpen={isErrorModalOpen}
+        title={errorTitle}
+        message={error}
+        onClose={() => setIsErrorModalOpen(false)}
+        type="error"
+      />
       <div className="max-w-5xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
         <div
           className="relative overflow-hidden lg:col-span-5 rounded-3xl border p-8 shadow-xl"
@@ -85,10 +112,6 @@ export default function SignInPage() {
         <p className="text-slate-600 mb-6">Accédez à votre espace DEMS ENT.</p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {oauthError ? (
-            <p className="text-sm text-red-600">{String(oauthError)}</p>
-          ) : null}
-
           <div>
             <label htmlFor="signin-email" className="block text-sm font-medium text-slate-700 mb-1">
               Email *
@@ -150,10 +173,6 @@ export default function SignInPage() {
             <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-slate-900 text-xs font-bold text-white">G</span>
             Connexion Google
           </button>
-
-          {error ? (
-            <p className="text-sm text-red-600">{error}</p>
-          ) : null}
 
           <button
             type="submit"

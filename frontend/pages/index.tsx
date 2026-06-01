@@ -1,6 +1,6 @@
 'use client';
 
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type ChangeEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import Link from 'next/link';
 import {
@@ -23,13 +23,22 @@ import {
   Target,
   GraduationCap,
   MessageCircle,
-  Plus,
+  Paperclip,
+  Loader2,
   X,
 } from 'lucide-react';
 import Image from 'next/image';
 import { useAuth } from '@/components/providers/auth-provider';
-import { collection, db, deleteDoc, doc, getDocs, query, setDoc, updateDoc, where } from '@/lib/data/local-data';
+import { collection, db, deleteDoc, doc, getDocs, query, setDoc, updateDoc, where, uploadCloudinaryAsset } from '@/lib/data/local-data';
 import { IMAGE_FALLBACK_SRC, VIDEO_FALLBACK_SRC, applyImageFallback } from '@/lib/utils/media-fallback';
+import { SupportChatAttachmentCard } from '@/components/features/support/support-chat-attachment';
+import {
+  buildSupportChatAttachment,
+  buildSupportChatLastMessage,
+  getSupportChatAttachmentKind,
+  isSupportChatAttachmentFile,
+  type SupportChatAttachment,
+} from '@/lib/utils/support-chat-attachments';
 
 const isApiUnavailableError = (error: unknown) => {
   if (!(error instanceof Error)) {
@@ -90,6 +99,7 @@ type SupportChatMessage = {
   sender: 'user' | 'bot' | 'admin';
   senderName?: string;
   text: string;
+  attachment?: SupportChatAttachment | null;
   createdAt?: string;
 };
 
@@ -388,6 +398,8 @@ export default function HomePage() {
     lastDisconnectedAt: null,
   });
   const [chatComposer, setChatComposer] = useState('');
+  const [pendingChatAttachment, setPendingChatAttachment] = useState<SupportChatAttachment | null>(null);
+  const [isUploadingChatAttachment, setIsUploadingChatAttachment] = useState(false);
   const [isSendingChatMessage, setIsSendingChatMessage] = useState(false);
   const [isUserAvatarFallback, setIsUserAvatarFallback] = useState(false);
   const lastNonZeroVolumeRef = useRef(0.8);
@@ -397,6 +409,7 @@ export default function HomePage() {
   const shouldStickSupportScrollRef = useRef(true);
   const previousSupportChatIdRef = useRef('');
   const chatComposerRef = useRef<HTMLTextAreaElement | null>(null);
+  const chatAttachmentInputRef = useRef<HTMLInputElement | null>(null);
   const isEnsuringWelcomeChatRef = useRef(false);
   const hasLoggedAdminPresenceApiDownRef = useRef(false);
   const hasLoggedSupportPollingApiDownRef = useRef(false);
@@ -406,7 +419,7 @@ export default function HomePage() {
     [activeSupportChatId, supportChats],
   );
   const isActiveSupportChatResolved = activeSupportChat?.status === 'resolved';
-  const hasComposerWord = chatComposer.trim().length > 0;
+  const hasComposerWord = chatComposer.trim().length > 0 || Boolean(pendingChatAttachment);
   const chatComposerRows = chatComposer.includes('\n') ? 2 : 1;
   const showSendComposerAction = hasComposerWord && !isActiveSupportChatResolved;
   const isAdmin = profile?.role === 'admin';
@@ -1550,16 +1563,18 @@ export default function HomePage() {
     if (sender === 'user') {
       if (hasUserAvatarImage) {
         return (
-          <Image
-            src={String(user?.photoURL || '')}
-            alt="Avatar utilisateur"
-            width={32}
-            height={32}
-            unoptimized
-            className="h-8 w-8 rounded-full object-cover ring-1 ring-slate-300"
-            referrerPolicy="no-referrer"
-            onError={() => setIsUserAvatarFallback(true)}
-          />
+          <span className="relative inline-block h-8 w-8 overflow-hidden rounded-full ring-1 ring-slate-300">
+            <Image
+              src={String(user?.photoURL || '')}
+              alt="Avatar utilisateur"
+              fill
+              sizes="32px"
+              unoptimized
+              className="object-cover"
+              referrerPolicy="no-referrer"
+              onError={() => setIsUserAvatarFallback(true)}
+            />
+          </span>
         );
       }
 
@@ -1683,7 +1698,10 @@ export default function HomePage() {
     return <div className="space-y-1">{nodes}</div>;
   };
 
-  const createSupportChatFromFirstMessage = async (firstMessage: string) => {
+  const createSupportChatFromFirstMessage = async (
+    firstMessage: string,
+    attachment?: SupportChatAttachment | null,
+  ) => {
     if (!user) {
       return null;
     }
@@ -1699,13 +1717,14 @@ export default function HomePage() {
       ? crypto.randomUUID()
       : `${Date.now()}-${Math.random().toString(16).slice(2)}-b`;
     const introText = supportIntroMessage();
+    const firstMessageSummary = buildSupportChatLastMessage(firstMessage, attachment);
 
     await setDoc(doc(db, 'supportChats', newChatId), {
       userId: user.uid,
       userEmail: user.email || '',
       problemType: 'other' as SupportProblemType,
       status: 'open',
-      lastMessage: firstMessage,
+      lastMessage: firstMessageSummary || firstMessage,
       lastSender: 'user',
       createdAt: now,
       updatedAt: now,
@@ -1717,6 +1736,7 @@ export default function HomePage() {
       sender: 'user',
       senderName: user.displayName || user.email || 'Utilisateur',
       text: firstMessage,
+      attachment,
       createdAt: now,
     });
 
@@ -1746,6 +1766,47 @@ export default function HomePage() {
     const messagesSnap = await getDocs(query(collection(db, 'supportChatMessages'), where('chatId', '==', chatId)));
     await Promise.all(messagesSnap.docs.map((entry) => deleteDoc(doc(db, 'supportChatMessages', entry.id))));
     await deleteDoc(doc(db, 'supportChats', chatId));
+  };
+
+  const handleSupportChatAttachmentSelection = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] || null;
+    event.target.value = '';
+
+    if (!file || isUploadingChatAttachment || isSendingChatMessage || isActiveSupportChatResolved) {
+      return;
+    }
+
+    if (!isSupportChatAttachmentFile(file)) {
+      alert('Seuls les fichiers PDF et les images sont autorises dans le chat support.');
+      return;
+    }
+
+    try {
+      setIsUploadingChatAttachment(true);
+      const attachmentKind = getSupportChatAttachmentKind(file);
+      const attachmentUpload = await uploadCloudinaryAsset(file, {
+        resourceType: attachmentKind === 'pdf' ? 'raw' : 'image',
+        folder: 'orl-platform/support-chat',
+        fileName: file.name,
+        purpose: 'support-chat',
+      });
+      const attachment = buildSupportChatAttachment(file, attachmentUpload.secureUrl);
+
+      if (!attachment) {
+        throw new Error('Impossible de preparer la piece jointe.');
+      }
+
+      setPendingChatAttachment(attachment);
+    } catch (error) {
+      console.error('Error uploading support chat attachment:', error);
+      alert('Impossible de televerser ce fichier dans le chat.');
+    } finally {
+      setIsUploadingChatAttachment(false);
+    }
+  };
+
+  const clearSupportChatAttachment = () => {
+    setPendingChatAttachment(null);
   };
 
   const handleResolveAndDeleteSupportChat = async () => {
@@ -1782,20 +1843,22 @@ export default function HomePage() {
     }
 
     const trimmedMessage = chatComposer.trim();
-    if (!trimmedMessage) {
+    const attachment = pendingChatAttachment;
+    if (!trimmedMessage && !attachment) {
       return;
     }
 
     setIsSendingChatMessage(true);
     try {
       if (!activeSupportChatId) {
-        const createdChatId = await createSupportChatFromFirstMessage(trimmedMessage);
+        const createdChatId = await createSupportChatFromFirstMessage(trimmedMessage, attachment);
         if (!createdChatId) {
           return;
         }
 
         setActiveSupportChatId(createdChatId);
         setChatComposer('');
+        setPendingChatAttachment(null);
         setIsChatOpen(true);
 
         const chatsSnap = await getDocs(query(collection(db, 'supportChats'), where('userId', '==', user.uid)));
@@ -1824,6 +1887,7 @@ export default function HomePage() {
           sender: 'user',
           senderName: user.displayName || user.email || 'Utilisateur',
           text: trimmedMessage,
+          attachment,
           createdAt: now,
         });
 
@@ -1844,6 +1908,7 @@ export default function HomePage() {
         });
 
         setChatComposer('');
+        setPendingChatAttachment(null);
         await loadSupportMessagesByChatId(activeSupportChatId);
       }
     } catch (error) {
@@ -2511,27 +2576,32 @@ export default function HomePage() {
                       const isUserMessage = message.sender === 'user';
 
                       return (
-                      <div
-                        key={message.id}
-                        className={`flex ${isUserMessage ? 'justify-end' : 'justify-start'}`}
-                      >
-                        <div className={`flex max-w-[94%] gap-3 ${isUserMessage ? 'flex-row-reverse' : 'flex-row'}`}>
-                          <div className="pt-0.5">{renderSenderAvatar(message.sender)}</div>
-                          <div
-                            className={`rounded-2xl border px-3 py-2 text-sm text-(--app-text) border-[color-mix(in_oklab,var(--app-border)_88%,var(--app-accent)_12%)] ${
-                              isUserMessage
-                                ? 'bg-[color-mix(in_oklab,var(--app-surface)_90%,white_10%)]'
-                                : message.sender === 'admin'
-                                  ? 'bg-[color-mix(in_oklab,var(--app-surface-alt)_72%,var(--app-accent)_28%)]'
-                                  : 'bg-(--app-surface)'
-                            }`}
-                          >
-                            <p className="text-[10px] uppercase tracking-wide opacity-70 mb-1">{resolveSenderLabel(message)}</p>
-                            <div>{renderMessageMarkdown(message.text)}</div>
+                        <div
+                          key={message.id}
+                          className={`flex ${isUserMessage ? 'justify-end' : 'justify-start'}`}
+                        >
+                          <div className={`flex max-w-[94%] gap-3 ${isUserMessage ? 'flex-row-reverse' : 'flex-row'}`}>
+                            <div className="pt-0.5">{renderSenderAvatar(message.sender)}</div>
+                            <div
+                              className={`rounded-2xl border px-3 py-2 text-sm text-(--app-text) border-[color-mix(in_oklab,var(--app-border)_88%,var(--app-accent)_12%)] ${
+                                isUserMessage
+                                  ? 'bg-[color-mix(in_oklab,var(--app-surface)_90%,white_10%)]'
+                                  : message.sender === 'admin'
+                                    ? 'bg-[color-mix(in_oklab,var(--app-surface-alt)_72%,var(--app-accent)_28%)]'
+                                    : 'bg-(--app-surface)'
+                              }`}
+                            >
+                              <p className="text-[10px] uppercase tracking-wide opacity-70 mb-1">{resolveSenderLabel(message)}</p>
+                              {message.text.trim() ? <div>{renderMessageMarkdown(message.text)}</div> : null}
+                              {message.attachment ? (
+                                <div className="mt-2">
+                                  <SupportChatAttachmentCard attachment={message.attachment} />
+                                </div>
+                              ) : null}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    );
+                      );
                     })
                   )}
 
@@ -2589,23 +2659,42 @@ export default function HomePage() {
                         />
                       </div>
 
+                      {pendingChatAttachment ? (
+                        <div className="px-0.5">
+                          <SupportChatAttachmentCard
+                            attachment={pendingChatAttachment}
+                            onRemove={clearSupportChatAttachment}
+                          />
+                        </div>
+                      ) : null}
+
                       <div className="relative flex w-full items-center gap-2">
                         <div className="relative flex min-w-0 flex-1 items-center gap-1">
                           <button
                             type="button"
-                            onClick={() => chatComposerRef.current?.focus()}
-                            className="h-7 w-7 rounded-lg flex items-center justify-center transition-colors text-(--app-text) bg-[color-mix(in_oklab,var(--app-surface-alt)_64%,var(--app-surface)_36%)]"
-                            aria-label="Ajouter"
+                            onClick={() => chatAttachmentInputRef.current?.click()}
+                            disabled={isUploadingChatAttachment || isSendingChatMessage || isActiveSupportChatResolved}
+                            className="h-7 w-7 rounded-lg flex items-center justify-center transition-colors text-(--app-text) bg-[color-mix(in_oklab,var(--app-surface-alt)_64%,var(--app-surface)_36%)] disabled:opacity-60"
+                            aria-label="Ajouter une piece jointe"
+                            title="Ajouter une piece jointe"
                           >
-                            <Plus className="h-3.5 w-3.5" />
+                            {isUploadingChatAttachment ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Paperclip className="h-3.5 w-3.5" />}
                           </button>
+                          <input
+                            ref={chatAttachmentInputRef}
+                            type="file"
+                            accept=".pdf,image/*"
+                            className="hidden"
+                            onChange={(event) => void handleSupportChatAttachmentSelection(event)}
+                            disabled={isUploadingChatAttachment || isSendingChatMessage || isActiveSupportChatResolved}
+                          />
                         </div>
 
                         <div className={`transition-all duration-200 ease-out ${showSendComposerAction ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-1 pointer-events-none'}`}>
                           <button
                             type="button"
                             onClick={() => void handleSendChatMessage()}
-                            disabled={isSendingChatMessage || !showSendComposerAction}
+                            disabled={isSendingChatMessage || isUploadingChatAttachment || !showSendComposerAction}
                             className="h-7 w-7 rounded-lg disabled:opacity-60 flex items-center justify-center bg-(--app-accent) text-(--app-accent-contrast)"
                             aria-label="Envoyer"
                           >

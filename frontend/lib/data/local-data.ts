@@ -995,15 +995,16 @@ export const deleteAuthAccountByUid = async (uid: string) => {
 export const uploadCloudinaryAsset = async (
   file: File,
   options: {
-    resourceType?: 'image' | 'video';
+    resourceType?: 'image' | 'video' | 'raw';
     folder?: string;
     fileName?: string;
+    purpose?: 'support-chat';
     onProgress?: (percentage: number) => void;
   } = {},
 ): Promise<{
   secureUrl: string;
   publicId: string;
-  resourceType?: 'image' | 'video';
+  resourceType?: 'image' | 'video' | 'raw';
   isMultipart?: boolean;
   totalParts?: number;
   parts?: Array<{ publicId: string; secureUrl: string; duration?: number; fileSize?: number }>;
@@ -1011,7 +1012,9 @@ export const uploadCloudinaryAsset = async (
   const formData = new FormData();
   formData.append('file', file);
 
-  const resourceType = options.resourceType === 'video' ? 'video' : 'image';
+  const resourceType = options.resourceType === 'video' || options.resourceType === 'raw'
+    ? options.resourceType
+    : 'image';
   const folder = options.folder || 'orl-platform';
 
   const params = new URLSearchParams({
@@ -1022,6 +1025,10 @@ export const uploadCloudinaryAsset = async (
   const explicitFileName = String(options.fileName || '').trim();
   if (explicitFileName) {
     params.set('fileName', explicitFileName);
+  }
+
+  if (options.purpose) {
+    params.set('purpose', options.purpose);
   }
 
   const token = getAuthToken();
@@ -1081,7 +1088,9 @@ export const uploadCloudinaryAsset = async (
         resolve({
           secureUrl,
           publicId,
-          resourceType: payload.resourceType === 'video' ? 'video' : 'image',
+          resourceType: payload.resourceType === 'video' || payload.resourceType === 'raw'
+            ? payload.resourceType
+            : 'image',
           isMultipart: Boolean(payload.isMultipart),
           totalParts: Number(payload.totalParts || 0) || undefined,
           parts: Array.isArray(payload.parts)

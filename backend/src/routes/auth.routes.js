@@ -519,12 +519,18 @@ const createUserWithGoogle = async (googleIdentity) => {
 const resolveUserFromGoogleSignIn = async (googleIdentity) => {
   const byGoogleSub = await User.findOne({ 'googleAuth.sub': googleIdentity.sub });
   if (byGoogleSub) {
+    if (byGoogleSub.isBlocked) {
+      throw new Error('Ce compte a ete suspendu par un administrateur.');
+    }
     const linked = await linkGoogleToUser(byGoogleSub, googleIdentity);
     return linked || byGoogleSub;
   }
 
   const existingByEmail = await User.findOne({ email: googleIdentity.email }).lean();
   if (existingByEmail) {
+    if (existingByEmail.isBlocked) {
+      throw new Error('Ce compte a ete suspendu par un administrateur.');
+    }
     throw new Error(
       'Un compte existe deja avec cet email. Connectez-vous d abord avec email/mot de passe puis utilisez "Connexion Google" dans votre profil.',
     );
@@ -696,6 +702,10 @@ router.get('/google/callback', async (req, res) => {
         return redirectWithOAuthError(res, failureRedirectTarget, 'Utilisateur introuvable.');
       }
 
+      if (targetUser.isBlocked) {
+        return redirectWithOAuthError(res, failureRedirectTarget, 'Ce compte a ete suspendu par un administrateur.');
+      }
+
       const alreadyLinkedElsewhere = await User.findOne({
         'googleAuth.sub': googleIdentity.sub,
         uid: { $ne: targetUser.uid },
@@ -768,6 +778,10 @@ router.post('/signin', async (req, res) => {
     const user = await User.findOne({ email: normalizedEmail });
     if (!user) {
       return res.status(401).json({ message: 'Email ou mot de passe invalide.' });
+    }
+
+    if (user.isBlocked) {
+      return res.status(403).json({ message: 'Ce compte a ete suspendu par un administrateur.' });
     }
 
     if (user.passwordLoginEnabled === false) {

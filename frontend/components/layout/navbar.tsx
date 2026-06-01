@@ -881,14 +881,14 @@ export function Navbar() {
                         title={doctorName || profile.email}
                         aria-label={doctorName || profile.email}
                       >
-                        <div className="w-8 h-8 rounded-full bg-(--app-surface-2) overflow-hidden flex items-center justify-center">
+                        <div className="relative w-8 h-8 rounded-full bg-(--app-surface-2) overflow-hidden flex items-center justify-center">
                           {profile.photoURL ? (
                             <Image
                               src={profile.photoURL}
                               alt={profile.displayName}
-                              width={32}
-                              height={32}
-                              className="w-full h-full object-cover"
+                              fill
+                              sizes="32px"
+                              className="object-cover"
                               onError={(event) => applyImageFallback(event, AVATAR_FALLBACK_SRC)}
                             />
                           ) : (
@@ -1096,14 +1096,14 @@ export function Navbar() {
                 user ? (
                   <div className="flex flex-col gap-4">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-(--app-surface-2) overflow-hidden flex items-center justify-center">
+                      <div className="relative w-10 h-10 rounded-full bg-(--app-surface-2) overflow-hidden flex items-center justify-center">
                         {profile?.photoURL ? (
                           <Image
                             src={profile.photoURL}
                             alt={profile.displayName}
-                            width={40}
-                            height={40}
-                            className="w-full h-full object-cover"
+                            fill
+                            sizes="40px"
+                            className="object-cover"
                             onError={(event) => applyImageFallback(event, AVATAR_FALLBACK_SRC)}
                           />
                         ) : (
