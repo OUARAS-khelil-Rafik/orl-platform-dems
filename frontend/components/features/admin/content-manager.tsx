@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { Video, FileText, HelpCircle, Image as ImageIcon, MessageSquare, Plus, Save, X, Loader2, Trash2, Edit2, Search } from 'lucide-react';
+import { Video, FileText, HelpCircle, Image as ImageIcon, MessageSquare, Plus, Save, X, Loader2, Trash2, Edit2, Search, Upload } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import {
   db,
@@ -12,11 +12,13 @@ import {
   deleteDoc,
   doc,
   updateDoc,
+  importQcmsFromRows,
   uploadCloudinaryAsset,
   cleanupCloudinaryAssets,
   cleanupCloudinaryAssetsOnPageExit,
   type CloudinaryCleanupAsset,
   type CloudinaryResourceType,
+  type QcmImportRowPayload,
 } from '@/lib/data/local-data';
 import SeamlessPlayer from '@/components/features/video/seamless-player';
 import type {
@@ -102,6 +104,7 @@ type PreviewSource = {
 };
 
 type VideoUploadPhase = 'idle' | 'uploading' | 'processing' | 'complete' | 'error';
+type SpreadsheetCell = string | number | boolean | null | undefined;
 
 const CLOUDINARY_LIMIT = 100 * 1024 * 1024; // 100MB
 const BACKEND_UPLOAD_LIMIT = 1024 * 1024 * 1024; // 1GB
@@ -407,6 +410,193 @@ const logAdminAction = (action: 'create' | 'update' | 'delete', entity: string, 
   });
 };
 
+const normalizeImportHeader = (value: SpreadsheetCell) => {
+  return String(value ?? '')
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+};
+
+const normalizeImportValue = (value: SpreadsheetCell) => {
+  return typeof value === 'string' ? value.trim() : String(value ?? '').trim();
+};
+
+const parseImportBoolean = (value: SpreadsheetCell) => {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+
+  const normalized = normalizeImportHeader(value);
+  return ['true', 'vrai', 'oui', 'yes', '1', 'x'].includes(normalized);
+};
+
+const getImportFieldValue = (
+  row: Record<string, SpreadsheetCell>,
+  aliases: string[],
+) => {
+  const normalizedAliases = aliases.map(normalizeImportHeader);
+  for (const [key, value] of Object.entries(row)) {
+    if (normalizedAliases.includes(normalizeImportHeader(key))) {
+      return value;
+    }
+  }
+
+  return '';
+};
+
+const splitDelimitedImportText = (text: string) => {
+  const firstLine = text.split(/\r?\n/).find((line) => line.trim()) || '';
+  const delimiter = ['\t', ';', ','].sort(
+    (left, right) => firstLine.split(right).length - firstLine.split(left).length,
+  )[0] || ',';
+  const rows: string[][] = [];
+  let current = '';
+  let row: string[] = [];
+  let inQuotes = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    const nextChar = text[index + 1];
+
+    if (char === '"' && inQuotes && nextChar === '"') {
+      current += '"';
+      index += 1;
+      continue;
+    }
+
+    if (char === '"') {
+      inQuotes = !inQuotes;
+      continue;
+    }
+
+    if (char === delimiter && !inQuotes) {
+      row.push(current.trim());
+      current = '';
+      continue;
+    }
+
+    if ((char === '\n' || char === '\r') && !inQuotes) {
+      if (char === '\r' && nextChar === '\n') {
+        index += 1;
+      }
+      row.push(current.trim());
+      if (row.some((cell) => cell.trim())) {
+        rows.push(row);
+      }
+      row = [];
+      current = '';
+      continue;
+    }
+
+    current += char;
+  }
+
+  row.push(current.trim());
+  if (row.some((cell) => cell.trim())) {
+    rows.push(row);
+  }
+
+  return rows;
+};
+
+const rowsToObjects = (rows: SpreadsheetCell[][]) => {
+  const headerIndex = rows.findIndex((row) => row.some((cell) => normalizeImportValue(cell)));
+  if (headerIndex < 0) {
+    return [];
+  }
+
+  const headers = rows[headerIndex].map((cell) => normalizeImportValue(cell));
+  return rows.slice(headerIndex + 1)
+    .filter((row) => row.some((cell) => normalizeImportValue(cell)))
+    .map((row) => headers.reduce<Record<string, SpreadsheetCell>>((acc, header, index) => {
+      if (header) {
+        acc[header] = row[index] ?? '';
+      }
+      return acc;
+    }, {}));
+};
+
+const normalizeJsonImportRows = (value: unknown): Record<string, SpreadsheetCell>[] => {
+  const source = Array.isArray(value)
+    ? value
+    : Array.isArray((value as { rows?: unknown[] })?.rows)
+      ? (value as { rows: unknown[] }).rows
+      : Array.isArray((value as { qcms?: unknown[] })?.qcms)
+        ? (value as { qcms: unknown[] }).qcms
+        : Array.isArray((value as { questions?: unknown[] })?.questions)
+          ? (value as { questions: unknown[] }).questions
+          : [];
+
+  if (source.length === 0) {
+    return [];
+  }
+
+  if (Array.isArray(source[0])) {
+    return rowsToObjects(source as SpreadsheetCell[][]);
+  }
+
+  return source
+    .filter((entry): entry is Record<string, SpreadsheetCell> => Boolean(entry) && typeof entry === 'object' && !Array.isArray(entry))
+    .map((entry) => ({ ...entry }));
+};
+
+const mapImportedQcmObject = (row: Record<string, SpreadsheetCell>): QcmImportRowPayload | null => {
+  const optionValues = ['A', 'B', 'C', 'D', 'E'].map((label) =>
+    normalizeImportValue(getImportFieldValue(row, [label, `option ${label}`, `choix ${label}`])),
+  );
+  const answerValues = ['A', 'B', 'C', 'D', 'E'].map((label) =>
+    parseImportBoolean(getImportFieldValue(row, [`REPONSE ${label}`, `RÉPONSE ${label}`, `reponse_${label}`, `answer ${label}`])),
+  );
+  const optionPairs = optionValues
+    .map((option, index) => ({ option, answer: answerValues[index] }))
+    .filter((entry) => entry.option);
+  const correctOptionIndexes = optionPairs
+    .map((entry, index) => (entry.answer ? index : -1))
+    .filter((index) => index >= 0);
+
+  const payload: QcmImportRowPayload = {
+    videoTitle: normalizeImportValue(getImportFieldValue(row, ['NOM VIDEO', 'NOM VIDÉO', 'VIDEO', 'VIDÉO', 'videoTitle'])),
+    qcmNumber: normalizeImportValue(getImportFieldValue(row, ['N QCM', 'N° QCM', 'NUMERO QCM', 'NUMÉRO QCM', 'qcmNumber'])),
+    question: normalizeImportValue(getImportFieldValue(row, ['ENONCE', 'ÉNONCÉ', 'QUESTION', 'question'])),
+    qcmType: normalizeImportValue(getImportFieldValue(row, ['TYPE QCM', 'TYPE', 'MODE', 'qcmType'])),
+    options: optionPairs.map((entry) => entry.option),
+    answers: optionPairs.map((entry) => entry.answer),
+    correctOptionIndexes,
+    explanation: normalizeImportValue(getImportFieldValue(row, ['COMMENTAIRE', 'CORRIGE', 'CORRIGÉ', 'EXPLICATION', 'explanation'])),
+    reference: normalizeImportValue(getImportFieldValue(row, ['REFERENCES', 'RÉFÉRENCES', 'REFERENCE', 'RÉFÉRENCE', 'reference'])),
+  };
+
+  if (!payload.videoTitle && !payload.question && payload.options.length === 0) {
+    return null;
+  }
+
+  return payload;
+};
+
+const parseQcmImportFile = async (file: File): Promise<QcmImportRowPayload[]> => {
+  const extension = file.name.split('.').pop()?.toLowerCase() || '';
+  let objects: Record<string, SpreadsheetCell>[] = [];
+
+  if (extension === 'json') {
+    objects = normalizeJsonImportRows(JSON.parse(await file.text()));
+  } else if (extension === 'csv') {
+    objects = rowsToObjects(splitDelimitedImportText(await file.text()));
+  } else if (extension === 'xlsx' || extension === 'xls') {
+    const { readSheet } = await import('read-excel-file/browser');
+    const rows = await readSheet(file);
+    objects = rowsToObjects(rows as unknown as SpreadsheetCell[][]);
+  } else {
+    throw new Error('Format non supporté. Utilisez un fichier Excel, CSV ou JSON.');
+  }
+
+  return objects
+    .map(mapImportedQcmObject)
+    .filter((entry): entry is QcmImportRowPayload => Boolean(entry));
+};
+
 export function AdminContentManager() {
   const [activeTab, setActiveTab] = useState<'video' | 'qcm' | 'case' | 'openQuestion' | 'diagram'>('video');
   const [videoViewMode, setVideoViewMode] = useState<'editor' | 'byVideo'>('editor');
@@ -430,6 +620,9 @@ export function AdminContentManager() {
   const [pendingVideoUploads, setPendingVideoUploads] = useState<CloudinaryCleanupAsset[]>([]);
   const [pendingCaseUploads, setPendingCaseUploads] = useState<CloudinaryCleanupAsset[]>([]);
   const [pendingDiagramUploads, setPendingDiagramUploads] = useState<CloudinaryCleanupAsset[]>([]);
+  const [isImportingQcms, setIsImportingQcms] = useState(false);
+  const [qcmImportSummary, setQcmImportSummary] = useState('');
+  const qcmImportInputRef = useRef<HTMLInputElement>(null);
   const adminCloudinaryConfigCacheRef = useRef<{
     value: boolean;
     checkedAt: number;
@@ -906,6 +1099,69 @@ export function AdminContentManager() {
       explanation: '',
       reference: '',
     });
+  };
+
+  const handleQcmImportFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    const input = event.target;
+    if (!file) {
+      return;
+    }
+
+    setIsImportingQcms(true);
+    setErrorMessage('');
+    setSuccessMessage('');
+    setQcmImportSummary('');
+
+    try {
+      const rows = await parseQcmImportFile(file);
+      if (rows.length === 0) {
+        setErrorMessage('Aucune ligne QCM exploitable trouvée dans ce fichier.');
+        return;
+      }
+
+      const result = await importQcmsFromRows(rows);
+      await fetchData();
+
+      const invalidCount = Array.isArray(result.invalidRows) ? result.invalidRows.length : 0;
+      const createdVideosText = result.createdVideos > 0
+        ? ` ${result.createdVideos} vidéo(s) placeholder créée(s).`
+        : '';
+      const skippedText = result.skippedDuplicates > 0
+        ? ` ${result.skippedDuplicates} doublon(s) ignoré(s).`
+        : '';
+      const invalidText = invalidCount > 0
+        ? ` ${invalidCount} ligne(s) invalide(s).`
+        : '';
+
+      setSuccessMessage(
+        `Import QCM terminé: ${result.imported} QCM(s) ajouté(s).${createdVideosText}${skippedText}${invalidText}`,
+      );
+      setQcmImportSummary(
+        [
+          result.createdVideoTitles.length > 0
+            ? `Vidéos préparées: ${result.createdVideoTitles.slice(0, 5).join(', ')}${result.createdVideoTitles.length > 5 ? '…' : ''}`
+            : '',
+          result.duplicateRows.length > 0
+            ? `Doublons ignorés: ${result.duplicateRows.slice(0, 3).map((row) => row.qcmNumber ? `QCM ${row.qcmNumber}` : row.question).join(', ')}${result.duplicateRows.length > 3 ? '…' : ''}`
+            : '',
+          invalidCount > 0
+            ? `Lignes invalides: ${result.invalidRows.slice(0, 3).map((row) => row.rowIndex ? `ligne ${row.rowIndex} (${row.message})` : row.message).join(', ')}${invalidCount > 3 ? '…' : ''}`
+            : '',
+        ].filter(Boolean).join(' · '),
+      );
+      logAdminAction('create', 'qcms-import', {
+        imported: result.imported,
+        skippedDuplicates: result.skippedDuplicates,
+        createdVideos: result.createdVideos,
+      });
+    } catch (error) {
+      console.error('QCM import error:', error);
+      setErrorMessage(getErrorMessage(error, "Impossible d'importer ce fichier QCM."));
+    } finally {
+      setIsImportingQcms(false);
+      input.value = '';
+    }
   };
 
   const handleVideoSubmit = async (e: React.FormEvent) => {
@@ -2695,6 +2951,43 @@ export function AdminContentManager() {
 
         {activeTab === 'qcm' && (
           <div className={editorGridClass}>
+            <section className={`${sectionCardClass} order-0`}>
+              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div className="space-y-1">
+                  <h3 className="text-lg font-bold text-slate-900">Import QCM en masse</h3>
+                  <p className={sectionHintClass}>
+                    Chargez un fichier Excel, CSV ou JSON avec les colonnes NOM VIDEO, N QCM, ENONCE, TYPE QCM, A-E, REPONSE A-E, COMMENTAIRE et REFERENCES.
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    Les QCMs déjà présents sont ignorés. Si une vidéo n’existe pas, son nom est créé comme vidéo à compléter prochainement.
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-3">
+                  <input
+                    ref={qcmImportInputRef}
+                    type="file"
+                    accept=".xlsx,.xls,.csv,.json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,application/json"
+                    onChange={handleQcmImportFile}
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => qcmImportInputRef.current?.click()}
+                    disabled={isImportingQcms}
+                    className="inline-flex items-center gap-2 rounded-xl bg-accent-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-accent-700 disabled:cursor-not-allowed disabled:opacity-70"
+                  >
+                    {isImportingQcms ? <Loader2 className="h-5 w-5 animate-spin" /> : <Upload className="h-5 w-5" />}
+                    {isImportingQcms ? 'Import en cours…' : 'Uploader un fichier'}
+                  </button>
+                </div>
+              </div>
+              {qcmImportSummary && (
+                <div className="rounded-xl border border-medical-200 bg-medical-50 px-4 py-3 text-xs text-medical-800">
+                  {qcmImportSummary}
+                </div>
+              )}
+            </section>
+
             <form onSubmit={handleQcmSubmit} className={formPanelClass}>
               <div className="flex justify-between items-center">
                 <div>

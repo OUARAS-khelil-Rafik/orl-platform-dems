@@ -154,6 +154,140 @@ const dedupeStringArray = (values = []) => {
   return output;
 };
 
+const truthyAnswerValues = new Set(['true', 'vrai', 'yes', 'oui', '1', 'x']);
+const falseyAnswerValues = new Set(['false', 'faux', 'no', 'non', '0']);
+
+const normalizeImportedAnswer = (value) => {
+  const normalized = normalizeComparableText(value);
+  if (!normalized) {
+    return false;
+  }
+
+  if (truthyAnswerValues.has(normalized)) {
+    return true;
+  }
+
+  if (falseyAnswerValues.has(normalized)) {
+    return false;
+  }
+
+  return false;
+};
+
+const normalizeImportedQcmMode = (value, correctOptionIndexes = []) => {
+  const normalized = normalizeComparableText(value);
+  if (
+    normalized.includes('multiple') ||
+    normalized.includes('plusieurs') ||
+    correctOptionIndexes.length > 1
+  ) {
+    return 'multiple';
+  }
+
+  return 'single';
+};
+
+const normalizeImportedQcmRow = (row, rowIndex) => {
+  if (!isPlainObject(row)) {
+    return {
+      error: {
+        rowIndex,
+        message: 'Ligne invalide.',
+      },
+    };
+  }
+
+  const videoTitle = String(row.videoTitle || '').trim();
+  const question = String(row.question || '').trim();
+  const rawOptions = Array.isArray(row.options) ? row.options : [];
+  const options = rawOptions
+    .map((entry) => String(entry ?? '').trim())
+    .filter(Boolean);
+  const importedCorrectIndexes = Array.isArray(row.correctOptionIndexes)
+    ? row.correctOptionIndexes
+        .map((entry) => Number(entry))
+        .filter((entry) => Number.isInteger(entry) && entry >= 0 && entry < options.length)
+    : [];
+  const correctOptionIndexes = importedCorrectIndexes.length > 0
+    ? Array.from(new Set(importedCorrectIndexes))
+    : rawOptions
+        .map((_, index) => (normalizeImportedAnswer(row.answers?.[index]) ? index : -1))
+        .filter((index) => index >= 0 && index < options.length);
+
+  if (!videoTitle) {
+    return {
+      error: {
+        rowIndex,
+        message: 'Nom vidéo manquant.',
+      },
+    };
+  }
+
+  if (!question) {
+    return {
+      error: {
+        rowIndex,
+        videoTitle,
+        message: 'Énoncé manquant.',
+      },
+    };
+  }
+
+  if (options.length < 2) {
+    return {
+      error: {
+        rowIndex,
+        videoTitle,
+        question,
+        message: 'Au moins deux options sont requises.',
+      },
+    };
+  }
+
+  if (correctOptionIndexes.length === 0) {
+    return {
+      error: {
+        rowIndex,
+        videoTitle,
+        question,
+        message: 'Aucune bonne réponse détectée.',
+      },
+    };
+  }
+
+  const mode = normalizeImportedQcmMode(row.qcmType, correctOptionIndexes);
+  const normalizedCorrectOptionIndexes = mode === 'single'
+    ? [correctOptionIndexes[0]]
+    : correctOptionIndexes;
+
+  return {
+    row: {
+      videoTitle,
+      question,
+      options,
+      mode,
+      correctOptionIndexes: normalizedCorrectOptionIndexes,
+      correctOptionIndex: normalizedCorrectOptionIndexes[0] || 0,
+      explanation: String(row.explanation || '').trim(),
+      reference: String(row.reference || '').trim(),
+      qcmNumber: String(row.qcmNumber || '').trim(),
+    },
+  };
+};
+
+const createPlaceholderVideoPayload = (title, now) => ({
+  title,
+  description: '',
+  url: '',
+  subspecialty: '',
+  section: '',
+  isFreeDemo: false,
+  price: 0,
+  isPlaceholder: true,
+  createdAt: now,
+  updatedAt: now,
+});
+
 const hasIntersection = (left, right) => {
   for (const value of left) {
     if (right.has(value)) {
@@ -801,6 +935,147 @@ router.post('/query', async (req, res) => {
     return res.json({ docs: docs.map(parseDoc).filter(Boolean) });
   } catch {
     return res.status(500).json({ message: 'Unable to execute query.' });
+  }
+});
+
+router.post('/qcms/import', authOptional, async (req, res) => {
+  try {
+    const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
+    if (rows.length === 0) {
+      return res.status(400).json({ message: 'Aucune ligne QCM à importer.' });
+    }
+
+    const now = new Date().toISOString();
+    const normalizedRows = [];
+    const invalidRows = [];
+
+    rows.forEach((row, index) => {
+      const normalized = normalizeImportedQcmRow(row, index + 1);
+      if (normalized.error) {
+        invalidRows.push(normalized.error);
+        return;
+      }
+
+      normalizedRows.push(normalized.row);
+    });
+
+    if (normalizedRows.length === 0) {
+      return res.status(400).json({
+        message: 'Aucune ligne QCM valide à importer.',
+        imported: 0,
+        skippedDuplicates: 0,
+        createdVideos: 0,
+        invalidRows,
+      });
+    }
+
+    const db = mongoose.connection.db;
+    const videoTitleKeys = new Set(normalizedRows.map((row) => normalizeComparableText(row.videoTitle)));
+    const existingVideos = await findCollectionDocsOrEmpty({
+      db,
+      collection: 'videos',
+      filter: {},
+    });
+    const videoByTitleKey = new Map();
+
+    for (const video of existingVideos) {
+      const key = normalizeComparableText(video?.title);
+      if (key && videoTitleKeys.has(key) && !videoByTitleKey.has(key)) {
+        videoByTitleKey.set(key, String(video._id));
+      }
+    }
+
+    const createdVideoTitles = [];
+    for (const row of normalizedRows) {
+      const titleKey = normalizeComparableText(row.videoTitle);
+      if (!titleKey || videoByTitleKey.has(titleKey)) {
+        continue;
+      }
+
+      const result = await db
+        .collection('videos')
+        .insertOne(createPlaceholderVideoPayload(row.videoTitle, now));
+
+      videoByTitleKey.set(titleKey, String(result.insertedId));
+      createdVideoTitles.push(row.videoTitle);
+    }
+
+    const videoIds = Array.from(new Set([...videoByTitleKey.values()]));
+    const existingQcms = videoIds.length > 0
+      ? await findCollectionDocsOrEmpty({
+          db,
+          collection: 'qcms',
+          filter: { videoId: { $in: videoIds } },
+        })
+      : [];
+    const existingQcmKeys = new Set(
+      existingQcms
+        .map((entry) => {
+          const videoId = String(entry?.videoId || '').trim();
+          const questionKey = normalizeComparableText(entry?.question);
+          return videoId && questionKey ? `${videoId}|${questionKey}` : '';
+        })
+        .filter(Boolean),
+    );
+
+    const batchQcmKeys = new Set();
+    const qcmsToInsert = [];
+    const skippedDuplicates = [];
+
+    for (const row of normalizedRows) {
+      const videoId = videoByTitleKey.get(normalizeComparableText(row.videoTitle)) || '';
+      const questionKey = normalizeComparableText(row.question);
+      const duplicateKey = videoId && questionKey ? `${videoId}|${questionKey}` : '';
+
+      if (!videoId || !questionKey) {
+        invalidRows.push({
+          videoTitle: row.videoTitle,
+          question: row.question,
+          message: 'Lien vidéo/question invalide après normalisation.',
+        });
+        continue;
+      }
+
+      if (existingQcmKeys.has(duplicateKey) || batchQcmKeys.has(duplicateKey)) {
+        skippedDuplicates.push({
+          videoTitle: row.videoTitle,
+          question: row.question,
+          qcmNumber: row.qcmNumber,
+        });
+        continue;
+      }
+
+      batchQcmKeys.add(duplicateKey);
+      qcmsToInsert.push({
+        videoId,
+        question: row.question,
+        options: row.options,
+        mode: row.mode,
+        correctOptionIndexes: row.correctOptionIndexes,
+        correctOptionIndex: row.correctOptionIndex,
+        explanation: row.explanation,
+        reference: row.reference,
+        qcmNumber: row.qcmNumber,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    if (qcmsToInsert.length > 0) {
+      await db.collection('qcms').insertMany(qcmsToInsert, { ordered: false });
+    }
+
+    return res.status(201).json({
+      imported: qcmsToInsert.length,
+      skippedDuplicates: skippedDuplicates.length,
+      createdVideos: createdVideoTitles.length,
+      invalidRows,
+      duplicateRows: skippedDuplicates,
+      createdVideoTitles,
+    });
+  } catch (error) {
+    console.error('[qcms-import]', error);
+    return res.status(500).json({ message: 'Unable to import QCM rows.' });
   }
 });
 

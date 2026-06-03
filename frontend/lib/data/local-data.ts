@@ -111,6 +111,36 @@ export interface CloudinaryCleanupResult extends CloudinaryCleanupAsset {
   deletedAs?: CloudinaryResourceType | null;
 }
 
+export interface QcmImportRowPayload {
+  videoTitle: string;
+  qcmNumber?: string;
+  question: string;
+  qcmType?: string;
+  options: string[];
+  answers?: boolean[];
+  correctOptionIndexes: number[];
+  explanation?: string;
+  reference?: string;
+}
+
+export interface QcmImportResponse {
+  imported: number;
+  skippedDuplicates: number;
+  createdVideos: number;
+  invalidRows: Array<{
+    rowIndex?: number;
+    videoTitle?: string;
+    question?: string;
+    message: string;
+  }>;
+  duplicateRows: Array<{
+    videoTitle: string;
+    question: string;
+    qcmNumber?: string;
+  }>;
+  createdVideoTitles: string[];
+}
+
 const resolveApiBaseUrl = () => {
   const fromEnv = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '');
   if (fromEnv) {
@@ -581,6 +611,32 @@ export const addDoc = async <TData extends LocalDocumentData = LocalDocumentData
     id: response.id,
     operation: 'add',
   });
+
+  return response;
+};
+
+export const importQcmsFromRows = async (
+  rows: QcmImportRowPayload[],
+): Promise<QcmImportResponse> => {
+  const response = await apiRequest<QcmImportResponse>(
+    '/data/qcms/import',
+    {
+      method: 'POST',
+      body: JSON.stringify({ rows }),
+    },
+    false,
+  );
+
+  emitDataChange({
+    collection: 'qcms',
+    operation: 'add',
+  });
+  if (response.createdVideos > 0) {
+    emitDataChange({
+      collection: 'videos',
+      operation: 'add',
+    });
+  }
 
   return response;
 };
