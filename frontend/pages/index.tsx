@@ -2036,16 +2036,6 @@ export default function HomePage() {
         <div className="container mx-auto px-4 relative z-10">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-stretch">
             <div className="lg:col-span-12">
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5 }}
-                className="inline-flex items-center gap-2 px-3 py-1 rounded-full mb-6 text-sm font-medium bg-(--hero-chip-bg) text-(--hero-chip-text) border border-(--hero-chip-border)"
-              >
-                <Stethoscope className="h-4 w-4" />
-                <span>Préparation au Concours DEMS ORL</span>
-              </motion.div>
-
               <motion.h1
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}

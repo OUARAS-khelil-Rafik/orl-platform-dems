@@ -55,7 +55,7 @@ export function SupportChatAttachmentCard({ attachment, onRemove }: SupportChatA
             <button
               type="button"
               onClick={() => setIsPreviewOpen(true)}
-              className="group block h-full w-full text-left"
+              className="group relative block h-full w-full text-left"
               aria-label={`Ouvrir l'aperçu de ${attachment.name}`}
               title="Cliquer pour agrandir"
             >

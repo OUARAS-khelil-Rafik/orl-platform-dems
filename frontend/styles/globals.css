@@ -1,6 +1,60 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+html,
+body {
+  -webkit-touch-callout: none;
+}
+
+body.content-protection-enabled {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+body.content-protection-enabled input,
+body.content-protection-enabled textarea,
+body.content-protection-enabled select,
+body.content-protection-enabled [contenteditable='true'],
+body.content-protection-enabled [data-allow-clipboard='true'],
+body.content-protection-enabled [data-allow-clipboard='true'] * {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+body.content-protection-enabled img,
+body.content-protection-enabled video,
+body.content-protection-enabled canvas,
+body.content-protection-enabled svg {
+  -webkit-user-drag: none;
+  user-drag: none;
+}
+
+@media print {
+  html,
+  body {
+    background: #fff !important;
+  }
+
+  body * {
+    visibility: hidden !important;
+  }
+
+  body::before {
+    content: "Impression désactivée pour protéger le contenu de la plateforme.";
+    visibility: visible !important;
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    color: #111;
+    background: #fff;
+    font: 700 18pt system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    text-align: center;
+  }
+}
+
 .reactEasyCrop_Container {
   position: absolute;
   top: 0;
@@ -2908,4 +2962,3 @@ html[data-theme='dark'] input[type='date']::-webkit-calendar-picker-indicator {
   opacity: 0.95;
   cursor: pointer;
 }
-

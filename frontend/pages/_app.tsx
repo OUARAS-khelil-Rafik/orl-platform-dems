@@ -7,6 +7,7 @@ import { AuthProvider } from '@/components/providers/auth-provider';
 import { CartProvider } from '@/components/providers/cart-provider';
 import { Navbar } from '@/components/layout/navbar';
 import { Footer } from '@/components/layout/footer';
+import { ContentProtection } from '@/components/security/content-protection';
 
 const plusJakarta = Plus_Jakarta_Sans({
   subsets: ['latin'],
@@ -47,6 +48,7 @@ export default function App({ Component, pageProps }: AppProps) {
       </Head>
       <AuthProvider>
         <CartProvider>
+          <ContentProtection />
           <GlobalScrollProgress />
           <Navbar />
           <main className="flex-1 flex flex-col">
