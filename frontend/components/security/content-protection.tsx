@@ -34,7 +34,7 @@ const isPrintShortcut = (event: KeyboardEvent) =>
   (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'p';
 
 const isClipboardShortcut = (event: KeyboardEvent) => {
-  const key = event.key.toLowerCase();
+  const key = event.key?.toLowerCase();
 
   if (!(event.ctrlKey || event.metaKey)) {
     return false;
@@ -48,7 +48,7 @@ const isClipboardShortcut = (event: KeyboardEvent) => {
 };
 
 const isScreenshotShortcut = (event: KeyboardEvent) => {
-  const key = event.key.toLowerCase();
+  const key = event.key?.toLowerCase();
 
   return (
     event.key === 'PrintScreen' ||
