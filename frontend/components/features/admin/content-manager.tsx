@@ -13,11 +13,15 @@ import {
   doc,
   updateDoc,
   importQcmsFromRows,
+  importOpenQuestionsFromRows,
+  importClinicalCasesFromRows,
   uploadCloudinaryAsset,
   cleanupCloudinaryAssets,
   cleanupCloudinaryAssetsOnPageExit,
   type CloudinaryCleanupAsset,
   type CloudinaryResourceType,
+  type ClinicalCaseImportRowPayload,
+  type OpenQuestionImportRowPayload,
   type QcmImportRowPayload,
 } from '@/lib/data/local-data';
 import SeamlessPlayer from '@/components/features/video/seamless-player';
@@ -576,25 +580,118 @@ const mapImportedQcmObject = (row: Record<string, SpreadsheetCell>): QcmImportRo
   return payload;
 };
 
-const parseQcmImportFile = async (file: File): Promise<QcmImportRowPayload[]> => {
-  const extension = file.name.split('.').pop()?.toLowerCase() || '';
-  let objects: Record<string, SpreadsheetCell>[] = [];
+const mapImportedOpenQuestionObject = (row: Record<string, SpreadsheetCell>): OpenQuestionImportRowPayload | null => {
+  const payload: OpenQuestionImportRowPayload = {
+    videoTitle: normalizeImportValue(getImportFieldValue(row, ['NOM VIDEO', 'NOM VIDÉO', 'VIDEO', 'VIDÉO', 'videoTitle'])),
+    qrocNumber: normalizeImportValue(getImportFieldValue(row, ['N QROC', 'N° QROC', 'NUMERO QROC', 'NUMÉRO QROC', 'qrocNumber'])),
+    question: normalizeImportValue(getImportFieldValue(row, ['ENONCE', 'ÉNONCÉ', 'QUESTION', 'question'])),
+    answer: normalizeImportValue(getImportFieldValue(row, ['REPONSE', 'RÉPONSE', 'ANSWER', 'CORRIGE', 'CORRIGÉ', 'answer'])),
+    reference: normalizeImportValue(getImportFieldValue(row, ['REFERENCES', 'RÉFÉRENCES', 'REFERENCE', 'RÉFÉRENCE', 'reference'])),
+  };
 
-  if (extension === 'json') {
-    objects = normalizeJsonImportRows(JSON.parse(await file.text()));
-  } else if (extension === 'csv') {
-    objects = rowsToObjects(splitDelimitedImportText(await file.text()));
-  } else if (extension === 'xlsx' || extension === 'xls') {
-    const { readSheet } = await import('read-excel-file/browser');
-    const rows = await readSheet(file);
-    objects = rowsToObjects(rows as unknown as SpreadsheetCell[][]);
-  } else {
-    throw new Error('Format non supporté. Utilisez un fichier Excel, CSV ou JSON.');
+  if (!payload.videoTitle && !payload.question && !payload.answer) {
+    return null;
   }
 
+  return payload;
+};
+
+const mapImportedClinicalCaseObject = (row: Record<string, SpreadsheetCell>): ClinicalCaseImportRowPayload | null => {
+  const qcmOptionValues = ['A', 'B', 'C', 'D', 'E'].map((label) =>
+    normalizeImportValue(getImportFieldValue(row, [label, `option ${label}`, `choix ${label}`])),
+  );
+  const qcmAnswerValues = ['A', 'B', 'C', 'D', 'E'].map((label) =>
+    parseImportBoolean(getImportFieldValue(row, [`REPONSE ${label}`, `RÉPONSE ${label}`, `answer ${label}`])),
+  );
+  const qcmOptionPairs = qcmOptionValues
+    .map((option, index) => ({ option, answer: qcmAnswerValues[index] }))
+    .filter((entry) => entry.option);
+
+  const selectOptionValues = ['A', 'B', 'C', 'D', 'E'].map((label) =>
+    normalizeImportValue(getImportFieldValue(row, [`${label} (SELECTEUR)`, `${label} SELECTEUR`, `option ${label} selecteur`])),
+  );
+  const selectAnswerValues = ['A', 'B', 'C', 'D', 'E'].map((label) =>
+    parseImportBoolean(getImportFieldValue(row, [`REPONSE ${label} (SELECTEUR)`, `RÉPONSE ${label} (SÉLECTEUR)`, `reponse ${label} selecteur`])),
+  );
+  const selectOptionPairs = selectOptionValues
+    .map((option, index) => ({ option, answer: selectAnswerValues[index] }))
+    .filter((entry) => entry.option);
+
+  const payload: ClinicalCaseImportRowPayload = {
+    videoTitle: normalizeImportValue(getImportFieldValue(row, ['NOM VIDEO', 'NOM VIDÉO', 'VIDEO', 'VIDÉO', 'videoTitle'])),
+    caseNumber: normalizeImportValue(getImportFieldValue(row, ['N CAS CLINIQUE', 'N° CAS CLINIQUE', 'NUMERO CAS CLINIQUE', 'NUMÉRO CAS CLINIQUE', 'caseNumber'])),
+    description: normalizeImportValue(getImportFieldValue(row, ['ENONCE (CAS CLINIQUE)', 'ÉNONCÉ (CAS CLINIQUE)', 'ENONCE CAS CLINIQUE', 'CAS CLINIQUE', 'description'])),
+    imageLinks: normalizeImportValue(getImportFieldValue(row, ['LIEN IMAGES (CAS CLINIQUE)', 'LIENS IMAGES (CAS CLINIQUE)', 'IMAGE CAS CLINIQUE', 'imageLinks'])),
+    reference: normalizeImportValue(getImportFieldValue(row, ['REFERENCES (CAS CLINIQUE)', 'RÉFÉRENCES (CAS CLINIQUE)', 'REFERENCES', 'RÉFÉRENCES', 'reference'])),
+    qcmNumber: normalizeImportValue(getImportFieldValue(row, ['N QCM', 'N° QCM', 'qcmNumber'])),
+    qcmQuestion: normalizeImportValue(getImportFieldValue(row, ['ENONCE (QCM)', 'ÉNONCÉ (QCM)', 'ENONCE QCM', 'qcmQuestion'])),
+    qcmImageLinks: normalizeImportValue(getImportFieldValue(row, ['LIEN IMAGES (QCM) (Optionnelle)', 'LIEN IMAGES (QCM)', 'IMAGES QCM', 'qcmImageLinks'])),
+    qcmType: normalizeImportValue(getImportFieldValue(row, ['TYPE QCM', 'TYPE', 'qcmType'])),
+    qcmOptions: qcmOptionPairs.map((entry) => entry.option),
+    qcmCorrectOptionIndexes: qcmOptionPairs
+      .map((entry, index) => (entry.answer ? index : -1))
+      .filter((index) => index >= 0),
+    qcmExplanation: normalizeImportValue(getImportFieldValue(row, ['COMMENTAIRE (QCM)', 'COMMENTAIRE', 'EXPLICATION QCM', 'qcmExplanation'])),
+    qcmReference: normalizeImportValue(getImportFieldValue(row, ['REFERENCES (QCM)', 'RÉFÉRENCES (QCM)', 'qcmReference'])),
+    openNumber: normalizeImportValue(getImportFieldValue(row, ['N QROC', 'N° QROC', 'openNumber'])),
+    openQuestion: normalizeImportValue(getImportFieldValue(row, ['ENONCE (QROC)', 'ÉNONCÉ (QROC)', 'ENONCE QROC', 'openQuestion'])),
+    openAnswer: normalizeImportValue(getImportFieldValue(row, ['REPONSE (QROC)', 'RÉPONSE (QROC)', 'REPONSE QROC', 'openAnswer'])),
+    openImageLinks: normalizeImportValue(getImportFieldValue(row, ['LIEN IMAGES (QROC) (Optionnelle)', 'LIEN IMAGES (QROC)', 'IMAGES QROC', 'openImageLinks'])),
+    selectQuestion: normalizeImportValue(getImportFieldValue(row, ['ENONCE (SELECTEUR)', 'ÉNONCÉ (SÉLECTEUR)', 'ENONCE SELECTEUR', 'selectQuestion'])),
+    selectImageLinks: normalizeImportValue(getImportFieldValue(row, ['LIEN IMAGES (SELECTEUR) (Optionnelle)', 'LIEN IMAGES (SÉLECTEUR)', 'LIEN IMAGES SELECTEUR', 'selectImageLinks'])),
+    selectOptions: selectOptionPairs.map((entry) => entry.option),
+    selectCorrectOptionIndexes: selectOptionPairs
+      .map((entry, index) => (entry.answer ? index : -1))
+      .filter((index) => index >= 0),
+    selectExplanation: normalizeImportValue(getImportFieldValue(row, ['EXPLICATION (SELECTEUR)', 'EXPLICATION (SÉLECTEUR)', 'EXPLICATION SELECTEUR', 'selectExplanation'])),
+  };
+
+  if (!payload.videoTitle && !payload.description && !payload.qcmQuestion && !payload.openQuestion && !payload.selectQuestion) {
+    return null;
+  }
+
+  return payload;
+};
+
+const parseImportObjectsFromFile = async (file: File): Promise<Record<string, SpreadsheetCell>[]> => {
+  const extension = file.name.split('.').pop()?.toLowerCase() || '';
+
+  if (extension === 'json') {
+    return normalizeJsonImportRows(JSON.parse(await file.text()));
+  }
+
+  if (extension === 'csv') {
+    return rowsToObjects(splitDelimitedImportText(await file.text()));
+  }
+
+  if (extension === 'xlsx' || extension === 'xls') {
+    const { readSheet } = await import('read-excel-file/browser');
+    const rows = await readSheet(file);
+    return rowsToObjects(rows as unknown as SpreadsheetCell[][]);
+  }
+
+  throw new Error('Format non supporté. Utilisez un fichier Excel, CSV ou JSON.');
+};
+
+const parseQcmImportFile = async (file: File): Promise<QcmImportRowPayload[]> => {
+  const objects = await parseImportObjectsFromFile(file);
   return objects
     .map(mapImportedQcmObject)
     .filter((entry): entry is QcmImportRowPayload => Boolean(entry));
+};
+
+const parseOpenQuestionImportFile = async (file: File): Promise<OpenQuestionImportRowPayload[]> => {
+  const objects = await parseImportObjectsFromFile(file);
+  return objects
+    .map(mapImportedOpenQuestionObject)
+    .filter((entry): entry is OpenQuestionImportRowPayload => Boolean(entry));
+};
+
+const parseClinicalCaseImportFile = async (file: File): Promise<ClinicalCaseImportRowPayload[]> => {
+  const objects = await parseImportObjectsFromFile(file);
+  return objects
+    .map(mapImportedClinicalCaseObject)
+    .filter((entry): entry is ClinicalCaseImportRowPayload => Boolean(entry));
 };
 
 export function AdminContentManager() {
@@ -623,6 +720,12 @@ export function AdminContentManager() {
   const [isImportingQcms, setIsImportingQcms] = useState(false);
   const [qcmImportSummary, setQcmImportSummary] = useState('');
   const qcmImportInputRef = useRef<HTMLInputElement>(null);
+  const [isImportingOpenQuestions, setIsImportingOpenQuestions] = useState(false);
+  const [openQuestionImportSummary, setOpenQuestionImportSummary] = useState('');
+  const openQuestionImportInputRef = useRef<HTMLInputElement>(null);
+  const [isImportingCases, setIsImportingCases] = useState(false);
+  const [caseImportSummary, setCaseImportSummary] = useState('');
+  const caseImportInputRef = useRef<HTMLInputElement>(null);
   const adminCloudinaryConfigCacheRef = useRef<{
     value: boolean;
     checkedAt: number;
@@ -1449,6 +1552,69 @@ export function AdminContentManager() {
     });
   };
 
+  const handleOpenQuestionImportFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    const input = event.target;
+    if (!file) {
+      return;
+    }
+
+    setIsImportingOpenQuestions(true);
+    setErrorMessage('');
+    setSuccessMessage('');
+    setOpenQuestionImportSummary('');
+
+    try {
+      const rows = await parseOpenQuestionImportFile(file);
+      if (rows.length === 0) {
+        setErrorMessage('Aucune ligne QROC exploitable trouvée dans ce fichier.');
+        return;
+      }
+
+      const result = await importOpenQuestionsFromRows(rows);
+      await fetchData();
+
+      const invalidCount = Array.isArray(result.invalidRows) ? result.invalidRows.length : 0;
+      const createdVideosText = result.createdVideos > 0
+        ? ` ${result.createdVideos} vidéo(s) placeholder créée(s).`
+        : '';
+      const skippedText = result.skippedDuplicates > 0
+        ? ` ${result.skippedDuplicates} doublon(s) ignoré(s).`
+        : '';
+      const invalidText = invalidCount > 0
+        ? ` ${invalidCount} ligne(s) invalide(s).`
+        : '';
+
+      setSuccessMessage(
+        `Import QROC terminé: ${result.imported} QROC(s) ajouté(s).${createdVideosText}${skippedText}${invalidText}`,
+      );
+      setOpenQuestionImportSummary(
+        [
+          result.createdVideoTitles.length > 0
+            ? `Vidéos préparées: ${result.createdVideoTitles.slice(0, 5).join(', ')}${result.createdVideoTitles.length > 5 ? '…' : ''}`
+            : '',
+          result.duplicateRows.length > 0
+            ? `Doublons ignorés: ${result.duplicateRows.slice(0, 3).map((row) => row.qrocNumber ? `QROC ${row.qrocNumber}` : row.question).join(', ')}${result.duplicateRows.length > 3 ? '…' : ''}`
+            : '',
+          invalidCount > 0
+            ? `Lignes invalides: ${result.invalidRows.slice(0, 3).map((row) => row.rowIndex ? `ligne ${row.rowIndex} (${row.message})` : row.message).join(', ')}${invalidCount > 3 ? '…' : ''}`
+            : '',
+        ].filter(Boolean).join(' · '),
+      );
+      logAdminAction('create', 'openQuestions-import', {
+        imported: result.imported,
+        skippedDuplicates: result.skippedDuplicates,
+        createdVideos: result.createdVideos,
+      });
+    } catch (error) {
+      console.error('QROC import error:', error);
+      setErrorMessage(getErrorMessage(error, "Impossible d'importer ce fichier QROC."));
+    } finally {
+      setIsImportingOpenQuestions(false);
+      input.value = '';
+    }
+  };
+
   const handleOpenQuestionSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!openQuestionData.videoId) {
@@ -1553,6 +1719,80 @@ export function AdminContentManager() {
   const resetCaseForm = async (videoId = '') => {
     await discardPendingCaseUploads();
     resetCaseFormState(videoId);
+  };
+
+  const handleClinicalCaseImportFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    const input = event.target;
+    if (!file) {
+      return;
+    }
+
+    setIsImportingCases(true);
+    setErrorMessage('');
+    setSuccessMessage('');
+    setCaseImportSummary('');
+
+    try {
+      const rows = await parseClinicalCaseImportFile(file);
+      if (rows.length === 0) {
+        setErrorMessage('Aucune ligne de cas clinique exploitable trouvée dans ce fichier.');
+        return;
+      }
+
+      const result = await importClinicalCasesFromRows(rows);
+      await fetchData();
+
+      const invalidCount = Array.isArray(result.invalidRows) ? result.invalidRows.length : 0;
+      const imageFailureCount = Array.isArray(result.imageFailures) ? result.imageFailures.length : 0;
+      const createdVideosText = result.createdVideos > 0
+        ? ` ${result.createdVideos} vidéo(s) placeholder créée(s).`
+        : '';
+      const skippedText = result.skippedDuplicates > 0
+        ? ` ${result.skippedDuplicates} doublon(s) ignoré(s).`
+        : '';
+      const imageText = result.uploadedImages > 0
+        ? ` ${result.uploadedImages} image(s) Drive uploadée(s).`
+        : '';
+      const imageFailureText = imageFailureCount > 0
+        ? ` ${imageFailureCount} image(s) non récupérée(s).`
+        : '';
+      const invalidText = invalidCount > 0
+        ? ` ${invalidCount} ligne(s)/question(s) ignorée(s).`
+        : '';
+
+      setSuccessMessage(
+        `Import cas cliniques terminé: ${result.imported} cas ajouté(s).${createdVideosText}${skippedText}${imageText}${imageFailureText}${invalidText}`,
+      );
+      setCaseImportSummary(
+        [
+          result.createdVideoTitles.length > 0
+            ? `Vidéos préparées: ${result.createdVideoTitles.slice(0, 5).join(', ')}${result.createdVideoTitles.length > 5 ? '…' : ''}`
+            : '',
+          result.duplicateRows.length > 0
+            ? `Doublons ignorés: ${result.duplicateRows.slice(0, 3).map((row) => row.caseNumber ? `Cas ${row.caseNumber}` : row.title).join(', ')}${result.duplicateRows.length > 3 ? '…' : ''}`
+            : '',
+          imageFailureCount > 0
+            ? `Images non récupérées: ${result.imageFailures.slice(0, 3).map((entry) => entry.reason).join(', ')}${imageFailureCount > 3 ? '…' : ''}`
+            : '',
+          invalidCount > 0
+            ? `Lignes/questions ignorées: ${result.invalidRows.slice(0, 3).map((row) => row.rowIndex ? `ligne ${row.rowIndex} (${row.message})` : row.message).join(', ')}${invalidCount > 3 ? '…' : ''}`
+            : '',
+        ].filter(Boolean).join(' · '),
+      );
+      logAdminAction('create', 'clinicalCases-import', {
+        imported: result.imported,
+        skippedDuplicates: result.skippedDuplicates,
+        createdVideos: result.createdVideos,
+        uploadedImages: result.uploadedImages,
+      });
+    } catch (error) {
+      console.error('Clinical case import error:', error);
+      setErrorMessage(getErrorMessage(error, "Impossible d'importer ce fichier de cas cliniques."));
+    } finally {
+      setIsImportingCases(false);
+      input.value = '';
+    }
   };
 
   const handleCaseSubmit = async (e: React.FormEvent) => {
@@ -3287,6 +3527,43 @@ export function AdminContentManager() {
 
         {activeTab === 'openQuestion' && (
           <div className={editorGridClass}>
+            <section className={`${sectionCardClass} order-0`}>
+              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div className="space-y-1">
+                  <h3 className="text-lg font-bold text-slate-900">Import QROC en masse</h3>
+                  <p className={sectionHintClass}>
+                    Chargez un fichier Excel, CSV ou JSON avec les colonnes NOM VIDEO, N QROC, ENONCE, REPONSE et REFERENCES.
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    Les QROCs déjà présents sont ignorés. Si une vidéo n’existe pas, son nom est créé comme vidéo à compléter prochainement.
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-3">
+                  <input
+                    ref={openQuestionImportInputRef}
+                    type="file"
+                    accept=".xlsx,.xls,.csv,.json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,application/json"
+                    onChange={handleOpenQuestionImportFile}
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => openQuestionImportInputRef.current?.click()}
+                    disabled={isImportingOpenQuestions}
+                    className="inline-flex items-center gap-2 rounded-xl bg-accent-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-accent-700 disabled:cursor-not-allowed disabled:opacity-70"
+                  >
+                    {isImportingOpenQuestions ? <Loader2 className="h-5 w-5 animate-spin" /> : <Upload className="h-5 w-5" />}
+                    {isImportingOpenQuestions ? 'Import en cours…' : 'Uploader un fichier'}
+                  </button>
+                </div>
+              </div>
+              {openQuestionImportSummary && (
+                <div className="rounded-xl border border-medical-200 bg-medical-50 px-4 py-3 text-xs text-medical-800">
+                  {openQuestionImportSummary}
+                </div>
+              )}
+            </section>
+
             <form onSubmit={handleOpenQuestionSubmit} className={formPanelClass}>
               <div className="flex justify-between items-center">
                 <div>
@@ -3470,6 +3747,43 @@ export function AdminContentManager() {
 
         {activeTab === 'case' && (
           <div className={editorGridClass}>
+            <section className={`${sectionCardClass} order-0`}>
+              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div className="space-y-1">
+                  <h3 className="text-lg font-bold text-slate-900">Import cas cliniques en masse</h3>
+                  <p className={sectionHintClass}>
+                    Chargez un fichier Excel, CSV ou JSON avec les colonnes NOM VIDEO, N CAS CLINIQUE, ENONCE, images, QCM, QROC et sélecteurs.
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    Les cas déjà présents sont ignorés. Les vidéos inconnues sont créées comme placeholders. Les images Drive publiques sont uploadées en PNG vers Cloudinary; les liens privés sont simplement ignorés.
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-3">
+                  <input
+                    ref={caseImportInputRef}
+                    type="file"
+                    accept=".xlsx,.xls,.csv,.json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,application/json"
+                    onChange={handleClinicalCaseImportFile}
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => caseImportInputRef.current?.click()}
+                    disabled={isImportingCases}
+                    className="inline-flex items-center gap-2 rounded-xl bg-accent-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-accent-700 disabled:cursor-not-allowed disabled:opacity-70"
+                  >
+                    {isImportingCases ? <Loader2 className="h-5 w-5 animate-spin" /> : <Upload className="h-5 w-5" />}
+                    {isImportingCases ? 'Import en cours…' : 'Uploader un fichier'}
+                  </button>
+                </div>
+              </div>
+              {caseImportSummary && (
+                <div className="rounded-xl border border-medical-200 bg-medical-50 px-4 py-3 text-xs text-medical-800">
+                  {caseImportSummary}
+                </div>
+              )}
+            </section>
+
             <form onSubmit={handleCaseSubmit} className={formPanelClass}>
               <div className="flex justify-between items-center">
                 <div>
@@ -3508,24 +3822,36 @@ export function AdminContentManager() {
                   <label className="text-sm font-medium text-slate-700">Figures (upload d'images)</label>
                   <div className="space-y-3">
                     {caseData.images && caseData.images.length > 0 && (
-                      <div className="flex flex-wrap gap-2">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                         {caseData.images.map((img, index) => (
                           <div
                             key={index}
-                            className={`${existingItemMetaChipClass} max-w-full`}
+                            className="overflow-hidden rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface)]"
                           >
-                            <span className="font-semibold">Figure {index + 1}</span>
-                            <span className="truncate max-w-[160px]" title={img}>{img}</span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                void handleRemoveCaseImage(index);
-                              }}
-                              className="ml-1 text-red-600 hover:text-red-800"
-                              title="Supprimer la figure"
-                            >
-                              <X className="w-3 h-3" />
-                            </button>
+                            <div className="relative h-28 overflow-hidden bg-slate-100">
+                              <img
+                                src={img}
+                                alt={`Figure ${index + 1}`}
+                                className="h-full w-full object-cover"
+                                loading="lazy"
+                              />
+                            </div>
+                            <div className="flex items-start justify-between gap-2 p-2">
+                              <div className="min-w-0">
+                                <div className="text-xs font-semibold text-slate-800">Figure {index + 1}</div>
+                                <div className="truncate text-[11px] text-slate-500" title={img}>{img}</div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  void handleRemoveCaseImage(index);
+                                }}
+                                className="self-start text-red-600 hover:text-red-800"
+                                title="Supprimer la figure"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -3927,29 +4253,36 @@ export function AdminContentManager() {
                                 </label>
                                 <div className="space-y-2">
                                   {Array.isArray(q.images) && q.images.length > 0 && (
-                                    <div className="flex flex-wrap gap-2">
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                                       {q.images.map((img: string, imgIndex: number) => (
                                         <div
                                           key={imgIndex}
-                                          className={`${existingItemMetaChipClass} max-w-full`}
+                                          className="overflow-hidden rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface)]"
                                         >
-                                          <span className="font-semibold">Figure {imgIndex + 1}</span>
-                                          <span
-                                            className="truncate max-w-[160px]"
-                                            title={img}
-                                          >
-                                            {img}
-                                          </span>
-                                          <button
-                                            type="button"
-                                            onClick={() => {
-                                              void handleRemoveCaseQuestionImage(index, imgIndex);
-                                            }}
-                                            className="ml-1 text-red-600 hover:text-red-800"
-                                            title="Supprimer la figure"
-                                          >
-                                            <X className="w-3 h-3" />
-                                          </button>
+                                          <div className="relative h-24 overflow-hidden bg-slate-100">
+                                            <img
+                                              src={img}
+                                              alt={`Figure ${imgIndex + 1}`}
+                                              className="h-full w-full object-cover"
+                                              loading="lazy"
+                                            />
+                                          </div>
+                                          <div className="flex items-start justify-between gap-2 p-2">
+                                            <div className="min-w-0">
+                                              <div className="text-[11px] font-semibold text-slate-800">Figure {imgIndex + 1}</div>
+                                              <div className="truncate text-[10px] text-slate-500" title={img}>{img}</div>
+                                            </div>
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                void handleRemoveCaseQuestionImage(index, imgIndex);
+                                              }}
+                                              className="self-start text-red-600 hover:text-red-800"
+                                              title="Supprimer la figure"
+                                            >
+                                              <X className="w-4 h-4" />
+                                            </button>
+                                          </div>
                                         </div>
                                       ))}
                                     </div>

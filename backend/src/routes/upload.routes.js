@@ -792,37 +792,69 @@ router.post('/cloudinary', authRequired, withSingleFile(cloudinaryUpload), async
       });
     }
 
-    const uploadBaseName = normalizeUploadBaseName(
+    const uploadBaseNameInitial = normalizeUploadBaseName(
       requestedUploadNameRaw
       || req.file.originalname
       || req.file.filename
       || (resourceType === 'video' ? 'video' : 'image'),
       resourceType === 'video' ? 'video' : 'image',
     );
-    const fullPublicId = `${folder}/${uploadBaseName}`;
+
+    const makeTimestampSuffix = () => {
+      const d = new Date();
+      const YYYY = String(d.getFullYear());
+      const MM = String(d.getMonth() + 1).padStart(2, '0');
+      const DD = String(d.getDate()).padStart(2, '0');
+      const hh = String(d.getHours()).padStart(2, '0');
+      const mm = String(d.getMinutes()).padStart(2, '0');
+      return `${YYYY}${MM}${DD}${hh}${mm}`;
+    };
+
+    // If a file with the same public id exists, auto-rename by appending a timestamp suffix.
+    let uploadBaseName = uploadBaseNameInitial;
+    let fullPublicId = `${folder}/${uploadBaseName}`;
+    const MAX_RENAME_ATTEMPTS = 5;
+    let renameAttempt = 0;
 
     if (resourceType === 'video') {
       let baseExists = false;
       let partPrefixExists = false;
 
+      // attempt to auto-rename if collision is detected
       try {
-        [baseExists, partPrefixExists] = await Promise.all([
-          cloudinaryAssetExists({
-            publicId: fullPublicId,
-            resourceType: 'video',
-            authUser: req.authUser,
-            configOptions: contentCloudinaryOptions,
-          }),
-          cloudinaryAssetsExistByPrefix({
-            prefix: `${fullPublicId}${VIDEO_PART_SUFFIX}`,
-            resourceType: 'video',
-            maxResults: 1,
-            authUser: req.authUser,
-            configOptions: contentCloudinaryOptions,
-          }),
-        ]);
-      } catch (preflightError) {
-        console.warn('[uploads] Cloudinary duplicate preflight skipped:', getCloudinaryErrorMessage(preflightError, 'unknown-preflight-error'));
+        while (renameAttempt <= MAX_RENAME_ATTEMPTS) {
+          try {
+            [baseExists, partPrefixExists] = await Promise.all([
+              cloudinaryAssetExists({
+                publicId: fullPublicId,
+                resourceType: 'video',
+                authUser: req.authUser,
+                configOptions: contentCloudinaryOptions,
+              }),
+              cloudinaryAssetsExistByPrefix({
+                prefix: `${fullPublicId}${VIDEO_PART_SUFFIX}`,
+                resourceType: 'video',
+                maxResults: 1,
+                authUser: req.authUser,
+                configOptions: contentCloudinaryOptions,
+              }),
+            ]);
+          } catch (preflightError) {
+            console.warn('[uploads] Cloudinary duplicate preflight skipped:', getCloudinaryErrorMessage(preflightError, 'unknown-preflight-error'));
+            break;
+          }
+
+          if (!baseExists && !partPrefixExists) {
+            break;
+          }
+
+          // collision -> append timestamp suffix and retry
+          renameAttempt += 1;
+          uploadBaseName = `${uploadBaseNameInitial}-${makeTimestampSuffix()}`;
+          fullPublicId = `${folder}/${uploadBaseName}`;
+        }
+      } catch (err) {
+        console.warn('[uploads] error during collision check', err);
       }
 
       if (baseExists || partPrefixExists) {
@@ -834,14 +866,29 @@ router.post('/cloudinary', authRequired, withSingleFile(cloudinaryUpload), async
     } else {
       let assetExists = false;
       try {
-        assetExists = await cloudinaryAssetExists({
-          publicId: fullPublicId,
-          resourceType,
-          authUser: req.authUser,
-          configOptions: contentCloudinaryOptions,
-        });
-      } catch (preflightError) {
-        console.warn('[uploads] Cloudinary duplicate preflight skipped:', getCloudinaryErrorMessage(preflightError, 'unknown-preflight-error'));
+        while (renameAttempt <= MAX_RENAME_ATTEMPTS) {
+          try {
+            assetExists = await cloudinaryAssetExists({
+              publicId: fullPublicId,
+              resourceType,
+              authUser: req.authUser,
+              configOptions: contentCloudinaryOptions,
+            });
+          } catch (preflightError) {
+            console.warn('[uploads] Cloudinary duplicate preflight skipped:', getCloudinaryErrorMessage(preflightError, 'unknown-preflight-error'));
+            break;
+          }
+
+          if (!assetExists) {
+            break;
+          }
+
+          renameAttempt += 1;
+          uploadBaseName = `${uploadBaseNameInitial}-${makeTimestampSuffix()}`;
+          fullPublicId = `${folder}/${uploadBaseName}`;
+        }
+      } catch (err) {
+        console.warn('[uploads] error during collision check', err);
       }
 
       if (assetExists) {

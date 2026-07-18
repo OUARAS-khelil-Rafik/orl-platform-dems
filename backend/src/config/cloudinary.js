@@ -125,6 +125,7 @@ export const uploadBufferToCloudinary = async ({
   folder,
   resourceType,
   filename,
+  format,
   authUser,
   configOptions,
 }) => {
@@ -142,6 +143,7 @@ export const uploadBufferToCloudinary = async ({
         folder,
         resource_type: resourceType,
         public_id: filename,
+        ...(format ? { format } : {}),
       },
       (error, result) => {
         if (error) {

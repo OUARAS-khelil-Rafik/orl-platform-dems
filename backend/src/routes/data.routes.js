@@ -4,6 +4,7 @@ import mongoose from 'mongoose';
 import { authOptional, authRequired, adminRequired } from '../middleware/auth.js';
 import { User } from '../models/User.js';
 import { isCloudinarySettingsDoc, normalizeCollectionName } from '../utils/collection-name.js';
+import { uploadBufferToCloudinary } from '../config/cloudinary.js';
 
 const router = express.Router();
 
@@ -273,6 +274,591 @@ const normalizeImportedQcmRow = (row, rowIndex) => {
       qcmNumber: String(row.qcmNumber || '').trim(),
     },
   };
+};
+
+const normalizeImportedOpenQuestionRow = (row, rowIndex) => {
+  if (!isPlainObject(row)) {
+    return {
+      error: {
+        rowIndex,
+        message: 'Ligne invalide.',
+      },
+    };
+  }
+
+  const videoTitle = String(row.videoTitle || '').trim();
+  const question = String(row.question || '').trim();
+  const answer = String(row.answer || '').trim();
+
+  if (!videoTitle) {
+    return {
+      error: {
+        rowIndex,
+        message: 'Nom vidéo manquant.',
+      },
+    };
+  }
+
+  if (!question) {
+    return {
+      error: {
+        rowIndex,
+        videoTitle,
+        message: 'Énoncé manquant.',
+      },
+    };
+  }
+
+  if (!answer) {
+    return {
+      error: {
+        rowIndex,
+        videoTitle,
+        question,
+        message: 'Réponse manquante.',
+      },
+    };
+  }
+
+  return {
+    row: {
+      videoTitle,
+      question,
+      answer,
+      reference: String(row.reference || '').trim(),
+      qrocNumber: String(row.qrocNumber || '').trim(),
+    },
+  };
+};
+
+const splitImportedLinks = (value) => {
+  return String(value || '')
+    .split(/[\s,;]+/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+};
+
+const createImportedQuestionId = (prefix, index) => {
+  return `${prefix}-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 8)}`;
+};
+
+const toSafeCloudinaryName = (value, fallback = 'import') => {
+  const normalized = String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .toLowerCase();
+
+  return normalized || fallback;
+};
+
+const normalizeImportedClinicalCaseRows = (rows) => {
+  const casesByKey = new Map();
+  const invalidRows = [];
+  let questionCounter = 0;
+
+  rows.forEach((row, index) => {
+    const rowIndex = index + 1;
+    if (!isPlainObject(row)) {
+      invalidRows.push({ rowIndex, message: 'Ligne invalide.' });
+      return;
+    }
+
+    const videoTitle = String(row.videoTitle || '').trim();
+    const caseNumber = String(row.caseNumber || '').trim();
+    const description = String(row.description || '').trim();
+    const reference = String(row.reference || '').trim();
+    const caseImageLinks = splitImportedLinks(row.imageLinks);
+
+    if (!videoTitle) {
+      invalidRows.push({ rowIndex, message: 'Nom vidéo manquant.' });
+      return;
+    }
+
+    if (!caseNumber && !description) {
+      invalidRows.push({ rowIndex, videoTitle, message: 'Numéro ou énoncé du cas clinique manquant.' });
+      return;
+    }
+
+    const caseKey = [
+      normalizeComparableText(videoTitle),
+      normalizeComparableText(caseNumber || description),
+    ].join('|');
+
+    if (!casesByKey.has(caseKey)) {
+      const fallbackNumber = casesByKey.size + 1;
+      const title = caseNumber
+        ? `Cas clinique ${caseNumber} — ${videoTitle}`
+        : `Cas clinique ${fallbackNumber} — ${videoTitle}`;
+
+      casesByKey.set(caseKey, {
+        videoTitle,
+        caseNumber,
+        title,
+        description,
+        reference,
+        imageLinks: caseImageLinks,
+        questions: [],
+      });
+    }
+
+    const clinicalCase = casesByKey.get(caseKey);
+    if (!clinicalCase.description && description) {
+      clinicalCase.description = description;
+    }
+    if (!clinicalCase.reference && reference) {
+      clinicalCase.reference = reference;
+    }
+    clinicalCase.imageLinks = dedupeStringArray([
+      ...clinicalCase.imageLinks,
+      ...caseImageLinks,
+    ]);
+
+    const qcmPrompt = String(row.qcmQuestion || '').trim();
+    if (qcmPrompt) {
+      const rawOptions = Array.isArray(row.qcmOptions) ? row.qcmOptions : [];
+      const options = rawOptions.map((entry) => String(entry || '').trim()).filter(Boolean);
+      const correctOptionIndexes = Array.isArray(row.qcmCorrectOptionIndexes)
+        ? row.qcmCorrectOptionIndexes
+            .map((entry) => Number(entry))
+            .filter((entry) => Number.isInteger(entry) && entry >= 0 && entry < options.length)
+        : [];
+
+      if (options.length >= 2 && correctOptionIndexes.length > 0) {
+        const qcmMode = normalizeImportedQcmMode(row.qcmType, correctOptionIndexes);
+        const normalizedIndexes = qcmMode === 'single' ? [correctOptionIndexes[0]] : correctOptionIndexes;
+        clinicalCase.questions.push({
+          id: createImportedQuestionId('qcm', questionCounter += 1),
+          kind: 'qcm',
+          prompt: qcmPrompt,
+          images: splitImportedLinks(row.qcmImageLinks),
+          options,
+          qcmMode,
+          correctOptionIndexes: normalizedIndexes,
+          correctOptionIndex: normalizedIndexes[0] || 0,
+          explanation: String(row.qcmExplanation || '').trim(),
+        });
+      } else {
+        invalidRows.push({
+          rowIndex,
+          videoTitle,
+          question: qcmPrompt,
+          message: 'QCM ignoré: options ou bonnes réponses insuffisantes.',
+        });
+      }
+    }
+
+    const openPrompt = String(row.openQuestion || '').trim();
+    const openAnswer = String(row.openAnswer || '').trim();
+    if (openPrompt || openAnswer) {
+      if (openPrompt && openAnswer) {
+        clinicalCase.questions.push({
+          id: createImportedQuestionId('open', questionCounter += 1),
+          kind: 'open',
+          prompt: openPrompt,
+          answer: openAnswer,
+          images: splitImportedLinks(row.openImageLinks),
+        });
+      } else {
+        invalidRows.push({
+          rowIndex,
+          videoTitle,
+          question: openPrompt,
+          message: 'QROC ignoré: énoncé ou réponse manquant.',
+        });
+      }
+    }
+
+    const selectPrompt = String(row.selectQuestion || '').trim();
+    if (selectPrompt) {
+      const rawSelectOptions = Array.isArray(row.selectOptions) ? row.selectOptions : [];
+      const selectOptions = rawSelectOptions.map((entry) => String(entry || '').trim()).filter(Boolean);
+      const correctSelectIndexes = Array.isArray(row.selectCorrectOptionIndexes)
+        ? row.selectCorrectOptionIndexes
+            .map((entry) => Number(entry))
+            .filter((entry) => Number.isInteger(entry) && entry >= 0 && entry < selectOptions.length)
+        : [];
+
+      if (selectOptions.length >= 2 && correctSelectIndexes.length > 0) {
+        clinicalCase.questions.push({
+          id: createImportedQuestionId('select', questionCounter += 1),
+          kind: 'select',
+          prompt: selectPrompt,
+          images: splitImportedLinks(row.selectImageLinks),
+          options: selectOptions,
+          correctOptionIndex: correctSelectIndexes[0],
+          explanation: String(row.selectExplanation || '').trim(),
+        });
+      } else {
+        invalidRows.push({
+          rowIndex,
+          videoTitle,
+          question: selectPrompt,
+          message: 'Sélecteur ignoré: options ou bonne réponse insuffisantes.',
+        });
+      }
+    }
+  });
+
+  return {
+    cases: [...casesByKey.values()],
+    invalidRows,
+  };
+};
+
+const extractDriveFileId = (url) => {
+  const value = String(url || '').trim();
+  const patterns = [
+    /\/file\/d\/([a-zA-Z0-9_-]{20,})/,
+    /[?&]id=([a-zA-Z0-9_-]{20,})/,
+    /\/d\/([a-zA-Z0-9_-]{20,})/,
+  ];
+
+  for (const pattern of patterns) {
+    const match = value.match(pattern);
+    if (match?.[1]) {
+      return match[1];
+    }
+  }
+
+  if (isPotentialDriveFileId(value)) {
+    return value;
+  }
+
+  return '';
+};
+
+const isDriveFolderUrl = (url) => {
+  const value = String(url || '').trim();
+  if (!value) {
+    return false;
+  }
+
+  if (/(?:drive|docs)\.google\.com\/(?:drive\/u\/\d+\/folders|drive\/folders|folders)\/[a-zA-Z0-9_-]{20,}/i.test(value)) {
+    return true;
+  }
+
+  if (/(?:drive|docs)\.google\.com\/embeddedfolderview\?id=([a-zA-Z0-9_-]{20,})/i.test(value)) {
+    return true;
+  }
+
+  return false;
+};
+
+const extractDriveFolderId = (url) => {
+  const value = String(url || '').trim();
+  if (!value) {
+    return '';
+  }
+
+  const pathMatch = value.match(/(?:drive|docs)\.google\.com\/(?:drive\/u\/\d+\/folders|drive\/folders|folders)\/([a-zA-Z0-9_-]{20,})/i);
+  if (pathMatch?.[1]) {
+    return pathMatch[1];
+  }
+
+  const embeddedMatch = value.match(/(?:drive|docs)\.google\.com\/embeddedfolderview\?id=([a-zA-Z0-9_-]{20,})/i);
+  if (embeddedMatch?.[1]) {
+    return embeddedMatch[1];
+  }
+
+  const openMatch = value.match(/(?:drive|docs)\.google\.com\/open\?id=([a-zA-Z0-9_-]{20,})/i);
+  if (openMatch?.[1]) {
+    return openMatch[1];
+  }
+
+  return '';
+};
+
+const isPotentialDriveFileId = (value) => {
+  return /^[a-zA-Z0-9_-]{25,}$/.test(String(value || ''));
+};
+
+const extractDriveFileIdsFromFolderHtml = (html, folderId = '') => {
+  const ids = new Set();
+  const content = String(html || '');
+
+  const dataIdRegex = /data-id=["']([a-zA-Z0-9_-]{25,})["']/gi;
+  for (const match of content.matchAll(dataIdRegex)) {
+    const id = match?.[1] || '';
+    if (id && id !== folderId && isPotentialDriveFileId(id) && !id.startsWith('goog') && !id.startsWith('drive')) {
+      ids.add(id);
+    }
+  }
+
+  if (ids.size === 0) {
+    const imageEntryRegex = /["']([a-zA-Z0-9_-]{25,})["']\s*,\s*["'][^"']+\.(?:jpe?g|png|gif|webp|svg|bmp|tiff|heic)["']/gi;
+    for (const match of content.matchAll(imageEntryRegex)) {
+      const id = match?.[1] || '';
+      if (id && id !== folderId && isPotentialDriveFileId(id) && !id.startsWith('goog') && !id.startsWith('drive')) {
+        ids.add(id);
+      }
+    }
+  }
+
+  if (ids.size === 0) {
+    const downloadLinkRegex = /https?:\/\/drive\.google\.com\/(?:uc\?export=download|open)\?(?:[^\s"']*?&)?id=([a-zA-Z0-9_-]{25,})/gi;
+    for (const match of content.matchAll(downloadLinkRegex)) {
+      const id = match?.[1] || '';
+      if (id && id !== folderId && isPotentialDriveFileId(id) && !id.startsWith('goog') && !id.startsWith('drive')) {
+        ids.add(id);
+      }
+    }
+  }
+
+  if (ids.size === 0) {
+    const objectIdRegex = /"id"\s*:\s*"([a-zA-Z0-9_-]{25,})"/gi;
+    for (const match of content.matchAll(objectIdRegex)) {
+      const id = match?.[1] || '';
+      if (id && id !== folderId && isPotentialDriveFileId(id) && !id.startsWith('goog') && !id.startsWith('drive')) {
+        ids.add(id);
+      }
+    }
+  }
+
+  if (ids.size === 0) {
+    const genericRegex = /["']([a-zA-Z0-9_-]{25,})["']/g;
+    for (const match of content.matchAll(genericRegex)) {
+      const id = match?.[1] || '';
+      if (id && id !== folderId && isPotentialDriveFileId(id) && !id.startsWith('goog') && !id.startsWith('drive')) {
+        ids.add(id);
+      }
+    }
+  }
+
+  return [...ids];
+};
+
+const extractDriveFileIdsFromFolder = async (url) => {
+  try {
+    const response = await fetch(url, {
+      redirect: 'follow',
+      headers: {
+        'User-Agent': 'Mozilla/5.0',
+      },
+    });
+
+    if (!response.ok) {
+      return [];
+    }
+
+    const html = await response.text();
+    if (/accounts\.google\.com|ServiceLogin/i.test(response.url) || /ServiceLogin/i.test(html)) {
+      return [];
+    }
+
+    const folderId = extractDriveFolderId(url);
+    const ids = extractDriveFileIdsFromFolderHtml(html, folderId);
+    return ids.slice(0, 20);
+  } catch {
+    return [];
+  }
+};
+
+const getBufferFromResponse = async (response) => {
+  const arrayBuffer = await response.arrayBuffer();
+  return Buffer.from(arrayBuffer);
+};
+
+const isImageBuffer = (buffer) => {
+  if (!Buffer.isBuffer(buffer) || buffer.length < 4) {
+    return false;
+  }
+
+  if (
+    buffer[0] === 0x89 &&
+    buffer[1] === 0x50 &&
+    buffer[2] === 0x4e &&
+    buffer[3] === 0x47
+  ) {
+    return true; // PNG
+  }
+
+  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+    return true; // JPEG
+  }
+
+  if (
+    buffer[0] === 0x47 &&
+    buffer[1] === 0x49 &&
+    buffer[2] === 0x46 &&
+    buffer[3] === 0x38
+  ) {
+    return true; // GIF
+  }
+
+  if (buffer[0] === 0x42 && buffer[1] === 0x4d) {
+    return true; // BMP
+  }
+
+  if (
+    buffer[0] === 0x52 &&
+    buffer[1] === 0x49 &&
+    buffer[2] === 0x46 &&
+    buffer[3] === 0x46 &&
+    buffer.length >= 12 &&
+    buffer.slice(8, 12).equals(Buffer.from('WEBP'))
+  ) {
+    return true; // WEBP
+  }
+
+  const header = buffer.slice(0, 256).toString('utf8').trimStart();
+  if (header.startsWith('<?xml') && header.includes('<svg')) {
+    return true;
+  }
+
+  if (header.startsWith('<svg')) {
+    return true;
+  }
+
+  return false;
+};
+
+const extractDriveImageUrlFromHtml = (html) => {
+  const metaMatch = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i);
+  if (metaMatch?.[1]) {
+    return metaMatch[1];
+  }
+
+  const imgMatch = html.match(/<img[^>]+src=["']([^"']+)["']/i);
+  if (imgMatch?.[1]) {
+    return imgMatch[1];
+  }
+
+  const hrefMatch = html.match(/href=["']([^"']*(?:uc\?export=download|uc\?export=view)[^"']*)["']/i);
+  if (hrefMatch?.[1]) {
+    return hrefMatch[1];
+  }
+
+  const urlMatch = html.match(/https:\/\/lh3\.googleusercontent\.com\/[^"'\s]+/i);
+  if (urlMatch?.[0]) {
+    return urlMatch[0];
+  }
+
+  return '';
+};
+
+const downloadDriveImageBuffer = async (fileId) => {
+  const urls = [
+    `https://drive.google.com/uc?export=download&id=${encodeURIComponent(fileId)}`,
+    `https://drive.google.com/uc?export=view&id=${encodeURIComponent(fileId)}`,
+    `https://drive.google.com/open?id=${encodeURIComponent(fileId)}`,
+    `https://drive.google.com/thumbnail?authuser=0&sz=w1280&id=${encodeURIComponent(fileId)}`,
+    `https://drive.google.com/thumbnail?authuser=0&sz=w1024&id=${encodeURIComponent(fileId)}`,
+    `https://drive.google.com/thumbnail?authuser=0&sz=w640&id=${encodeURIComponent(fileId)}`,
+    `https://docs.google.com/uc?export=download&id=${encodeURIComponent(fileId)}`,
+    `https://docs.google.com/uc?export=view&id=${encodeURIComponent(fileId)}`,
+  ];
+
+  for (const url of urls) {
+    try {
+      const response = await fetch(url, {
+        redirect: 'follow',
+        headers: {
+          'User-Agent': 'Mozilla/5.0',
+        },
+      });
+
+      if (!response.ok) {
+        continue;
+      }
+
+      const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+      const buffer = await getBufferFromResponse(response);
+
+      if (contentType.startsWith('image/') || isImageBuffer(buffer)) {
+        return buffer;
+      }
+
+      if (contentType.includes('html') || contentType.includes('text')) {
+        const html = buffer.toString('utf8');
+        const imageUrl = extractDriveImageUrlFromHtml(html);
+        if (imageUrl) {
+          try {
+            const imageResponse = await fetch(imageUrl, {
+              redirect: 'follow',
+              headers: {
+                'User-Agent': 'Mozilla/5.0',
+              },
+            });
+
+            if (!imageResponse.ok) {
+              continue;
+            }
+
+            const imageType = String(imageResponse.headers.get('content-type') || '').toLowerCase();
+            const imageBuffer = await getBufferFromResponse(imageResponse);
+            if (imageType.startsWith('image/') || isImageBuffer(imageBuffer)) {
+              return imageBuffer;
+            }
+          } catch {
+            continue;
+          }
+        }
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return null;
+};
+
+const uploadImportedDriveImages = async ({
+  links,
+  folder,
+  filenamePrefix,
+  authUser,
+  failures,
+}) => {
+  const urls = [];
+  const uniqueLinks = dedupeStringArray(links);
+
+  for (const link of uniqueLinks) {
+    const fileIds = isDriveFolderUrl(link)
+      ? await extractDriveFileIdsFromFolder(link)
+      : [extractDriveFileId(link)].filter(Boolean);
+
+    if (fileIds.length === 0) {
+      failures.push({ link, reason: 'Lien Drive inaccessible ou non public.' });
+      continue;
+    }
+
+    for (const fileId of fileIds) {
+      try {
+        const buffer = await downloadDriveImageBuffer(fileId);
+        if (!buffer) {
+          failures.push({ link, fileId, reason: 'Image Drive inaccessible ou format non image.' });
+          continue;
+        }
+
+        const result = await uploadBufferToCloudinary({
+          buffer,
+          folder,
+          resourceType: 'image',
+          filename: `${filenamePrefix}-${fileId}`,
+          format: 'png',
+          authUser,
+          configOptions: {
+            preferUserConfig: true,
+            allowGlobalFallback: authUser?.role !== 'admin',
+          },
+        });
+
+        if (result?.secure_url) {
+          urls.push(result.secure_url);
+        }
+      } catch (error) {
+        failures.push({
+          link,
+          fileId,
+          reason: error?.message || 'Upload Cloudinary impossible.',
+        });
+      }
+    }
+  }
+
+  return dedupeStringArray(urls);
 };
 
 const createPlaceholderVideoPayload = (title, now) => ({
@@ -901,7 +1487,8 @@ router.get('/:collection', async (req, res) => {
       filter: {},
     });
     return res.json({ docs: docs.map(parseDoc).filter(Boolean) });
-  } catch {
+  } catch (error) {
+    console.error('Error fetching collection', { collection: req.params.collection, error });
     return res.status(500).json({ message: 'Unable to fetch collection.' });
   }
 });
@@ -933,7 +1520,8 @@ router.post('/query', async (req, res) => {
       filter,
     });
     return res.json({ docs: docs.map(parseDoc).filter(Boolean) });
-  } catch {
+  } catch (error) {
+    console.error('Error executing collection query', { body: req.body, error });
     return res.status(500).json({ message: 'Unable to execute query.' });
   }
 });
@@ -1076,6 +1664,316 @@ router.post('/qcms/import', authOptional, async (req, res) => {
   } catch (error) {
     console.error('[qcms-import]', error);
     return res.status(500).json({ message: 'Unable to import QCM rows.' });
+  }
+});
+
+router.post('/openQuestions/import', authOptional, async (req, res) => {
+  try {
+    const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
+    if (rows.length === 0) {
+      return res.status(400).json({ message: 'Aucune ligne QROC à importer.' });
+    }
+
+    const now = new Date().toISOString();
+    const normalizedRows = [];
+    const invalidRows = [];
+
+    rows.forEach((row, index) => {
+      const normalized = normalizeImportedOpenQuestionRow(row, index + 1);
+      if (normalized.error) {
+        invalidRows.push(normalized.error);
+        return;
+      }
+
+      normalizedRows.push(normalized.row);
+    });
+
+    if (normalizedRows.length === 0) {
+      return res.status(400).json({
+        message: 'Aucune ligne QROC valide à importer.',
+        imported: 0,
+        skippedDuplicates: 0,
+        createdVideos: 0,
+        invalidRows,
+      });
+    }
+
+    const db = mongoose.connection.db;
+    const videoTitleKeys = new Set(normalizedRows.map((row) => normalizeComparableText(row.videoTitle)));
+    const existingVideos = await findCollectionDocsOrEmpty({
+      db,
+      collection: 'videos',
+      filter: {},
+    });
+    const videoByTitleKey = new Map();
+
+    for (const video of existingVideos) {
+      const key = normalizeComparableText(video?.title);
+      if (key && videoTitleKeys.has(key) && !videoByTitleKey.has(key)) {
+        videoByTitleKey.set(key, String(video._id));
+      }
+    }
+
+    const createdVideoTitles = [];
+    for (const row of normalizedRows) {
+      const titleKey = normalizeComparableText(row.videoTitle);
+      if (!titleKey || videoByTitleKey.has(titleKey)) {
+        continue;
+      }
+
+      const result = await db
+        .collection('videos')
+        .insertOne(createPlaceholderVideoPayload(row.videoTitle, now));
+
+      videoByTitleKey.set(titleKey, String(result.insertedId));
+      createdVideoTitles.push(row.videoTitle);
+    }
+
+    const videoIds = Array.from(new Set([...videoByTitleKey.values()]));
+    const existingOpenQuestions = videoIds.length > 0
+      ? await findCollectionDocsOrEmpty({
+          db,
+          collection: 'openQuestions',
+          filter: { videoId: { $in: videoIds } },
+        })
+      : [];
+    const existingOpenQuestionKeys = new Set(
+      existingOpenQuestions
+        .map((entry) => {
+          const videoId = String(entry?.videoId || '').trim();
+          const questionKey = normalizeComparableText(entry?.question);
+          return videoId && questionKey ? `${videoId}|${questionKey}` : '';
+        })
+        .filter(Boolean),
+    );
+
+    const batchOpenQuestionKeys = new Set();
+    const openQuestionsToInsert = [];
+    const skippedDuplicates = [];
+
+    for (const row of normalizedRows) {
+      const videoId = videoByTitleKey.get(normalizeComparableText(row.videoTitle)) || '';
+      const questionKey = normalizeComparableText(row.question);
+      const duplicateKey = videoId && questionKey ? `${videoId}|${questionKey}` : '';
+
+      if (!videoId || !questionKey) {
+        invalidRows.push({
+          videoTitle: row.videoTitle,
+          question: row.question,
+          message: 'Lien vidéo/question invalide après normalisation.',
+        });
+        continue;
+      }
+
+      if (existingOpenQuestionKeys.has(duplicateKey) || batchOpenQuestionKeys.has(duplicateKey)) {
+        skippedDuplicates.push({
+          videoTitle: row.videoTitle,
+          question: row.question,
+          qrocNumber: row.qrocNumber,
+        });
+        continue;
+      }
+
+      batchOpenQuestionKeys.add(duplicateKey);
+      openQuestionsToInsert.push({
+        videoId,
+        question: row.question,
+        answer: row.answer,
+        reference: row.reference,
+        qrocNumber: row.qrocNumber,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    if (openQuestionsToInsert.length > 0) {
+      await db.collection('openQuestions').insertMany(openQuestionsToInsert, { ordered: false });
+    }
+
+    return res.status(201).json({
+      imported: openQuestionsToInsert.length,
+      skippedDuplicates: skippedDuplicates.length,
+      createdVideos: createdVideoTitles.length,
+      invalidRows,
+      duplicateRows: skippedDuplicates,
+      createdVideoTitles,
+    });
+  } catch (error) {
+    console.error('[openQuestions-import]', error);
+    return res.status(500).json({ message: 'Unable to import QROC rows.' });
+  }
+});
+
+router.post('/clinicalCases/import', authOptional, async (req, res) => {
+  try {
+    const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
+    if (rows.length === 0) {
+      return res.status(400).json({ message: 'Aucune ligne de cas clinique à importer.' });
+    }
+
+    const now = new Date().toISOString();
+    const normalized = normalizeImportedClinicalCaseRows(rows);
+
+    if (normalized.cases.length === 0) {
+      return res.status(400).json({
+        message: 'Aucun cas clinique valide à importer.',
+        imported: 0,
+        skippedDuplicates: 0,
+        createdVideos: 0,
+        invalidRows: normalized.invalidRows,
+        imageFailures: [],
+      });
+    }
+
+    const db = mongoose.connection.db;
+    const videoTitleKeys = new Set(normalized.cases.map((entry) => normalizeComparableText(entry.videoTitle)));
+    const existingVideos = await findCollectionDocsOrEmpty({
+      db,
+      collection: 'videos',
+      filter: {},
+    });
+    const videoByTitleKey = new Map();
+
+    for (const video of existingVideos) {
+      const key = normalizeComparableText(video?.title);
+      if (key && videoTitleKeys.has(key) && !videoByTitleKey.has(key)) {
+        videoByTitleKey.set(key, String(video._id));
+      }
+    }
+
+    const createdVideoTitles = [];
+    for (const clinicalCase of normalized.cases) {
+      const titleKey = normalizeComparableText(clinicalCase.videoTitle);
+      if (!titleKey || videoByTitleKey.has(titleKey)) {
+        continue;
+      }
+
+      const result = await db
+        .collection('videos')
+        .insertOne(createPlaceholderVideoPayload(clinicalCase.videoTitle, now));
+
+      videoByTitleKey.set(titleKey, String(result.insertedId));
+      createdVideoTitles.push(clinicalCase.videoTitle);
+    }
+
+    const videoIds = Array.from(new Set([...videoByTitleKey.values()]));
+    const existingCases = videoIds.length > 0
+      ? await findCollectionDocsOrEmpty({
+          db,
+          collection: 'clinicalCases',
+          filter: { videoId: { $in: videoIds } },
+        })
+      : [];
+    const existingCaseKeys = new Set(
+      existingCases
+        .map((entry) => {
+          const videoId = String(entry?.videoId || '').trim();
+          const titleKey = normalizeComparableText(entry?.title);
+          return videoId && titleKey ? `${videoId}|${titleKey}` : '';
+        })
+        .filter(Boolean),
+    );
+
+    const batchCaseKeys = new Set();
+    const skippedDuplicates = [];
+    const casesToPrepare = [];
+
+    for (const clinicalCase of normalized.cases) {
+      const videoId = videoByTitleKey.get(normalizeComparableText(clinicalCase.videoTitle)) || '';
+      const titleKey = normalizeComparableText(clinicalCase.title);
+      const duplicateKey = videoId && titleKey ? `${videoId}|${titleKey}` : '';
+
+      if (!videoId || !titleKey) {
+        normalized.invalidRows.push({
+          videoTitle: clinicalCase.videoTitle,
+          message: 'Lien vidéo/titre invalide après normalisation.',
+        });
+        continue;
+      }
+
+      if (existingCaseKeys.has(duplicateKey) || batchCaseKeys.has(duplicateKey)) {
+        skippedDuplicates.push({
+          videoTitle: clinicalCase.videoTitle,
+          title: clinicalCase.title,
+          caseNumber: clinicalCase.caseNumber,
+        });
+        continue;
+      }
+
+      batchCaseKeys.add(duplicateKey);
+      casesToPrepare.push({
+        ...clinicalCase,
+        videoId,
+      });
+    }
+
+    const imageFailures = [];
+    const casesToInsert = [];
+    let uploadedImages = 0;
+
+    for (const clinicalCase of casesToPrepare) {
+      const caseKey = toSafeCloudinaryName(`${clinicalCase.videoTitle}-${clinicalCase.caseNumber || clinicalCase.title}`, 'case-import');
+      const images = await uploadImportedDriveImages({
+        links: clinicalCase.imageLinks,
+        folder: 'orl-platform/case-images',
+        filenamePrefix: `case-${caseKey || Date.now()}`,
+        authUser: req.authUser,
+        failures: imageFailures,
+      });
+      uploadedImages += images.length;
+
+      const questions = [];
+      for (let index = 0; index < clinicalCase.questions.length; index += 1) {
+        const question = clinicalCase.questions[index];
+        const questionImages = await uploadImportedDriveImages({
+          links: question.images,
+          folder: 'orl-platform/case-question-images',
+          filenamePrefix: `case-question-${caseKey}-${index + 1}`,
+          authUser: req.authUser,
+          failures: imageFailures,
+        });
+        uploadedImages += questionImages.length;
+        questions.push({
+          ...question,
+          images: questionImages,
+        });
+      }
+
+      casesToInsert.push(sanitizeClinicalCasePayload({
+        videoId: clinicalCase.videoId,
+        title: clinicalCase.title,
+        description: clinicalCase.description,
+        patientHistory: '',
+        clinicalExamination: '',
+        additionalTests: '',
+        diagnosis: '',
+        treatment: '',
+        discussion: '',
+        images,
+        reference: clinicalCase.reference,
+        questions,
+        createdAt: now,
+        updatedAt: now,
+      }));
+    }
+
+    if (casesToInsert.length > 0) {
+      await db.collection('clinicalCases').insertMany(casesToInsert, { ordered: false });
+    }
+
+    return res.status(201).json({
+      imported: casesToInsert.length,
+      skippedDuplicates: skippedDuplicates.length,
+      createdVideos: createdVideoTitles.length,
+      uploadedImages,
+      invalidRows: normalized.invalidRows,
+      duplicateRows: skippedDuplicates,
+      createdVideoTitles,
+      imageFailures,
+    });
+  } catch (error) {
+    console.error('[clinicalCases-import]', error);
+    return res.status(500).json({ message: 'Unable to import clinical case rows.' });
   }
 });
 

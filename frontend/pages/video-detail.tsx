@@ -745,6 +745,23 @@ export default function VideoPage() {
                 {clinicalCases.length > 0 ? (
                     <div className="space-y-3">
                       {clinicalCases.map((c, index) => {
+                        // Build a global ordered list of figures for this clinical case
+                        const caseAllFigures: string[] = [];
+                        if (Array.isArray(c.images)) {
+                          caseAllFigures.push(...c.images);
+                        }
+                        if (Array.isArray(c.questions)) {
+                          for (const qq of c.questions) {
+                            if (Array.isArray(qq.images)) {
+                              caseAllFigures.push(...qq.images);
+                            }
+                          }
+                        }
+
+                        const getGlobalFigureNumber = (imgUrl: string, fallbackIndex: number) => {
+                          const idx = caseAllFigures.indexOf(imgUrl);
+                          return idx >= 0 ? idx + 1 : fallbackIndex + 1;
+                        };
                         const isActive = activeCaseIndex === index;
                         return (
                           <div key={c.id} className="space-y-2">
@@ -834,12 +851,12 @@ export default function VideoPage() {
                                 {c.images && c.images.length > 0 && (
                                   <div className="pt-2">
                                     <p className="cas-section-label mb-3">Figures</p>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 justify-items-center">
                                       {c.images.map((imgUrl: string, imgIndex: number) => (
                                         <div
                                           key={imgIndex}
-                                          className="group relative aspect-video rounded-xl overflow-hidden border border-[var(--app-border)] cas-figure-frame cursor-pointer"
-                                          onClick={() => setSelectedImage({ url: imgUrl, title: `Cas Clinique #${String(index + 1).padStart(2, '0')} - Figure ${String(imgIndex + 1).padStart(2, '0')}` })}
+                                          className="group relative aspect-video min-h-[140px] rounded-xl overflow-hidden border border-[var(--app-border)] cas-figure-frame cursor-pointer"
+                                          onClick={() => setSelectedImage({ url: imgUrl, title: `Cas Clinique #${String(index + 1).padStart(2, '0')} - Figure ${String(getGlobalFigureNumber(imgUrl, imgIndex)).padStart(2, '0')}` })}
                                         >
                                           <Image
                                             src={imgUrl}
@@ -850,8 +867,8 @@ export default function VideoPage() {
                                             referrerPolicy="no-referrer"
                                             onError={(event) => applyImageFallback(event, IMAGE_FALLBACK_SRC)}
                                           />
-                                          <div className="video-figure-caption absolute inset-x-0 bottom-0 px-3 py-1 text-xs flex items-center justify-between">
-                                            <span>Figure {String(imgIndex + 1).padStart(2, '0')}</span>
+                                          <div className="video-figure-caption absolute inset-x-0 bottom-0 px-3 py-1 text-xs flex items-center justify-center text-center">
+                                            <span>Figure {String(getGlobalFigureNumber(imgUrl, imgIndex)).padStart(2, '0')}</span>
                                           </div>
                                           <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                                             <Maximize2 className="w-8 h-8 text-white" />
@@ -1156,20 +1173,17 @@ export default function VideoPage() {
                                             )}
 
                                             {Array.isArray(q.images) && q.images.length > 0 && (
-                                              <div className="mt-3 pt-3 border-t border-[var(--app-border)]">
-                                                <p className="text-[11px] font-medium text-[var(--app-muted)] mb-2">
-                                                  Figures associées à cette question
-                                                </p>
-                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2">
                                                   {q.images.map((imgUrl: string, imgIndex: number) => (
                                                     <button
                                                       key={imgIndex}
                                                       type="button"
-                                                      className="video-figure-thumb relative aspect-video rounded-lg overflow-hidden border border-[var(--app-border)] bg-[var(--app-surface-alt)] group"
+                                                      className="video-figure-thumb relative aspect-video min-h-[140px] rounded-lg overflow-hidden border border-[var(--app-border)] bg-[var(--app-surface-alt)] group"
                                                       onClick={() =>
                                                         setSelectedImage({
                                                           url: imgUrl,
-                                                          title: `Cas Clinique #${String(index + 1).padStart(2, '0')} - Question ${String(activeQuestionIndex + 1).padStart(2, '0')} - Figure ${String(imgIndex + 1).padStart(2, '0')}`,
+                                                          title: `Cas Clinique #${String(index + 1).padStart(2, '0')} - Question ${String(activeQuestionIndex + 1).padStart(2, '0')} - Figure ${String(getGlobalFigureNumber(imgUrl, imgIndex)).padStart(2, '0')}`,
                                                         })
                                                       }
                                                     >
@@ -1182,9 +1196,9 @@ export default function VideoPage() {
                                                         referrerPolicy="no-referrer"
                                                         onError={(event) => applyImageFallback(event, IMAGE_FALLBACK_SRC)}
                                                       />
-                                                      <div className="video-figure-caption video-figure-caption--compact absolute inset-x-0 bottom-0 px-2 py-1 text-[10px] flex items-center justify-between">
+                                                      <div className="video-figure-caption video-figure-caption--compact absolute inset-x-0 bottom-0 px-2 py-1 text-[10px] flex items-center justify-center text-center">
                                                         <span>
-                                                          Fig. {String(imgIndex + 1).padStart(2, '0')}
+                                                          Fig. {String(getGlobalFigureNumber(imgUrl, imgIndex)).padStart(2, '0')}
                                                         </span>
                                                       </div>
                                                       <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
@@ -1193,7 +1207,6 @@ export default function VideoPage() {
                                                     </button>
                                                   ))}
                                                 </div>
-                                              </div>
                                             )}
 
                                             {showExplanation && (q.explanation || q.answer) && (

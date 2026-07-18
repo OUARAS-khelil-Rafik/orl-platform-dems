@@ -141,6 +141,81 @@ export interface QcmImportResponse {
   createdVideoTitles: string[];
 }
 
+export interface OpenQuestionImportRowPayload {
+  videoTitle: string;
+  qrocNumber?: string;
+  question: string;
+  answer: string;
+  reference?: string;
+}
+
+export interface OpenQuestionImportResponse {
+  imported: number;
+  skippedDuplicates: number;
+  createdVideos: number;
+  invalidRows: Array<{
+    rowIndex?: number;
+    videoTitle?: string;
+    question?: string;
+    message: string;
+  }>;
+  duplicateRows: Array<{
+    videoTitle: string;
+    question: string;
+    qrocNumber?: string;
+  }>;
+  createdVideoTitles: string[];
+}
+
+export interface ClinicalCaseImportRowPayload {
+  videoTitle: string;
+  caseNumber?: string;
+  description?: string;
+  imageLinks?: string;
+  reference?: string;
+  qcmNumber?: string;
+  qcmQuestion?: string;
+  qcmImageLinks?: string;
+  qcmType?: string;
+  qcmOptions?: string[];
+  qcmCorrectOptionIndexes?: number[];
+  qcmExplanation?: string;
+  qcmReference?: string;
+  openNumber?: string;
+  openQuestion?: string;
+  openAnswer?: string;
+  openImageLinks?: string;
+  selectQuestion?: string;
+  selectImageLinks?: string;
+  selectOptions?: string[];
+  selectCorrectOptionIndexes?: number[];
+  selectExplanation?: string;
+}
+
+export interface ClinicalCaseImportResponse {
+  imported: number;
+  skippedDuplicates: number;
+  createdVideos: number;
+  uploadedImages: number;
+  invalidRows: Array<{
+    rowIndex?: number;
+    videoTitle?: string;
+    question?: string;
+    message: string;
+  }>;
+  duplicateRows: Array<{
+    videoTitle: string;
+    title: string;
+    caseNumber?: string;
+  }>;
+  createdVideoTitles: string[];
+  imageFailures: Array<{
+    link?: string;
+    fileId?: string;
+    reason: string;
+  }>;
+}
+
 const resolveApiBaseUrl = () => {
   const fromEnv = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '');
   if (fromEnv) {
@@ -629,6 +704,58 @@ export const importQcmsFromRows = async (
 
   emitDataChange({
     collection: 'qcms',
+    operation: 'add',
+  });
+  if (response.createdVideos > 0) {
+    emitDataChange({
+      collection: 'videos',
+      operation: 'add',
+    });
+  }
+
+  return response;
+};
+
+export const importOpenQuestionsFromRows = async (
+  rows: OpenQuestionImportRowPayload[],
+): Promise<OpenQuestionImportResponse> => {
+  const response = await apiRequest<OpenQuestionImportResponse>(
+    '/data/openQuestions/import',
+    {
+      method: 'POST',
+      body: JSON.stringify({ rows }),
+    },
+    false,
+  );
+
+  emitDataChange({
+    collection: 'openQuestions',
+    operation: 'add',
+  });
+  if (response.createdVideos > 0) {
+    emitDataChange({
+      collection: 'videos',
+      operation: 'add',
+    });
+  }
+
+  return response;
+};
+
+export const importClinicalCasesFromRows = async (
+  rows: ClinicalCaseImportRowPayload[],
+): Promise<ClinicalCaseImportResponse> => {
+  const response = await apiRequest<ClinicalCaseImportResponse>(
+    '/data/clinicalCases/import',
+    {
+      method: 'POST',
+      body: JSON.stringify({ rows }),
+    },
+    false,
+  );
+
+  emitDataChange({
+    collection: 'clinicalCases',
     operation: 'add',
   });
   if (response.createdVideos > 0) {
