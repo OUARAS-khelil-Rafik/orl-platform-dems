@@ -233,4 +233,40 @@ describe('Video detail page', () => {
     await waitFor(() => expect(screen.getByText(/Les options de ce QCM sont indisponibles/i)).toBeInTheDocument());
     expect(screen.getByRole('button', { name: /Valider/i })).toBeDisabled();
   });
+
+  it('renders associated figures with global numbering and centered layout', async () => {
+    fixtures.clinicalCases = [
+      {
+        id: 'case-figures',
+        videoId: 'video-1',
+        description: 'Cas avec figures associées',
+        images: ['https://example.test/case-image.png'],
+        questions: [
+          {
+            id: 'question-1',
+            prompt: 'Question avec images',
+            kind: 'qcm',
+            images: ['https://example.test/question-image-1.png', 'https://example.test/question-image-2.png'],
+          },
+        ],
+      },
+    ];
+
+    const { container } = render(<VideoPage />);
+
+    await waitFor(() => expect(screen.getByText('Video Test')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: /cas clinique/i }));
+
+    await waitFor(() => expect(screen.getByText('Cas Clinique 01')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('Cas Clinique 01').closest('button') as HTMLButtonElement);
+
+    await waitFor(() => expect(screen.getByText('Raisonnement clinique')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Figures')).toBeInTheDocument());
+
+    expect(screen.getByText('Figure 01')).toBeInTheDocument();
+    expect(screen.getByText('Fig. 02')).toBeInTheDocument();
+    expect(screen.getByText('Fig. 03')).toBeInTheDocument();
+    expect(container.querySelector('.place-items-center')).not.toBeNull();
+  });
 });

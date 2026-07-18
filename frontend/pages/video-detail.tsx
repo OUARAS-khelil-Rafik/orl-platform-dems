@@ -851,11 +851,11 @@ export default function VideoPage() {
                                 {c.images && c.images.length > 0 && (
                                   <div className="pt-2">
                                     <p className="cas-section-label mb-3">Figures</p>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 justify-items-center">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 justify-items-center place-items-center">
                                       {c.images.map((imgUrl: string, imgIndex: number) => (
                                         <div
                                           key={imgIndex}
-                                          className="group relative aspect-video min-h-[140px] rounded-xl overflow-hidden border border-[var(--app-border)] cas-figure-frame cursor-pointer"
+                                          className="group relative w-full max-w-[320px] aspect-video min-h-[140px] rounded-xl overflow-hidden border border-[var(--app-border)] cas-figure-frame cursor-pointer mx-auto"
                                           onClick={() => setSelectedImage({ url: imgUrl, title: `Cas Clinique #${String(index + 1).padStart(2, '0')} - Figure ${String(getGlobalFigureNumber(imgUrl, imgIndex)).padStart(2, '0')}` })}
                                         >
                                           <Image
@@ -1174,12 +1174,12 @@ export default function VideoPage() {
 
                                             {Array.isArray(q.images) && q.images.length > 0 && (
 
-                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2">
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 place-items-center">
                                                   {q.images.map((imgUrl: string, imgIndex: number) => (
                                                     <button
                                                       key={imgIndex}
                                                       type="button"
-                                                      className="video-figure-thumb relative aspect-video min-h-[140px] rounded-lg overflow-hidden border border-[var(--app-border)] bg-[var(--app-surface-alt)] group"
+                                                      className="video-figure-thumb relative w-full max-w-[320px] aspect-video min-h-[140px] rounded-lg overflow-hidden border border-[var(--app-border)] bg-[var(--app-surface-alt)] group mx-auto"
                                                       onClick={() =>
                                                         setSelectedImage({
                                                           url: imgUrl,
