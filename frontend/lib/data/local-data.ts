@@ -219,6 +219,22 @@ export interface ClinicalCaseImportResponse {
 const resolveApiBaseUrl = () => {
   const fromEnv = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '');
   if (fromEnv) {
+    if (isBrowser()) {
+      try {
+        const url = new URL(fromEnv);
+        const isLoopbackHost = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
+
+        if (isLoopbackHost) {
+          const host = window.location.hostname || 'localhost';
+          return `${url.protocol}//${host}${url.port ? `:${url.port}` : ''}${url.pathname}`;
+        }
+      } catch {
+        // If the configured URL is invalid, fall back to it and let requests fail loudly.
+      }
+
+      return fromEnv;
+    }
+
     return fromEnv;
   }
 

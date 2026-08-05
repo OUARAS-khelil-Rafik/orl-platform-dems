@@ -535,7 +535,8 @@ const isDriveFolderUrl = (url) => {
     return false;
   }
 
-  if (/(?:drive|docs)\.google\.com\/(?:drive\/u\/\d+\/folders|drive\/folders|folders)\/[a-zA-Z0-9_-]{20,}/i.test(value)) {
+  const folderPattern = /(?:drive|docs)\.google\.com\/(?:drive\/u\/\d+\/folders|drive\/folders|folders)\/[a-zA-Z0-9_-]{20,}(?:\/[a-zA-Z0-9_-]+)?(?:\?[^\s]+)?/i;
+  if (folderPattern.test(value)) {
     return true;
   }
 
@@ -552,7 +553,7 @@ const extractDriveFolderId = (url) => {
     return '';
   }
 
-  const pathMatch = value.match(/(?:drive|docs)\.google\.com\/(?:drive\/u\/\d+\/folders|drive\/folders|folders)\/([a-zA-Z0-9_-]{20,})/i);
+  const pathMatch = value.match(/(?:drive|docs)\.google\.com\/(?:drive\/u\/\d+\/folders|drive\/folders|folders)\/([a-zA-Z0-9_-]{20,})(?:\/[a-zA-Z0-9_-]+)?/i);
   if (pathMatch?.[1]) {
     return pathMatch[1];
   }
@@ -570,89 +571,207 @@ const extractDriveFolderId = (url) => {
   return '';
 };
 
+const extractDriveFolderResourceKey = (url) => {
+  const value = String(url || '').trim();
+  if (!value) {
+    return '';
+  }
+
+  const match = value.match(/[?&]resourcekey=([a-zA-Z0-9_-]+)/i);
+  return match?.[1] || '';
+};
+
+const normalizeDriveFolderUrl = (url) => {
+  const folderId = extractDriveFolderId(url);
+  if (!folderId) {
+    return '';
+  }
+
+  const resourceKey = extractDriveFolderResourceKey(url);
+  try {
+    const parsed = new URL(url, 'https://drive.google.com');
+    const allowedParams = ['resourcekey', 'authuser', 'usp'];
+    const searchParams = new URLSearchParams();
+
+    for (const name of allowedParams) {
+      if (parsed.searchParams.has(name)) {
+        searchParams.set(name, parsed.searchParams.get(name));
+      }
+    }
+
+    if (!searchParams.has('usp')) {
+      searchParams.set('usp', 'sharing');
+    }
+
+    if (resourceKey && !searchParams.has('resourcekey')) {
+      searchParams.set('resourcekey', resourceKey);
+    }
+
+    return `https://drive.google.com/drive/folders/${encodeURIComponent(folderId)}?${searchParams.toString()}`;
+  } catch {
+    const params = new URLSearchParams({ usp: 'sharing' });
+    if (resourceKey) {
+      params.set('resourcekey', resourceKey);
+    }
+    return `https://drive.google.com/drive/folders/${encodeURIComponent(folderId)}?${params.toString()}`;
+  }
+};
+
 const isPotentialDriveFileId = (value) => {
-  return /^[a-zA-Z0-9_-]{25,}$/.test(String(value || ''));
+  return /^[a-zA-Z0-9_-]{20,}$/.test(String(value || ''));
 };
 
 const extractDriveFileIdsFromFolderHtml = (html, folderId = '') => {
-  const ids = new Set();
+  const fileIds = new Set();
+  const folderIds = new Set();
+  const folderUrls = new Set();
   const content = String(html || '');
 
-  const dataIdRegex = /data-id=["']([a-zA-Z0-9_-]{25,})["']/gi;
-  for (const match of content.matchAll(dataIdRegex)) {
-    const id = match?.[1] || '';
-    if (id && id !== folderId && isPotentialDriveFileId(id) && !id.startsWith('goog') && !id.startsWith('drive')) {
-      ids.add(id);
+  const pushId = (id, isFolder = false) => {
+    if (!id || id === folderId) {
+      return;
     }
+
+    if (!isPotentialDriveFileId(id) || id.startsWith('goog') || id.startsWith('drive')) {
+      return;
+    }
+
+    if (isFolder) {
+      folderIds.add(id);
+      return;
+    }
+
+    if (!folderIds.has(id)) {
+      fileIds.add(id);
+    }
+  };
+
+  const pushFolderUrl = (url) => {
+    if (!url) {
+      return;
+    }
+
+    const id = extractDriveFolderId(url);
+    if (!id || id === folderId) {
+      return;
+    }
+
+    if (!isPotentialDriveFileId(id) || id.startsWith('goog') || id.startsWith('drive')) {
+      return;
+    }
+
+    folderUrls.add(url);
+    folderIds.add(id);
+  };
+
+  const matchIds = (regex, isFolder = false) => {
+    for (const match of content.matchAll(regex)) {
+      pushId(match?.[1] || '', isFolder);
+    }
+  };
+
+  const matchFolderUrls = (regex) => {
+    for (const match of content.matchAll(regex)) {
+      pushFolderUrl(match?.[0] || '');
+    }
+  };
+
+  matchFolderUrls(/(?:https?:\/\/)?(?:drive|docs)\.google\.com\/(?:drive\/u\/\d+\/folders|drive\/folders|folders)\/[a-zA-Z0-9_-]{20,}(?:\?[^"'\s]*)?/gi);
+  matchFolderUrls(/(?:https?:\/\/)?(?:drive|docs)\.google\.com\/embeddedfolderview\?id=[a-zA-Z0-9_-]{20,}(?:[^"'\s]*)?/gi);
+  matchIds(/"id"\s*:\s*"([a-zA-Z0-9_-]{20,})"[^\}]*?"mimeType"\s*:\s*"application\/vnd\.google-apps\.folder"/gi, true);
+
+  matchIds(/(?:drive|docs)\.google\.com\/(?:uc\?export=download|open)\?(?:[^\s"']*?&)?id=([a-zA-Z0-9_-]{20,})/gi);
+  matchIds(/\/file\/d\/([a-zA-Z0-9_-]{20,})/gi);
+  matchIds(/data-id=["']([a-zA-Z0-9_-]{20,})["']/gi);
+  matchIds(/"id"\s*:\s*"([a-zA-Z0-9_-]{20,})"/gi);
+  matchIds(/['"]([a-zA-Z0-9_-]{20,})['"]/g);
+
+  for (const folderIdEntry of folderIds) {
+    fileIds.delete(folderIdEntry);
   }
 
-  if (ids.size === 0) {
-    const imageEntryRegex = /["']([a-zA-Z0-9_-]{25,})["']\s*,\s*["'][^"']+\.(?:jpe?g|png|gif|webp|svg|bmp|tiff|heic)["']/gi;
-    for (const match of content.matchAll(imageEntryRegex)) {
-      const id = match?.[1] || '';
-      if (id && id !== folderId && isPotentialDriveFileId(id) && !id.startsWith('goog') && !id.startsWith('drive')) {
-        ids.add(id);
-      }
-    }
-  }
-
-  if (ids.size === 0) {
-    const downloadLinkRegex = /https?:\/\/drive\.google\.com\/(?:uc\?export=download|open)\?(?:[^\s"']*?&)?id=([a-zA-Z0-9_-]{25,})/gi;
-    for (const match of content.matchAll(downloadLinkRegex)) {
-      const id = match?.[1] || '';
-      if (id && id !== folderId && isPotentialDriveFileId(id) && !id.startsWith('goog') && !id.startsWith('drive')) {
-        ids.add(id);
-      }
-    }
-  }
-
-  if (ids.size === 0) {
-    const objectIdRegex = /"id"\s*:\s*"([a-zA-Z0-9_-]{25,})"/gi;
-    for (const match of content.matchAll(objectIdRegex)) {
-      const id = match?.[1] || '';
-      if (id && id !== folderId && isPotentialDriveFileId(id) && !id.startsWith('goog') && !id.startsWith('drive')) {
-        ids.add(id);
-      }
-    }
-  }
-
-  if (ids.size === 0) {
-    const genericRegex = /["']([a-zA-Z0-9_-]{25,})["']/g;
-    for (const match of content.matchAll(genericRegex)) {
-      const id = match?.[1] || '';
-      if (id && id !== folderId && isPotentialDriveFileId(id) && !id.startsWith('goog') && !id.startsWith('drive')) {
-        ids.add(id);
-      }
-    }
-  }
-
-  return [...ids];
+  return {
+    fileIds: [...fileIds],
+    folderIds: [...folderIds],
+    folderUrls: [...folderUrls],
+  };
 };
 
-const extractDriveFileIdsFromFolder = async (url) => {
-  try {
-    const response = await fetch(url, {
-      redirect: 'follow',
-      headers: {
-        'User-Agent': 'Mozilla/5.0',
-      },
-    });
-
-    if (!response.ok) {
-      return [];
-    }
-
-    const html = await response.text();
-    if (/accounts\.google\.com|ServiceLogin/i.test(response.url) || /ServiceLogin/i.test(html)) {
-      return [];
-    }
-
-    const folderId = extractDriveFolderId(url);
-    const ids = extractDriveFileIdsFromFolderHtml(html, folderId);
-    return ids.slice(0, 20);
-  } catch {
+const extractDriveFileIdsFromFolder = async (url, visitedFolderIds = new Set(), depth = 0) => {
+  if (depth >= 3) {
     return [];
   }
+
+  const folderId = extractDriveFolderId(url);
+  if (!folderId || visitedFolderIds.has(folderId)) {
+    return [];
+  }
+
+  visitedFolderIds.add(folderId);
+  const resourceKey = extractDriveFolderResourceKey(url);
+
+  const candidateUrls = [
+    normalizeDriveFolderUrl(url),
+    `https://drive.google.com/drive/folders/${encodeURIComponent(folderId)}?usp=sharing`,
+    `https://drive.google.com/drive/folders/${encodeURIComponent(folderId)}/view?usp=sharing`,
+    `https://drive.google.com/drive/u/0/folders/${encodeURIComponent(folderId)}?usp=sharing`,
+    `https://drive.google.com/embeddedfolderview?id=${encodeURIComponent(folderId)}&usp=sharing`,
+  ];
+
+  if (resourceKey) {
+    candidateUrls.unshift(`https://drive.google.com/drive/folders/${encodeURIComponent(folderId)}?resourcekey=${encodeURIComponent(resourceKey)}&usp=sharing`);
+  }
+
+  let html = '';
+  for (const candidateUrl of candidateUrls) {
+    if (!candidateUrl) {
+      continue;
+    }
+
+    try {
+      const response = await fetch(candidateUrl, {
+        redirect: 'follow',
+        headers: {
+          'User-Agent': 'Mozilla/5.0',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9',
+          Referer: 'https://www.google.com/',
+        },
+      });
+
+      if (!response.ok) {
+        continue;
+      }
+
+      const body = await response.text();
+      if (/accounts\.google\.com|ServiceLogin/i.test(response.url) || /ServiceLogin/i.test(body)) {
+        continue;
+      }
+
+      html = body;
+      break;
+    } catch {
+      continue;
+    }
+  }
+
+  if (!html) {
+    return [];
+  }
+
+  const { fileIds, folderUrls } = extractDriveFileIdsFromFolderHtml(html, folderId);
+  const nestedIds = [];
+
+  for (const nestedUrl of folderUrls) {
+    const nestedFolderId = extractDriveFolderId(nestedUrl);
+    if (!nestedFolderId || visitedFolderIds.has(nestedFolderId)) {
+      continue;
+    }
+
+    nestedIds.push(...await extractDriveFileIdsFromFolder(nestedUrl, visitedFolderIds, depth + 1));
+  }
+
+  return dedupeStringArray([...fileIds, ...nestedIds]).slice(0, 50);
 };
 
 const getBufferFromResponse = async (response) => {
@@ -2306,4 +2425,13 @@ router.delete('/:collection/:id', authOptional, async (req, res) => {
   }
 });
 
+export {
+  extractDriveFileIdsFromFolder,
+  extractDriveFileIdsFromFolderHtml,
+  extractDriveFileId,
+  extractDriveFolderId,
+  extractDriveFolderResourceKey,
+  normalizeDriveFolderUrl,
+  isDriveFolderUrl,
+};
 export default router;
