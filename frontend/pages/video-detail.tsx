@@ -707,7 +707,7 @@ export default function VideoPage() {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab((prev) => (prev === tab.id ? null : tab.id))}
-                className={`text-left rounded-2xl border px-4 py-4 transition-all interactive-card ${
+                className={`video-tab-item text-left rounded-2xl border px-4 py-4 transition-all interactive-card ${
                   activeTab === tab.id ? 'video-tab-active' : 'video-tab-inactive'
                 }`}
               >
@@ -727,13 +727,33 @@ export default function VideoPage() {
         </div>
 
         {/* Tab Content */}
-          {activeTab && loadingTabs[activeTab] && (
-            <div className="mb-5 flex items-center gap-3 text-sm text-[var(--app-muted)]" aria-live="polite">
-              <div className="w-5 h-5 border-2 border-[var(--app-border)] border-t-medical-500 rounded-full animate-spin" />
-              Chargement du contenu...
+        {activeTab && (
+          <div className="video-tab-panel-header mb-6 rounded-[32px] border border-[var(--app-border)] bg-[var(--app-surface-alt)] p-5 shadow-sm">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-3">
+                <activeTabMeta.icon className="w-5 h-5 text-[var(--app-accent)]" />
+                <div>
+                  <p className="text-xs uppercase tracking-[0.22em] font-semibold text-[var(--app-accent)]">
+                    {activeTabMeta.label}
+                  </p>
+                  <p className="text-sm text-[var(--app-text)]">{activeTabMeta.description}</p>
+                </div>
+              </div>
+
+              <div className="inline-flex items-center gap-2 rounded-full border border-[var(--app-border)] bg-[var(--app-surface)] px-4 py-2 text-sm font-semibold">
+                <span className="text-[var(--app-accent)]">Contenu</span>
+                <span>{activeTabMeta.count} élément{activeTabMeta.count > 1 ? 's' : ''}</span>
+              </div>
             </div>
-          )}
-          <AnimatePresence mode="wait">
+          </div>
+        )}
+        {activeTab && loadingTabs[activeTab] && (
+          <div className="mb-5 flex items-center gap-3 text-sm text-[var(--app-muted)]" aria-live="polite">
+            <div className="w-5 h-5 border-2 border-[var(--app-border)] border-t-medical-500 rounded-full animate-spin" />
+            Chargement du contenu...
+          </div>
+        )}
+        <AnimatePresence mode="wait">
             {activeTab === 'cas' && (
               <motion.div
                 key="cas"

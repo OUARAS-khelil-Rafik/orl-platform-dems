@@ -2098,6 +2098,29 @@ html[data-theme='dark'] .from-slate-900\/60 {
     color: var(--app-deep-text);
   }
 
+  .video-tab-item {
+    min-height: 110px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    text-align: left;
+    border-width: 1px;
+    background-clip: padding-box;
+  }
+
+  .video-tab-panel-header {
+    background: color-mix(in oklab, var(--app-surface-alt) 96%, white 4%);
+    border-color: color-mix(in oklab, var(--app-border) 75%, transparent);
+  }
+
+  html[data-theme='dark'] .video-tab-panel-header {
+    background: color-mix(in oklab, var(--app-deep-surface) 86%, black 14%);
+  }
+
+  .video-tab-panel-header p {
+    margin: 0;
+  }
+
   .video-status-chip {
     border: 1px solid color-mix(in oklab, var(--app-accent) 36%, var(--app-border) 64%);
     background: color-mix(in oklab, var(--app-accent) 18%, var(--app-surface) 82%);
