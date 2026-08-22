@@ -80,6 +80,7 @@ export default function SeamlessPlayer({
   const progressRef = useRef<HTMLDivElement>(null);
   const hideControlsTimer = useRef<NodeJS.Timeout | null>(null);
   const initialSeekPendingRef = useRef(Math.max(0, initialTime));
+  const hasAppliedInitialSeekRef = useRef(false);
 
   const [partIndex, setPartIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -144,8 +145,17 @@ export default function SeamlessPlayer({
   }, [playing]);
 
   useEffect(() => {
-    initialSeekPendingRef.current = Math.max(0, initialTime);
+    const nextInitial = Math.max(0, initialTime);
+    if (nextInitial !== initialSeekPendingRef.current) {
+      hasAppliedInitialSeekRef.current = false;
+    }
+    initialSeekPendingRef.current = nextInitial;
   }, [initialTime]);
+
+  // Reset initial-seek guard when sources change (e.g., new video)
+  useEffect(() => {
+    hasAppliedInitialSeekRef.current = false;
+  }, [sources]);
 
   useEffect(() => {
     const nextIdx = partIndex + 1;
@@ -168,18 +178,92 @@ export default function SeamlessPlayer({
     }
   }, [partIndex, sources]);
 
+  // Reprise de lecture : place le <video> au bon timecode (part + offset)
+  // et évite que le premier timeUpdate n'écrase la progression restaurée.
   useEffect(() => {
-    if (sources.length === 0) {
+    if (sources.length === 0) return;
+    if (hasAppliedInitialSeekRef.current) return;
+
+    const isPlaceholderDuration =
+      computedTotalDuration <= 1 && (offsets[offsets.length - 1] || 0) <= 1 && fallbackTotalDuration <= 1;
+    const effectiveMax = isPlaceholderDuration
+      ? Math.max(computedTotalDuration, initialSeekPendingRef.current)
+      : computedTotalDuration;
+    const initial = clamp(initialSeekPendingRef.current, 0, effectiveMax);
+    if (initial <= 0.5) {
+      hasAppliedInitialSeekRef.current = true;
+      setPartIndex(0);
+      setCurrentTime(0);
+      emitProgress(0, computedTotalDuration);
       return;
     }
 
-    const initial = clamp(initialSeekPendingRef.current, 0, computedTotalDuration);
     const targetPart = partForTime(initial);
 
-    setPartIndex(targetPart);
-    setCurrentTime(initial);
-    emitProgress(initial, computedTotalDuration);
-  }, [computedTotalDuration, emitProgress, partForTime, sources.length]);
+    // Si la partie cible n'est pas encore montée, on change de partie et on
+    // attend le prochain tick où le <video> aura la bonne source.
+    if (targetPart !== partIndex) {
+      setPartIndex(targetPart);
+      setCurrentTime(initial);
+      emitProgress(initial, computedTotalDuration);
+      return;
+    }
+
+    const vid = videoRef.current;
+    if (!vid) return;
+
+    const localTime = Math.max(0, initial - offsets[targetPart]);
+
+    const applySeek = () => {
+      try {
+        if (Number.isFinite(localTime)) {
+          vid.currentTime = localTime;
+        }
+        setCurrentTime(initial);
+        emitProgress(initial, computedTotalDuration);
+        hasAppliedInitialSeekRef.current = true;
+      } catch {
+        // Certains navigateurs lèvent si currentTime est assigné trop tôt
+      }
+    };
+
+    if (vid.readyState >= 1) {
+      applySeek();
+    } else {
+      const onLoaded = () => applySeek();
+      vid.addEventListener('loadedmetadata', onLoaded, { once: true });
+      return () => vid.removeEventListener('loadedmetadata', onLoaded);
+    }
+  }, [computedTotalDuration, emitProgress, fallbackTotalDuration, offsets, partForTime, partIndex, sources.length]);
+
+  const handleLoadedMetadataForInitialSeek = useCallback(() => {
+    if (hasAppliedInitialSeekRef.current) return;
+    const isPlaceholderDuration =
+      computedTotalDuration <= 1 && (offsets[offsets.length - 1] || 0) <= 1 && fallbackTotalDuration <= 1;
+    const effectiveMax = isPlaceholderDuration
+      ? Math.max(computedTotalDuration, initialSeekPendingRef.current)
+      : computedTotalDuration;
+    const initial = clamp(initialSeekPendingRef.current, 0, effectiveMax);
+    if (initial <= 0.5) {
+      hasAppliedInitialSeekRef.current = true;
+      return;
+    }
+    const targetPart = partForTime(initial);
+    if (targetPart !== partIndex) return;
+    const vid = videoRef.current;
+    if (!vid) return;
+    const localTime = Math.max(0, initial - offsets[targetPart]);
+    try {
+      if (Number.isFinite(localTime)) {
+        vid.currentTime = localTime;
+      }
+      setCurrentTime(initial);
+      emitProgress(initial, computedTotalDuration);
+      hasAppliedInitialSeekRef.current = true;
+    } catch {
+      // ignore
+    }
+  }, [computedTotalDuration, emitProgress, fallbackTotalDuration, offsets, partForTime, partIndex]);
 
   const seekToUnifiedTime = useCallback(
     (targetTime: number) => {
@@ -412,6 +496,7 @@ export default function SeamlessPlayer({
         className="w-full h-full object-contain"
         onTimeUpdate={handleTimeUpdate}
         onEnded={handleEnded}
+        onLoadedMetadata={handleLoadedMetadataForInitialSeek}
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
         playsInline

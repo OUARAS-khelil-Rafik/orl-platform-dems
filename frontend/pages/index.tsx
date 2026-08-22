@@ -2207,11 +2207,13 @@ export default function HomePage() {
                         <p className="font-semibold line-clamp-2 mb-3 text-(--app-text)">{item.title}</p>
 
                         <div className="h-2 rounded-full overflow-hidden bg-[color-mix(in_oklab,var(--app-border)_76%,transparent)]">
-                          <div className="h-full w-full rounded-full bg-(--app-accent) opacity-55" />
+                          <div
+                            className="h-full rounded-full bg-(--app-accent) opacity-55 transition-all duration-300"
+                            style={{ width: `${Math.min(100, Math.max(0, item.progressPercent))}%` }}
+                          />
                         </div>
 
                         <div className="mt-3 flex items-center justify-between gap-3 text-xs text-(--app-muted)">
-                          <span>Progression {Math.round(item.progressPercent)}%</span>
                           <span>Reste {formatClock(item.remainingSeconds)}</span>
                           <span>{formatClock(item.currentTime)} / {formatClock(item.duration)}</span>
                         </div>
