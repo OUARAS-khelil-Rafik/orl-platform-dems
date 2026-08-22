@@ -1399,3 +1399,31 @@ export const cleanupCloudinaryAssetsOnPageExit = (assets: CloudinaryCleanupAsset
     return false;
   }
 };
+
+export const deleteCloudinaryAsset = async (
+  publicId: string,
+  resourceType: 'image' | 'video' | 'raw' = 'image'
+): Promise<boolean> => {
+  try {
+    const token = getAuthToken();
+    if (!token) {
+      throw new Error('Authentication required.');
+    }
+
+    const params = new URLSearchParams({
+      publicId,
+      resourceType,
+    });
+
+    await apiRequest<{ deleted: boolean }>(
+      `/uploads/cloudinary?${params.toString()}`,
+      {
+        method: 'DELETE',
+      },
+      true,
+    );
+    return true;
+  } catch {
+    return false;
+  }
+};

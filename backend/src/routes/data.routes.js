@@ -933,13 +933,16 @@ const uploadImportedDriveImages = async ({
   const urls = [];
   const uniqueLinks = dedupeStringArray(links);
 
+  if (!uniqueLinks.length) {
+    return urls;
+  }
+
   for (const link of uniqueLinks) {
     const fileIds = isDriveFolderUrl(link)
       ? await extractDriveFileIdsFromFolder(link)
       : [extractDriveFileId(link)].filter(Boolean);
 
     if (fileIds.length === 0) {
-      failures.push({ link, reason: 'Lien Drive inaccessible ou non public.' });
       continue;
     }
 
@@ -947,7 +950,6 @@ const uploadImportedDriveImages = async ({
       try {
         const buffer = await downloadDriveImageBuffer(fileId);
         if (!buffer) {
-          failures.push({ link, fileId, reason: 'Image Drive inaccessible ou format non image.' });
           continue;
         }
 
@@ -967,12 +969,8 @@ const uploadImportedDriveImages = async ({
         if (result?.secure_url) {
           urls.push(result.secure_url);
         }
-      } catch (error) {
-        failures.push({
-          link,
-          fileId,
-          reason: error?.message || 'Upload Cloudinary impossible.',
-        });
+      } catch {
+        continue;
       }
     }
   }

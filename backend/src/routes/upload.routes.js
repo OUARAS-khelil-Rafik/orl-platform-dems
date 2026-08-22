@@ -1034,6 +1034,39 @@ router.post('/cloudinary', authRequired, withSingleFile(cloudinaryUpload), async
   }
 });
 
+router.delete('/cloudinary', authRequired, async (req, res) => {
+  try {
+    const publicId = String(req.query.publicId || '').trim();
+    const resourceType = String(req.query.resourceType || 'image').trim().toLowerCase();
+
+    if (!publicId) {
+      return res.status(400).json({ message: 'publicId is required.' });
+    }
+
+    const validResourceTypes = ['image', 'video', 'raw'];
+    if (!validResourceTypes.includes(resourceType)) {
+      return res.status(400).json({ message: 'Invalid resourceType. Must be image, video, or raw.' });
+    }
+
+    const contentCloudinaryOptions = resolveContentCloudinaryOptions(req.authUser);
+    const result = await destroyCloudinaryAsset({
+      publicId,
+      resourceType,
+      authUser: req.authUser,
+      configOptions: contentCloudinaryOptions,
+    });
+
+    if (result.result === 'ok' || result.result === 'not found') {
+      return res.json({ deleted: true, result: result.result });
+    }
+
+    return res.status(500).json({ message: 'Failed to delete asset from Cloudinary.', detail: result });
+  } catch (error) {
+    console.error('[uploads] Error deleting Cloudinary asset:', error);
+    return res.status(500).json({ message: 'Unable to delete Cloudinary asset.' });
+  }
+});
+
 router.post('/cleanup', authRequired, async (req, res) => {
   try {
     const rawAssets = Array.isArray(req.body?.assets) ? req.body.assets : [];

@@ -4,6 +4,7 @@ export type SupportChatAttachment = {
   url: string;
   name: string;
   kind: SupportChatAttachmentKind;
+  publicId?: string;
 };
 
 export const SUPPORT_CHAT_ATTACHMENT_ACCEPT = '.pdf,image/*';
@@ -34,7 +35,7 @@ export const isSupportChatAttachmentFile = (file: File) => {
   return Boolean(getSupportChatAttachmentKind(file));
 };
 
-export const buildSupportChatAttachment = (file: File, url: string): SupportChatAttachment | null => {
+export const buildSupportChatAttachment = (file: File, url: string, publicId?: string): SupportChatAttachment | null => {
   const kind = getSupportChatAttachmentKind(file);
   const safeUrl = String(url || '').trim();
   if (!kind || !safeUrl) {
@@ -45,14 +46,15 @@ export const buildSupportChatAttachment = (file: File, url: string): SupportChat
     url: safeUrl,
     name: trimFileName(file.name || 'fichier'),
     kind,
+    publicId,
   };
 };
 
-export const buildSupportChatLastMessage = (text: string, attachment?: SupportChatAttachment | null) => {
+export const buildSupportChatLastMessage = (text: string, attachment?: SupportChatAttachment | null, attachments?: SupportChatAttachment[]) => {
   const trimmedText = String(text || '').trim();
-  const attachmentLabel = attachment
-    ? `${attachment.kind === 'pdf' ? 'PDF' : 'Photo'} : ${attachment.name}`
-    : '';
+  const allAttachments = attachments?.length ? attachments : (attachment ? [attachment] : []);
+  const attachmentLabels = allAttachments.map((att) => `${att.kind === 'pdf' ? 'PDF' : 'Photo'} : ${att.name}`);
+  const attachmentLabel = attachmentLabels.join(', ');
 
   if (trimmedText && attachmentLabel) {
     return `${trimmedText} — ${attachmentLabel}`;

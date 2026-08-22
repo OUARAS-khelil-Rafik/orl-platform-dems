@@ -15,6 +15,7 @@ import {
   deleteDoc,
   setDoc,
   uploadCloudinaryAsset,
+  deleteCloudinaryAsset,
   createAuthAccountByAdmin,
   deleteAuthAccountByUid,
 } from '@/lib/data/local-data';
@@ -49,6 +50,7 @@ import {
   Paperclip,
   Loader2,
   Search,
+  MessageCircle,
 } from 'lucide-react';
 import { useRouter } from 'next/router';
 import { AdminContentManager } from '@/components/features/admin/content-manager';
@@ -179,6 +181,7 @@ type SupportChatEntry = {
   lastSender?: 'user' | 'bot' | 'admin';
   createdAt?: string;
   updatedAt?: string;
+  isWelcomeChat?: boolean;
 };
 
 type SupportChatMessageEntry = {
@@ -188,7 +191,7 @@ type SupportChatMessageEntry = {
   sender: 'user' | 'bot' | 'admin';
   senderName?: string;
   text: string;
-  attachment?: SupportChatAttachment | null;
+  attachments?: SupportChatAttachment[];
   createdAt?: string;
 };
 
@@ -210,7 +213,7 @@ export default function AdminDashboard() {
   const [selectedSupportChatId, setSelectedSupportChatId] = useState('');
   const [supportChatMessages, setSupportChatMessages] = useState<SupportChatMessageEntry[]>([]);
   const [supportReplyDraft, setSupportReplyDraft] = useState('');
-  const [pendingSupportReplyAttachment, setPendingSupportReplyAttachment] = useState<SupportChatAttachment | null>(null);
+  const [pendingSupportReplyAttachments, setPendingSupportReplyAttachments] = useState<SupportChatAttachment[]>([]);
   const [isUploadingSupportReplyAttachment, setIsUploadingSupportReplyAttachment] = useState(false);
   const [isSendingSupportReply, setIsSendingSupportReply] = useState(false);
   const [failedSupportAvatarKeys, setFailedSupportAvatarKeys] = useState<Record<string, true>>({});
@@ -371,14 +374,19 @@ export default function AdminDashboard() {
         setDiscussions(nextDiscussions);
 
         const nextSupportChats = supportChatsSnap.docs
-          .map((entry) => ({ ...(entry.data() as SupportChatEntry), id: entry.id }))
+          .map((entry) => {
+            const data = entry.data() as SupportChatEntry;
+            const isWelcome = data.isWelcomeChat === true || (data.isWelcomeChat !== false && data.lastSender === 'bot');
+            return { ...data, id: entry.id, isWelcomeChat: isWelcome };
+          })
           .sort((a, b) => {
             const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
             const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
             return bTime - aTime;
           });
         setSupportChats(nextSupportChats);
-        setSelectedSupportChatId((current) => current || nextSupportChats[0]?.id || '');
+        const firstRealChat = nextSupportChats.find((chat) => !chat.isWelcomeChat);
+        setSelectedSupportChatId((current) => current || firstRealChat?.id || '');
       } catch (error) {
         console.error('Error fetching admin data:', error);
       } finally {
@@ -428,7 +436,11 @@ export default function AdminDashboard() {
         try {
           const chatsSnap = await getDocs(collection(db, 'supportChats'));
           const nextChats = chatsSnap.docs
-            .map((entry) => ({ ...(entry.data() as SupportChatEntry), id: entry.id }))
+            .map((entry) => {
+              const data = entry.data() as SupportChatEntry;
+              const isWelcome = data.isWelcomeChat === true || (data.isWelcomeChat !== false && data.lastSender === 'bot');
+              return { ...data, id: entry.id, isWelcomeChat: isWelcome };
+            })
             .sort((a, b) => {
               const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
               const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
@@ -437,7 +449,7 @@ export default function AdminDashboard() {
 
           setSupportChats(nextChats);
 
-          const targetChatId = selectedSupportChatId || nextChats[0]?.id || '';
+          const targetChatId = selectedSupportChatId || nextChats.find((chat) => !chat.isWelcomeChat)?.id || '';
           if (!selectedSupportChatId && targetChatId) {
             setSelectedSupportChatId(targetChatId);
           }
@@ -1551,7 +1563,7 @@ export default function AdminDashboard() {
   };
 
   const unreadDiscussionCount = discussions.filter((entry) => !entry.isRead).length;
-  const openProblemCount = supportChats.filter((entry) => entry.status !== 'resolved').length;
+  const openProblemCount = supportChats.filter((entry) => !entry.isWelcomeChat && entry.status !== 'resolved').length;
   const selectedSupportChat = supportChats.find((entry) => entry.id === selectedSupportChatId) || null;
   const selectedSupportChatUser = selectedSupportChat
     ? users.find((entry) => entry.id === selectedSupportChat.userId) || null
@@ -1604,7 +1616,7 @@ export default function AdminDashboard() {
     selectedSupportChatUser?.supportClientDisconnectedAt,
     now,
   ]);
-  const hasSupportReplyWord = supportReplyDraft.trim().length > 0 || Boolean(pendingSupportReplyAttachment);
+  const hasSupportReplyWord = supportReplyDraft.trim().length > 0 || pendingSupportReplyAttachments.length > 0;
   const supportReplyRows = supportReplyDraft.includes('\n') ? 2 : 1;
   const showSupportSendAction = hasSupportReplyWord && Boolean(selectedSupportChatId);
 
@@ -1655,12 +1667,12 @@ export default function AdminDashboard() {
 
       if (adminAvatarUrl && !failedSupportAvatarKeys[adminAvatarKey]) {
         return (
-          <span className="relative inline-block h-8 w-8 overflow-hidden rounded-full ring-1 ring-emerald-200">
+          <span className="relative inline-block h-9 w-9 overflow-hidden rounded-full ring-2 ring-white shadow-sm">
             <Image
               src={adminAvatarUrl}
               alt="Avatar admin"
               fill
-              sizes="32px"
+              sizes="36px"
               className="object-cover"
               referrerPolicy="no-referrer"
               onError={() => markSupportAvatarFailed(adminAvatarKey)}
@@ -1672,7 +1684,7 @@ export default function AdminDashboard() {
       const adminName = String(profile?.displayName || message.senderName || 'Admin').trim();
       const adminInitial = adminName.charAt(0).toUpperCase() || 'A';
       return (
-        <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-emerald-700 text-xs font-semibold text-white ring-1 ring-emerald-200">
+        <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-emerald-700 text-[13px] font-bold text-white ring-2 ring-white shadow-sm">
           {adminInitial}
         </span>
       );
@@ -1680,7 +1692,7 @@ export default function AdminDashboard() {
 
     if (message.sender === 'bot') {
       return (
-        <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-amber-700 text-xs font-semibold text-white ring-1 ring-amber-200">
+        <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-amber-700 text-[13px] font-bold text-white ring-2 ring-white shadow-sm">
           B
         </span>
       );
@@ -1694,12 +1706,12 @@ export default function AdminDashboard() {
 
     if (userAvatarUrl && !failedSupportAvatarKeys[userAvatarKey]) {
       return (
-        <span className="relative inline-block h-8 w-8 overflow-hidden rounded-full ring-1 ring-slate-300">
+        <span className="relative inline-block h-9 w-9 overflow-hidden rounded-full ring-2 ring-white shadow-sm">
           <Image
             src={userAvatarUrl}
             alt="Avatar utilisateur"
             fill
-            sizes="32px"
+            sizes="36px"
             className="object-cover"
             referrerPolicy="no-referrer"
             onError={() => markSupportAvatarFailed(userAvatarKey)}
@@ -1711,7 +1723,7 @@ export default function AdminDashboard() {
     const displayName = resolveSupportUserDisplayName(message.userId, selectedSupportChat?.userEmail);
     const initial = String(displayName || 'U').trim().charAt(0).toUpperCase() || 'U';
     return (
-      <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white ring-1 ring-slate-300">
+      <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-slate-900 text-[13px] font-bold text-white ring-2 ring-white shadow-sm">
         {initial}
       </span>
     );
@@ -1760,9 +1772,9 @@ export default function AdminDashboard() {
         }
 
         nodes.push(
-          <ol key={`support-ol-${cursor}`} className="list-decimal pl-5 space-y-1">
+          <ol key={`support-ol-${cursor}`} className="list-decimal pl-5 space-y-1 break-words [overflow-wrap:anywhere] min-w-0">
             {items.map((item, index) => (
-              <li key={`support-ol-item-${cursor}-${index}`}>{formatSupportInlineMarkdown(item)}</li>
+              <li key={`support-ol-item-${cursor}-${index}`} className="break-words [overflow-wrap:anywhere] min-w-0">{formatSupportInlineMarkdown(item)}</li>
             ))}
           </ol>,
         );
@@ -1784,9 +1796,9 @@ export default function AdminDashboard() {
         }
 
         nodes.push(
-          <ul key={`support-ul-${cursor}`} className="list-disc pl-5 space-y-1">
+          <ul key={`support-ul-${cursor}`} className="list-disc pl-5 space-y-1 break-words [overflow-wrap:anywhere] min-w-0">
             {items.map((item, index) => (
-              <li key={`support-ul-item-${cursor}-${index}`}>{formatSupportInlineMarkdown(item)}</li>
+              <li key={`support-ul-item-${cursor}-${index}`} className="break-words [overflow-wrap:anywhere] min-w-0">{formatSupportInlineMarkdown(item)}</li>
             ))}
           </ul>,
         );
@@ -1795,14 +1807,14 @@ export default function AdminDashboard() {
       }
 
       nodes.push(
-        <p key={`support-line-${cursor}`} className="leading-relaxed">
+        <p key={`support-line-${cursor}`} className="leading-relaxed break-words whitespace-pre-wrap [overflow-wrap:anywhere] hyphens-auto min-w-0 max-w-full">
           {formatSupportInlineMarkdown(line)}
         </p>,
       );
       cursor += 1;
     }
 
-    return <div className="space-y-1">{nodes}</div>;
+    return <div className="space-y-1 min-w-0 max-w-full overflow-hidden break-words [overflow-wrap:anywhere]">{nodes}</div>;
   };
 
   const handleUpdateSupportChat = async (
@@ -1824,13 +1836,48 @@ export default function AdminDashboard() {
     }
   };
 
+  const extractPublicIdFromUrl = (url: string): string | undefined => {
+    try {
+      const match = url.match(/\/upload\/.*?\/([^/.]+)(?:\.[^/.]+)?$/);
+      if (match?.[1]) return match[1];
+      return undefined;
+    } catch {
+      return undefined;
+    }
+  };
+
   const deleteSupportChatById = async (chatId: string) => {
     const messagesSnap = await getDocs(query(collection(db, 'supportChatMessages'), where('chatId', '==', chatId)));
+    const messages = messagesSnap.docs.map((entry) => ({ ...(entry.data() as SupportChatMessageEntry), id: entry.id }));
 
+    // Collect Cloudinary publicIds from attachments
+    const publicIdsToDelete: Array<{ publicId: string; resourceType: 'image' | 'raw' }> = [];
+    messages.forEach((msg) => {
+      const attachments = msg.attachments || [];
+      attachments.forEach((attachment) => {
+        if (!attachment?.url) return;
+
+        let publicId = attachment.publicId;
+        if (!publicId) {
+          publicId = extractPublicIdFromUrl(attachment.url);
+        }
+        if (publicId) {
+          const resourceType = attachment.kind === 'pdf' ? 'raw' : 'image';
+          publicIdsToDelete.push({ publicId: publicId as string, resourceType });
+        }
+      });
+    });
+
+    // Delete from Firestore
     await Promise.all([
       ...messagesSnap.docs.map((entry) => deleteDoc(doc(db, 'supportChatMessages', entry.id))),
       deleteDoc(doc(db, 'supportChats', chatId)),
     ]);
+
+    // Delete from Cloudinary
+    await Promise.all(
+      publicIdsToDelete.map(({ publicId, resourceType }) => deleteCloudinaryAsset(publicId, resourceType))
+    );
 
     setSupportChats((prev) => {
       const filtered = prev.filter((entry) => entry.id !== chatId);
@@ -1870,44 +1917,46 @@ export default function AdminDashboard() {
   };
 
   const handleSupportReplyAttachmentSelection = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0] || null;
+    const files = Array.from(event.target.files || []);
     event.target.value = '';
 
-    if (!file || isUploadingSupportReplyAttachment || isSendingSupportReply) {
-      return;
-    }
-
-    if (!isSupportChatAttachmentFile(file)) {
-      alert('Seuls les fichiers PDF et les images sont autorises dans le chat support.');
+    if (files.length === 0 || isUploadingSupportReplyAttachment || isSendingSupportReply) {
       return;
     }
 
     try {
       setIsUploadingSupportReplyAttachment(true);
-      const attachmentKind = getSupportChatAttachmentKind(file);
-      const response = await uploadCloudinaryAsset(file, {
-        resourceType: attachmentKind === 'pdf' ? 'raw' : 'image',
-        folder: 'orl-platform/support-chat',
-        fileName: file.name,
-        purpose: 'support-chat',
-      });
-      const attachment = buildSupportChatAttachment(file, response.secureUrl);
-
-      if (!attachment) {
-        throw new Error('Impossible de preparer la piece jointe.');
+      for (const file of files) {
+        if (!isSupportChatAttachmentFile(file)) {
+          alert('Seuls les fichiers PDF et les images sont autorises dans le chat support.');
+          continue;
+        }
+        const attachmentKind = getSupportChatAttachmentKind(file);
+        const response = await uploadCloudinaryAsset(file, {
+          resourceType: attachmentKind === 'pdf' ? 'raw' : 'image',
+          folder: 'orl-platform/support-chat',
+          fileName: file.name,
+          purpose: 'support-chat',
+        });
+        const attachment = buildSupportChatAttachment(file, response.secureUrl, response.publicId);
+        if (attachment) {
+          setPendingSupportReplyAttachments((prev) => [...prev, attachment]);
+        }
       }
-
-      setPendingSupportReplyAttachment(attachment);
     } catch (error) {
-      console.error('Error uploading support reply attachment:', error);
+      console.error('Error uploading support reply attachments:', error);
       alert('Impossible de televerser ce fichier dans le chat.');
     } finally {
       setIsUploadingSupportReplyAttachment(false);
     }
   };
 
-  const clearSupportReplyAttachment = () => {
-    setPendingSupportReplyAttachment(null);
+  const clearSupportReplyAttachment = (index?: number) => {
+    if (typeof index === 'number') {
+      setPendingSupportReplyAttachments((prev) => prev.filter((_, i) => i !== index));
+    } else {
+      setPendingSupportReplyAttachments([]);
+    }
   };
 
   const handleSendAdminSupportReply = async () => {
@@ -1921,8 +1970,8 @@ export default function AdminDashboard() {
     }
 
     const reply = String(supportReplyDraft || '').trim();
-    const attachment = pendingSupportReplyAttachment;
-    if (!reply && !attachment) {
+    const attachments = pendingSupportReplyAttachments;
+    if (!reply && attachments.length === 0) {
       alert('Saisissez une reponse admin.');
       return;
     }
@@ -1932,7 +1981,7 @@ export default function AdminDashboard() {
       const nowIso = new Date().toISOString();
       const messageId = `${activeChat.id}-admin-${Date.now()}`;
       const adminSenderName = String(profile?.displayName || '').trim() || 'Admin';
-      const replySummary = buildSupportChatLastMessage(reply, attachment);
+      const replySummary = buildSupportChatLastMessage(reply, null, attachments);
 
       await Promise.all([
         setDoc(doc(db, 'supportChatMessages', messageId), {
@@ -1941,7 +1990,7 @@ export default function AdminDashboard() {
           sender: 'admin',
           senderName: adminSenderName,
           text: reply,
-          attachment,
+          attachments,
           createdAt: nowIso,
         }),
         updateDoc(doc(db, 'supportChats', activeChat.id), {
@@ -1961,7 +2010,7 @@ export default function AdminDashboard() {
           sender: 'admin',
           senderName: adminSenderName,
           text: reply,
-          attachment,
+          attachments,
           createdAt: nowIso,
         },
       ]);
@@ -1981,7 +2030,7 @@ export default function AdminDashboard() {
       );
 
       setSupportReplyDraft('');
-      setPendingSupportReplyAttachment(null);
+      setPendingSupportReplyAttachments([]);
     } catch (error) {
       console.error('Error sending admin reply:', error);
       alert('Erreur lors de l envoi de la reponse admin.');
@@ -2949,13 +2998,19 @@ export default function AdminDashboard() {
                   </div>
                 </div>
 
-                <div className="grid gap-6 p-5 sm:p-6 lg:grid-cols-[440px_minmax(0,1fr)]">
-                  <div className="rounded-2xl border border-(--app-border) overflow-hidden">
-                    {supportChats.length === 0 ? (
-                      <div className="p-8 text-sm text-(--app-muted)">Aucune discussion probleme.</div>
+                  <div className="grid gap-6 p-5 sm:p-6 lg:grid-cols-[420px_minmax(0,1fr)]">
+                  <div className="rounded-2xl border border-[color-mix(in_oklab,var(--app-border)_84%,var(--app-accent)_16%)] overflow-hidden bg-[color-mix(in_oklab,var(--app-surface)_98%,white_2%)]">
+                    {supportChats.filter((chat) => !chat.isWelcomeChat).length === 0 ? (
+                      <div className="flex flex-col items-center justify-center p-10 text-center">
+                        <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-[color-mix(in_oklab,var(--app-accent)_10%,var(--app-surface)_90%)] text-(--app-muted)"><Users className="h-6 w-6" /></div>
+                        <p className="text-[14px] font-semibold text-(--app-text)">Aucune discussion problème</p>
+                        <p className="mt-1 text-[13px] text-(--app-muted)">Les conversations apparaîtront ici dès qu’un utilisateur écrira son premier message.</p>
+                      </div>
                     ) : (
-                      <div className="max-h-[34rem] overflow-y-auto p-3 space-y-2">
-                        {supportChats.map((chat) => {
+                      <div className="max-h-[36rem] overflow-y-auto p-3.5 space-y-2.5">
+                        {supportChats
+                          .filter((chat) => !chat.isWelcomeChat)
+                          .map((chat) => {
                           const linkedUser = users.find((entry) => entry.id === chat.userId);
                           const splitName = splitFullName(linkedUser?.displayName || '');
                           const displayName = formatFullName(
@@ -2968,19 +3023,19 @@ export default function AdminDashboard() {
                               key={chat.id}
                               type="button"
                               onClick={() => setSelectedSupportChatId(chat.id)}
-                              className={`w-full text-left rounded-xl border px-3 py-2 transition-colors ${
+                              className={`w-full text-left rounded-2xl border px-4 py-3.5 transition-all duration-200 ${
                                 selectedSupportChatId === chat.id
-                                  ? 'border-(--app-accent) bg-[color-mix(in_oklab,var(--app-accent)_14%,var(--app-surface)_86%)]'
-                                  : 'border-(--app-border) bg-(--app-surface) hover:brightness-[1.03]'
+                                  ? 'border-(--app-accent) bg-[color-mix(in_oklab,var(--app-accent)_12%,var(--app-surface)_88%)] shadow-sm'
+                                  : 'border-[color-mix(in_oklab,var(--app-border)_84%,var(--app-accent)_16%)] bg-(--app-surface) hover:border-[color-mix(in_oklab,var(--app-accent)_22%,var(--app-border)_78%)] hover:bg-[color-mix(in_oklab,var(--app-surface-alt)_42%,var(--app-surface)_58%)]'
                               }`}
                             >
                               <div className="flex items-center justify-between gap-2">
-                                <p className="text-sm font-semibold truncate text-(--app-text)">{displayName}</p>
-                                <span className="text-[11px] px-2 py-0.5 rounded-full bg-[color-mix(in_oklab,var(--app-surface-2)_76%,var(--app-surface)_24%)] text-(--app-text)">
+                                <p className="text-[14px] font-semibold truncate text-(--app-text)">{displayName}</p>
+                                <span className="shrink-0 text-[11px] font-bold px-2.5 py-1 rounded-full bg-[color-mix(in_oklab,var(--app-surface-2)_76%,var(--app-surface)_24%)] text-(--app-text) border border-[color-mix(in_oklab,var(--app-border)_64%,transparent)]">
                                   {chat.status || 'open'}
                                 </span>
                               </div>
-                              <p className="text-xs mt-1 truncate text-(--app-muted)">{chat.lastMessage || '-'}</p>
+                              <p className="text-[13px] mt-1.5 truncate leading-5 text-(--app-muted)">{chat.lastMessage || '-'}</p>
                             </button>
                           );
                         })}
@@ -3039,14 +3094,18 @@ export default function AdminDashboard() {
                           </div>
                         </div>
 
-                          <div className="rounded-xl border border-(--app-border) bg-[color-mix(in_oklab,var(--app-surface-2)_60%,var(--app-surface)_40%)] p-4 h-[34rem] lg:h-[42rem] flex flex-col">
+                          <div className="rounded-2xl border border-[color-mix(in_oklab,var(--app-border)_84%,var(--app-accent)_16%)] bg-[color-mix(in_oklab,var(--app-surface-alt)_28%,var(--app-surface)_72%)] p-4 h-[38rem] lg:h-[46rem] flex flex-col shadow-inner">
                           <div
                             ref={supportMessagesContainerRef}
                             onScroll={handleAdminSupportMessagesScroll}
-                              className="min-h-0 flex-1 overflow-y-auto space-y-4 pr-2"
+                              className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden space-y-4 pr-2 scroll-smooth min-w-0"
                           >
                             {supportChatMessages.length === 0 ? (
-                              <p className="text-sm text-(--app-muted)">Aucun message dans cette discussion.</p>
+                              <div className="flex flex-col items-center justify-center py-16 text-center">
+                                <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-white border border-(--app-border) text-(--app-muted) shadow-sm"><MessageCircle className="h-6 w-6" /></div>
+                                <p className="text-[14px] font-semibold text-(--app-text)">Aucun message dans cette discussion</p>
+                                <p className="text-[13px] text-(--app-muted)">Les échanges apparaîtront ici.</p>
+                              </div>
                             ) : (
                               supportChatMessages.map((message) => {
                                 const isAdminMessage = message.sender === 'admin';
@@ -3054,26 +3113,30 @@ export default function AdminDashboard() {
                                 return (
                                   <div
                                     key={message.id}
-                                    className={`flex ${isAdminMessage ? 'justify-end' : 'justify-start'}`}
+                                    className={`flex w-full min-w-0 ${isAdminMessage ? 'justify-end' : 'justify-start'}`}
                                   >
-                                    <div className={`flex max-w-[94%] gap-3 ${isAdminMessage ? 'flex-row-reverse' : 'flex-row'}`}>
-                                      <div className="pt-1 px-1">{renderSupportSenderAvatar(message)}</div>
+                                    <div className={`flex min-w-0 max-w-[82%] gap-2.5 ${isAdminMessage ? 'flex-row-reverse' : 'flex-row'}`}>
+                                      <div className="shrink-0 pt-1">{renderSupportSenderAvatar(message)}</div>
                                       <div
-                                        className={`rounded-2xl border px-3 py-2 text-sm ${
+                                        className={`min-w-0 max-w-full overflow-hidden rounded-[18px] border px-4 py-3 text-[14px] leading-[1.55] shadow-[0_1px_8px_rgba(0,0,0,0.04)] break-words [overflow-wrap:anywhere] hyphens-auto ${
                                           isAdminMessage
-                                            ? 'border-transparent bg-(--app-accent) text-(--app-accent-contrast)'
+                                            ? 'rounded-br-[6px] border-transparent bg-[linear-gradient(135deg,var(--app-accent),color-mix(in_oklab,var(--app-accent)_84%,black_16%))] text-(--app-accent-contrast) shadow-[0_4px_12px_color-mix(in_oklab,var(--app-accent)_22%,transparent)]'
                                             : message.sender === 'bot'
-                                              ? 'border-[color-mix(in_oklab,#f59e0b_30%,var(--app-border)_70%)] bg-[color-mix(in_oklab,#f59e0b_14%,var(--app-surface)_86%)] text-(--app-text)'
-                                              : 'border-(--app-border) bg-(--app-surface) text-(--app-text)'
+                                              ? 'rounded-bl-[6px] border-[color-mix(in_oklab,#f59e0b_26%,var(--app-border)_74%)] bg-[color-mix(in_oklab,#f59e0b_10%,var(--app-surface)_90%)] text-(--app-text)'
+                                              : 'rounded-bl-[6px] border-[color-mix(in_oklab,var(--app-border)_82%,var(--app-accent)_18%)] bg-white text-(--app-text)'
                                         }`}
                                       >
-                                        <p className="text-[10px] uppercase tracking-wide opacity-70 mb-1">
+                                        <p className="text-[11px] font-bold uppercase tracking-wide opacity-60 mb-1.5 truncate">
                                           {resolveSupportSenderLabel(message)}
                                         </p>
-                                        {message.text.trim() ? <div>{renderSupportMessageMarkdown(message.text)}</div> : null}
-                                        {message.attachment ? (
-                                          <div className="mt-2">
-                                            <SupportChatAttachmentCard attachment={message.attachment} />
+                                        {message.text.trim() ? <div className="min-w-0 max-w-full overflow-hidden text-[14px] leading-6 break-words whitespace-pre-wrap [overflow-wrap:anywhere]">{renderSupportMessageMarkdown(message.text)}</div> : null}
+                                        {message.attachments && message.attachments.length > 0 ? (
+                                          <div className="mt-3 flex max-w-full flex-col gap-2 overflow-hidden">
+                                            {message.attachments.map((att, idx) => (
+                                              <div key={idx} className="max-w-full min-w-0 overflow-hidden">
+                                                <SupportChatAttachmentCard attachment={att} />
+                                              </div>
+                                            ))}
                                           </div>
                                         ) : null}
                                       </div>
@@ -3084,10 +3147,10 @@ export default function AdminDashboard() {
                             )}
                           </div>
 
-                            <div className="mt-0 shrink-0 border-(--app-border) pb-2 pt-4">
-                            <div className="mx-0.5 flex flex-col rounded-[18px] border border-[color-mix(in_oklab,var(--app-border)_86%,var(--app-accent)_14%)] bg-(--app-surface) transition-all duration-200 hover:shadow-lg focus-within:shadow-xl shadow-[0_0.25rem_1.25rem_color-mix(in_oklab,black_6%,transparent),0_0_0_0.5px_color-mix(in_oklab,var(--app-border)_82%,transparent)]">
-                              <div className="m-2.5 flex flex-col gap-2">
-                                <div className="relative">
+                            <div className="mt-2 shrink-0 border-t border-[color-mix(in_oklab,var(--app-border)_82%,var(--app-accent)_18%)] bg-[color-mix(in_oklab,var(--app-surface)_98%,white_2%)] px-3.5 pb-3 pt-3">
+                            <div className="mx-1 flex flex-col rounded-[22px] border border-[color-mix(in_oklab,var(--app-border)_84%,var(--app-accent)_16%)] bg-white transition-all duration-200 hover:shadow-md focus-within:shadow-lg focus-within:border-[color-mix(in_oklab,var(--app-accent)_24%,var(--app-border)_76%)] shadow-[0_2px_16px_rgba(0,0,0,0.06),0_0_0_1px_color-mix(in_oklab,var(--app-border)_54%,transparent)]">
+                              <div className="m-3 flex flex-col gap-3">
+                                <div className="relative min-h-[24px]">
                                   <textarea
                                     ref={supportReplyComposerRef}
                                     value={supportReplyDraft}
@@ -3099,63 +3162,69 @@ export default function AdminDashboard() {
                                       }
                                     }}
                                     disabled={isSendingSupportReply}
-                                    placeholder="Repondre dans le chat probleme..."
+                                    placeholder="Répondre au problème… (joignez plusieurs fichiers)"
                                     rows={supportReplyRows}
-                                    className="w-full max-h-24 min-h-0 border-0 bg-transparent text-sm leading-5 resize-none outline-none focus:outline-none focus-visible:outline-none focus:ring-0 focus-visible:ring-0 focus:border-transparent text-(--app-text) placeholder:text-(--app-muted)"
+                                    className="w-full max-h-32 min-h-[24px] border-0 bg-transparent text-[14px] leading-6 resize-none outline-none placeholder:text-[13px] placeholder:text-[color-mix(in_oklab,var(--app-muted)_78%,transparent)] focus:outline-none focus-visible:outline-none focus:ring-0 focus-visible:ring-0 focus:border-transparent text-(--app-text)"
                                   />
                                 </div>
 
-                                {pendingSupportReplyAttachment ? (
-                                  <div className="px-0.5">
-                                    <SupportChatAttachmentCard
-                                      attachment={pendingSupportReplyAttachment}
-                                      onRemove={clearSupportReplyAttachment}
-                                    />
+                                {pendingSupportReplyAttachments.length > 0 ? (
+                                  <div className="max-h-28 overflow-y-auto px-0.5 flex flex-wrap gap-2">
+                                    {pendingSupportReplyAttachments.map((att, idx) => (
+                                      <SupportChatAttachmentCard
+                                        key={idx}
+                                        attachment={att}
+                                        onRemove={() => clearSupportReplyAttachment(idx)}
+                                        compact
+                                      />
+                                    ))}
                                   </div>
                                 ) : null}
 
-                                <div className="relative flex w-full items-center gap-2">
-                                  <div className="relative flex min-w-0 flex-1 items-center gap-1">
+                                <div className="relative flex w-full items-center gap-2.5">
+                                  <div className="relative flex min-w-0 flex-1 items-center gap-2">
                                     <button
                                       type="button"
                                       onClick={() => supportReplyAttachmentInputRef.current?.click()}
                                       disabled={isSendingSupportReply || isUploadingSupportReplyAttachment}
-                                      className="h-7 w-7 rounded-lg flex items-center justify-center transition-colors text-(--app-text) bg-[color-mix(in_oklab,var(--app-surface-2)_64%,var(--app-surface)_36%)] disabled:opacity-60"
-                                      aria-label="Ajouter une piece jointe"
-                                      title="Ajouter une piece jointe"
+                                      className="h-9 w-9 rounded-xl flex items-center justify-center transition-all duration-200 text-(--app-text) bg-[color-mix(in_oklab,var(--app-surface-alt)_78%,white_22%)] border border-[color-mix(in_oklab,var(--app-border)_72%,transparent)] hover:bg-[color-mix(in_oklab,var(--app-surface-alt)_88%,white_12%)] hover:border-[color-mix(in_oklab,var(--app-border)_88%,var(--app-accent)_12%)] active:scale-[0.97] disabled:opacity-50 disabled:cursor-not-allowed"
+                                      aria-label="Ajouter des pièces jointes"
+                                      title="Ajouter des pièces jointes"
                                     >
                                       {isUploadingSupportReplyAttachment ? (
-                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                        <Loader2 className="h-4 w-4 animate-spin" />
                                       ) : (
-                                        <Paperclip className="h-3.5 w-3.5" />
+                                        <Paperclip className="h-4 w-4" />
                                       )}
                                     </button>
+                                    <span className="hidden text-[11px] font-semibold text-(--app-muted) sm:inline">Joindre</span>
                                     <input
                                       ref={supportReplyAttachmentInputRef}
                                       type="file"
                                       accept=".pdf,image/*"
+                                      multiple
                                       className="hidden"
                                       onChange={(event) => void handleSupportReplyAttachmentSelection(event)}
                                       disabled={isSendingSupportReply || isUploadingSupportReplyAttachment}
                                     />
                                   </div>
 
-                                  <div className={`transition-all duration-200 ease-out ${showSupportSendAction ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-1 pointer-events-none'}`}>
+                                  <div className={`transition-all duration-200 ease-out ${showSupportSendAction ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-1 scale-95 pointer-events-none'}`}>
                                     <button
                                       type="button"
                                       onClick={() => void handleSendAdminSupportReply()}
                                       disabled={isSendingSupportReply || isUploadingSupportReplyAttachment || !showSupportSendAction}
-                                      className="h-7 w-7 rounded-lg disabled:opacity-60 flex items-center justify-center bg-(--app-accent) text-(--app-accent-contrast)"
+                                      className="h-9 w-9 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center bg-[linear-gradient(135deg,var(--app-accent),color-mix(in_oklab,var(--app-accent)_84%,black_16%))] text-(--app-accent-contrast) shadow-[0_4px_12px_color-mix(in_oklab,var(--app-accent)_28%,transparent)] hover:shadow-[0_6px_16px_color-mix(in_oklab,var(--app-accent)_32%,transparent)] hover:scale-[1.02] active:scale-95"
                                       aria-label="Envoyer"
                                     >
-                                      <ArrowUp className="h-3.5 w-3.5" />
+                                      {isSendingSupportReply ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4" />}
                                     </button>
                                   </div>
                                 </div>
                               </div>
                             </div>
-                            <p className="mt-1 px-2 text-[10px] text-(--app-muted)">
-                              Ctrl/Cmd + Entree pour envoyer
+                            <p className="mt-2 flex items-center justify-between px-1 text-[11px] leading-none text-(--app-muted)">
+                              <span>Ctrl + Entrée pour envoyer · {pendingSupportReplyAttachments.length > 0 ? `${pendingSupportReplyAttachments.length} fichier(s)` : 'PDF et images'}</span>
                             </p>
                           </div>
                         </div>

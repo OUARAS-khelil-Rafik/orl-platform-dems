@@ -29,7 +29,7 @@ import {
 } from 'lucide-react';
 import Image from 'next/image';
 import { useAuth } from '@/components/providers/auth-provider';
-import { collection, db, deleteDoc, doc, getDocs, query, setDoc, updateDoc, where, uploadCloudinaryAsset } from '@/lib/data/local-data';
+import { collection, db, deleteDoc, doc, getDocs, query, setDoc, updateDoc, where, uploadCloudinaryAsset, deleteCloudinaryAsset } from '@/lib/data/local-data';
 import { IMAGE_FALLBACK_SRC, VIDEO_FALLBACK_SRC, applyImageFallback } from '@/lib/utils/media-fallback';
 import { SupportChatAttachmentCard } from '@/components/features/support/support-chat-attachment';
 import {
@@ -90,6 +90,7 @@ type SupportChat = {
   lastSender?: 'user' | 'bot' | 'admin';
   createdAt?: string;
   updatedAt?: string;
+  isWelcomeChat?: boolean;
 };
 
 type SupportChatMessage = {
@@ -99,7 +100,7 @@ type SupportChatMessage = {
   sender: 'user' | 'bot' | 'admin';
   senderName?: string;
   text: string;
-  attachment?: SupportChatAttachment | null;
+  attachments?: SupportChatAttachment[];
   createdAt?: string;
 };
 
@@ -398,7 +399,7 @@ export default function HomePage() {
     lastDisconnectedAt: null,
   });
   const [chatComposer, setChatComposer] = useState('');
-  const [pendingChatAttachment, setPendingChatAttachment] = useState<SupportChatAttachment | null>(null);
+  const [pendingChatAttachments, setPendingChatAttachments] = useState<SupportChatAttachment[]>([]);
   const [isUploadingChatAttachment, setIsUploadingChatAttachment] = useState(false);
   const [isSendingChatMessage, setIsSendingChatMessage] = useState(false);
   const [isUserAvatarFallback, setIsUserAvatarFallback] = useState(false);
@@ -419,7 +420,7 @@ export default function HomePage() {
     [activeSupportChatId, supportChats],
   );
   const isActiveSupportChatResolved = activeSupportChat?.status === 'resolved';
-  const hasComposerWord = chatComposer.trim().length > 0 || Boolean(pendingChatAttachment);
+  const hasComposerWord = chatComposer.trim().length > 0 || pendingChatAttachments.length > 0;
   const chatComposerRows = chatComposer.includes('\n') ? 2 : 1;
   const showSendComposerAction = hasComposerWord && !isActiveSupportChatResolved;
   const isAdmin = profile?.role === 'admin';
@@ -1341,6 +1342,7 @@ export default function HomePage() {
         lastSender: 'bot',
         createdAt: now,
         updatedAt: now,
+        isWelcomeChat: true,
       });
 
       await setDoc(doc(db, 'supportChatMessages', welcomeMessageId), {
@@ -1363,6 +1365,7 @@ export default function HomePage() {
           lastSender: 'bot',
           createdAt: now,
           updatedAt: now,
+          isWelcomeChat: true,
         },
       ]);
       setActiveSupportChatId(newChatId);
@@ -1387,7 +1390,11 @@ export default function HomePage() {
       try {
         const chatsSnap = await getDocs(query(collection(db, 'supportChats'), where('userId', '==', user.uid)));
         const nextSupportChats = chatsSnap.docs
-          .map((entry) => ({ ...(entry.data() as SupportChat), id: entry.id }))
+          .map((entry) => {
+            const data = entry.data() as SupportChat;
+            const isWelcome = data.isWelcomeChat === true || (data.isWelcomeChat !== false && data.lastSender === 'bot');
+            return { ...data, id: entry.id, isWelcomeChat: isWelcome };
+          })
           .sort((a, b) => {
             const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
             const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
@@ -1395,10 +1402,6 @@ export default function HomePage() {
           });
 
         if (nextSupportChats.length === 0) {
-          const welcomeChatId = await ensureWelcomeSupportChat();
-          if (welcomeChatId) {
-            await loadSupportMessagesByChatId(welcomeChatId);
-          }
           return;
         }
 
@@ -1435,7 +1438,11 @@ export default function HomePage() {
         try {
           const chatsSnap = await getDocs(query(collection(db, 'supportChats'), where('userId', '==', user.uid)));
           const nextChats = chatsSnap.docs
-            .map((entry) => ({ ...(entry.data() as SupportChat), id: entry.id }))
+            .map((entry) => {
+              const data = entry.data() as SupportChat;
+              const isWelcome = data.isWelcomeChat === true || (data.isWelcomeChat !== false && data.lastSender === 'bot');
+              return { ...data, id: entry.id, isWelcomeChat: isWelcome };
+            })
             .sort((a, b) => {
               const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
               const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
@@ -1443,10 +1450,6 @@ export default function HomePage() {
             });
 
           if (nextChats.length === 0) {
-            const welcomeChatId = await ensureWelcomeSupportChat();
-            if (welcomeChatId) {
-              await loadSupportMessagesByChatId(welcomeChatId);
-            }
             return;
           }
 
@@ -1563,12 +1566,12 @@ export default function HomePage() {
     if (sender === 'user') {
       if (hasUserAvatarImage) {
         return (
-          <span className="relative inline-block h-8 w-8 overflow-hidden rounded-full ring-1 ring-slate-300">
+          <span className="relative inline-block h-9 w-9 overflow-hidden rounded-full ring-2 ring-white shadow-sm">
             <Image
               src={String(user?.photoURL || '')}
               alt="Avatar utilisateur"
               fill
-              sizes="32px"
+              sizes="36px"
               unoptimized
               className="object-cover"
               referrerPolicy="no-referrer"
@@ -1579,7 +1582,7 @@ export default function HomePage() {
       }
 
       return (
-        <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white ring-1 ring-slate-300">
+        <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-slate-900 text-[13px] font-bold text-white ring-2 ring-white shadow-sm">
           {userAvatarInitial}
         </span>
       );
@@ -1587,14 +1590,14 @@ export default function HomePage() {
 
     if (sender === 'admin') {
       return (
-        <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-emerald-700 text-xs font-semibold text-white ring-1 ring-emerald-200">
+        <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-emerald-700 text-[13px] font-bold text-white ring-2 ring-white shadow-sm">
           A
         </span>
       );
     }
 
     return (
-      <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-amber-700 text-xs font-semibold text-white ring-1 ring-amber-200">
+      <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-amber-700 text-[13px] font-bold text-white ring-2 ring-white shadow-sm">
         B
       </span>
     );
@@ -1653,9 +1656,9 @@ export default function HomePage() {
         }
 
         nodes.push(
-          <ol key={`ol-${cursor}`} className="list-decimal pl-5 space-y-1">
+          <ol key={`ol-${cursor}`} className="list-decimal pl-5 space-y-1 break-words [overflow-wrap:anywhere] min-w-0">
             {items.map((item, index) => (
-              <li key={`ol-item-${cursor}-${index}`}>{formatInlineMarkdown(item)}</li>
+              <li key={`ol-item-${cursor}-${index}`} className="break-words [overflow-wrap:anywhere] min-w-0">{formatInlineMarkdown(item)}</li>
             ))}
           </ol>,
         );
@@ -1677,9 +1680,9 @@ export default function HomePage() {
         }
 
         nodes.push(
-          <ul key={`ul-${cursor}`} className="list-disc pl-5 space-y-1">
+          <ul key={`ul-${cursor}`} className="list-disc pl-5 space-y-1 break-words [overflow-wrap:anywhere] min-w-0">
             {items.map((item, index) => (
-              <li key={`ul-item-${cursor}-${index}`}>{formatInlineMarkdown(item)}</li>
+              <li key={`ul-item-${cursor}-${index}`} className="break-words [overflow-wrap:anywhere] min-w-0">{formatInlineMarkdown(item)}</li>
             ))}
           </ul>,
         );
@@ -1688,21 +1691,21 @@ export default function HomePage() {
       }
 
       nodes.push(
-        <p key={`p-${cursor}`} className="leading-relaxed">
+        <p key={`p-${cursor}`} className="leading-relaxed break-words whitespace-pre-wrap [overflow-wrap:anywhere] hyphens-auto min-w-0 max-w-full">
           {formatInlineMarkdown(line)}
         </p>,
       );
       cursor += 1;
     }
 
-    return <div className="space-y-1">{nodes}</div>;
+    return <div className="space-y-1 min-w-0 max-w-full overflow-hidden break-words [overflow-wrap:anywhere]">{nodes}</div>;
   };
 
   const createSupportChatFromFirstMessage = async (
     firstMessage: string,
-    attachment?: SupportChatAttachment | null,
+    attachments: SupportChatAttachment[] = [],
   ) => {
-    if (!user) {
+    if (!user || isAdmin) {
       return null;
     }
 
@@ -1717,7 +1720,7 @@ export default function HomePage() {
       ? crypto.randomUUID()
       : `${Date.now()}-${Math.random().toString(16).slice(2)}-b`;
     const introText = supportIntroMessage();
-    const firstMessageSummary = buildSupportChatLastMessage(firstMessage, attachment);
+    const firstMessageSummary = buildSupportChatLastMessage(firstMessage, null, attachments);
 
     await setDoc(doc(db, 'supportChats', newChatId), {
       userId: user.uid,
@@ -1736,7 +1739,7 @@ export default function HomePage() {
       sender: 'user',
       senderName: user.displayName || user.email || 'Utilisateur',
       text: firstMessage,
-      attachment,
+      attachments,
       createdAt: now,
     });
 
@@ -1758,55 +1761,93 @@ export default function HomePage() {
     return newChatId;
   };
 
+  const extractPublicIdFromUrl = (url: string): string | undefined => {
+    try {
+      const match = url.match(/\/upload\/.*?\/([^/.]+)(?:\.[^/.]+)?$/);
+      if (match?.[1]) return match[1];
+      return undefined;
+    } catch {
+      return undefined;
+    }
+  };
+
   const deleteSupportChatById = async (chatId: string) => {
     if (!chatId) {
       return;
     }
 
     const messagesSnap = await getDocs(query(collection(db, 'supportChatMessages'), where('chatId', '==', chatId)));
+    const messages = messagesSnap.docs.map((entry) => ({ ...(entry.data() as SupportChatMessage), id: entry.id }));
+
+    // Collect Cloudinary publicIds from attachments
+    const publicIdsToDelete: Array<{ publicId: string; resourceType: 'image' | 'raw' }> = [];
+    messages.forEach((msg) => {
+      const attachments = msg.attachments || [];
+      attachments.forEach((attachment) => {
+        if (!attachment?.url) return;
+
+        let publicId = attachment.publicId;
+        if (!publicId) {
+          publicId = extractPublicIdFromUrl(attachment.url);
+        }
+        if (publicId) {
+          const resourceType = attachment.kind === 'pdf' ? 'raw' : 'image';
+          publicIdsToDelete.push({ publicId: publicId as string, resourceType });
+        }
+      });
+    });
+
+    // Delete from Firestore
     await Promise.all(messagesSnap.docs.map((entry) => deleteDoc(doc(db, 'supportChatMessages', entry.id))));
     await deleteDoc(doc(db, 'supportChats', chatId));
+
+    // Delete from Cloudinary
+    await Promise.all(
+      publicIdsToDelete.map(({ publicId, resourceType }) => deleteCloudinaryAsset(publicId, resourceType))
+    );
   };
 
   const handleSupportChatAttachmentSelection = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0] || null;
+    const files = Array.from(event.target.files || []);
     event.target.value = '';
 
-    if (!file || isUploadingChatAttachment || isSendingChatMessage || isActiveSupportChatResolved) {
-      return;
-    }
-
-    if (!isSupportChatAttachmentFile(file)) {
-      alert('Seuls les fichiers PDF et les images sont autorises dans le chat support.');
+    if (files.length === 0 || isUploadingChatAttachment || isSendingChatMessage || isActiveSupportChatResolved) {
       return;
     }
 
     try {
       setIsUploadingChatAttachment(true);
-      const attachmentKind = getSupportChatAttachmentKind(file);
-      const attachmentUpload = await uploadCloudinaryAsset(file, {
-        resourceType: attachmentKind === 'pdf' ? 'raw' : 'image',
-        folder: 'orl-platform/support-chat',
-        fileName: file.name,
-        purpose: 'support-chat',
-      });
-      const attachment = buildSupportChatAttachment(file, attachmentUpload.secureUrl);
-
-      if (!attachment) {
-        throw new Error('Impossible de preparer la piece jointe.');
+      for (const file of files) {
+        if (!isSupportChatAttachmentFile(file)) {
+          alert('Seuls les fichiers PDF et les images sont autorises dans le chat support.');
+          continue;
+        }
+        const attachmentKind = getSupportChatAttachmentKind(file);
+        const attachmentUpload = await uploadCloudinaryAsset(file, {
+          resourceType: attachmentKind === 'pdf' ? 'raw' : 'image',
+          folder: 'orl-platform/support-chat',
+          fileName: file.name,
+          purpose: 'support-chat',
+        });
+        const attachment = buildSupportChatAttachment(file, attachmentUpload.secureUrl, attachmentUpload.publicId);
+        if (attachment) {
+          setPendingChatAttachments((prev) => [...prev, attachment]);
+        }
       }
-
-      setPendingChatAttachment(attachment);
     } catch (error) {
-      console.error('Error uploading support chat attachment:', error);
+      console.error('Error uploading support chat attachments:', error);
       alert('Impossible de televerser ce fichier dans le chat.');
     } finally {
       setIsUploadingChatAttachment(false);
     }
   };
 
-  const clearSupportChatAttachment = () => {
-    setPendingChatAttachment(null);
+  const clearSupportChatAttachment = (index?: number) => {
+    if (typeof index === 'number') {
+      setPendingChatAttachments((prev) => prev.filter((_, i) => i !== index));
+    } else {
+      setPendingChatAttachments([]);
+    }
   };
 
   const handleResolveAndDeleteSupportChat = async () => {
@@ -1838,27 +1879,27 @@ export default function HomePage() {
   };
 
   const handleSendChatMessage = async () => {
-    if (!user || isSendingChatMessage || isActiveSupportChatResolved) {
+    if (!user || isAdmin || isSendingChatMessage || isActiveSupportChatResolved) {
       return;
     }
 
     const trimmedMessage = chatComposer.trim();
-    const attachment = pendingChatAttachment;
-    if (!trimmedMessage && !attachment) {
+    const attachments = pendingChatAttachments;
+    if (!trimmedMessage && attachments.length === 0) {
       return;
     }
 
     setIsSendingChatMessage(true);
     try {
       if (!activeSupportChatId) {
-        const createdChatId = await createSupportChatFromFirstMessage(trimmedMessage, attachment);
+        const createdChatId = await createSupportChatFromFirstMessage(trimmedMessage, attachments);
         if (!createdChatId) {
           return;
         }
 
         setActiveSupportChatId(createdChatId);
         setChatComposer('');
-        setPendingChatAttachment(null);
+        setPendingChatAttachments([]);
         setIsChatOpen(true);
 
         const chatsSnap = await getDocs(query(collection(db, 'supportChats'), where('userId', '==', user.uid)));
@@ -1887,7 +1928,7 @@ export default function HomePage() {
           sender: 'user',
           senderName: user.displayName || user.email || 'Utilisateur',
           text: trimmedMessage,
-          attachment,
+          attachments,
           createdAt: now,
         });
 
@@ -1905,10 +1946,16 @@ export default function HomePage() {
           lastSender: 'bot',
           updatedAt: new Date(Date.now() + 250).toISOString(),
           status: activeSupportChat?.status === 'resolved' ? 'open' : activeSupportChat?.status || 'open',
+          isWelcomeChat: false,
         });
 
         setChatComposer('');
-        setPendingChatAttachment(null);
+        setPendingChatAttachments([]);
+        setSupportChats((prev) =>
+          prev.map((chat) =>
+            chat.id === activeSupportChatId ? { ...chat, isWelcomeChat: false } : chat
+          )
+        );
         await loadSupportMessagesByChatId(activeSupportChatId);
       }
     } catch (error) {
@@ -2480,34 +2527,34 @@ export default function HomePage() {
               initial={{ opacity: 0, y: 14, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 10, scale: 0.98 }}
-              transition={{ duration: 0.2 }}
-              className="absolute bottom-16 right-0 flex h-[min(74vh,640px)] w-[min(92vw,390px)] flex-col rounded-3xl border shadow-2xl overflow-hidden border-[color-mix(in_oklab,var(--app-border)_84%,var(--app-accent)_16%)] bg-[color-mix(in_oklab,var(--app-surface)_96%,white_4%)]"
+              transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+              className="absolute bottom-16 right-0 flex h-[min(82vh,680px)] w-[min(96vw,440px)] flex-col rounded-[28px] border shadow-[0_24px_64px_rgba(0,0,0,0.14),0_8px_24px_rgba(0,0,0,0.08)] overflow-hidden border-[color-mix(in_oklab,var(--app-border)_78%,var(--app-accent)_22%)] bg-[color-mix(in_oklab,var(--app-surface)_98%,white_2%)] backdrop-blur-xl"
             >
             <div
-              className="px-4 py-3 border-b border-[color-mix(in_oklab,var(--app-border)_88%,var(--app-accent)_12%)] bg-[color-mix(in_oklab,var(--app-surface)_98%,white_2%)]"
+              className="px-5 py-4 border-b border-[color-mix(in_oklab,var(--app-border)_88%,var(--app-accent)_12%)] bg-[linear-gradient(180deg,color-mix(in_oklab,var(--app-surface)_98%,white_2%)_0%,color-mix(in_oklab,var(--app-surface-alt)_42%,var(--app-surface)_58%)_100%)]"
             >
-              <p className="text-sm font-semibold text-(--app-text)">Support DEMS ENT</p>
-              <p className="text-xs text-(--app-muted)">Chat en direct avec suivi admin.</p>
+              <p className="text-[15px] font-bold leading-none tracking-tight text-(--app-text)">Support DEMS ENT</p>
+              <p className="mt-1 text-[13px] leading-none text-(--app-muted)">Chat en direct avec suivi admin · réponse rapide</p>
               {activeSupportChat ? (
-                <div className="mt-2 flex items-center justify-between gap-2">
+                <div className="mt-3 flex items-center justify-between gap-3">
                   <span
-                    className={`inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-full border ${
+                    className={`inline-flex items-center gap-2 text-[11px] font-semibold px-2.5 py-1.5 rounded-full border leading-none ${
                       adminSupportPresence.isOnline
-                        ? 'border-[color-mix(in_oklab,#6b8e23_44%,var(--app-border)_56%)] bg-[color-mix(in_oklab,#7a8b52_18%,var(--app-surface)_82%)] text-[color-mix(in_oklab,#3f4f24_74%,var(--app-text)_26%)]'
-                        : 'border-[color-mix(in_oklab,#8b6f47_44%,var(--app-border)_56%)] bg-[color-mix(in_oklab,#a27b56_16%,var(--app-surface)_84%)] text-[color-mix(in_oklab,#5f4630_74%,var(--app-text)_26%)]'
+                        ? 'border-[color-mix(in_oklab,#6b8e23_38%,var(--app-border)_62%)] bg-[color-mix(in_oklab,#7a8b52_16%,var(--app-surface)_84%)] text-[color-mix(in_oklab,#3f4f24_72%,var(--app-text)_28%)]'
+                        : 'border-[color-mix(in_oklab,#8b6f47_38%,var(--app-border)_62%)] bg-[color-mix(in_oklab,#a27b56_14%,var(--app-surface)_86%)] text-[color-mix(in_oklab,#5f4630_72%,var(--app-text)_28%)]'
                     }`}
                   >
                     <span
-                      className={`inline-block h-1.5 w-1.5 rounded-full ${adminSupportPresence.isOnline ? 'bg-[#6b8e23]' : 'bg-[#8b6f47]'}`}
+                      className={`inline-block h-2 w-2 rounded-full shadow-[0_0_0_4px_color-mix(in_oklab,currentColor_18%,transparent)] ${adminSupportPresence.isOnline ? 'bg-[#6b8e23]' : 'bg-[#8b6f47]'}`}
                     />
                     Statut : {adminSupportStatusLabel}
                   </span>
                   <button
                     type="button"
                     onClick={() => void handleResolveAndDeleteSupportChat()}
-                    className="text-[11px] px-2 py-1 rounded-md border border-[color-mix(in_oklab,var(--app-danger)_42%,var(--app-border)_58%)] text-(--app-danger)"
+                    className="inline-flex items-center justify-center rounded-full border px-3.5 py-1.5 text-xs font-semibold leading-none transition-colors border-[color-mix(in_oklab,var(--app-danger)_28%,var(--app-border)_72%)] bg-[color-mix(in_oklab,var(--app-danger)_8%,var(--app-surface)_92%)] text-(--app-danger) hover:bg-[color-mix(in_oklab,var(--app-danger)_14%,var(--app-surface)_86%)] hover:border-[color-mix(in_oklab,var(--app-danger)_36%,var(--app-border)_64%)]"
                   >
-                    Resolu & Supprimer
+                    Résolu & Supprimer
                   </button>
                 </div>
               ) : null}
@@ -2532,22 +2579,24 @@ export default function HomePage() {
             ) : (
               <>
                 {supportChats.length > 1 ? (
-                  <div className="px-4 py-2 border-b border-[color-mix(in_oklab,var(--app-border)_88%,var(--app-accent)_12%)]">
-                    <div className="flex gap-2 overflow-x-auto">
-                      {supportChats.map((chat) => (
-                        <button
-                          key={chat.id}
-                          type="button"
-                          onClick={() => setActiveSupportChatId(chat.id)}
-                          className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-semibold text-(--app-text) ${
-                            activeSupportChatId === chat.id
-                              ? 'border-(--app-accent) bg-[color-mix(in_oklab,var(--app-accent)_14%,var(--app-surface)_86%)]'
-                              : 'border-(--app-border) bg-(--app-surface)'
-                          }`}
-                        >
-                          {chat.problemType}
-                        </button>
-                      ))}
+                  <div className="px-4 py-3 border-b border-[color-mix(in_oklab,var(--app-border)_88%,var(--app-accent)_12%)] bg-[color-mix(in_oklab,var(--app-surface)_96%,white_4%)]">
+                    <div className="flex gap-2 overflow-x-auto scrollbar-thin">
+                      {supportChats
+                        .filter((chat) => !chat.isWelcomeChat)
+                        .map((chat) => (
+                          <button
+                            key={chat.id}
+                            type="button"
+                            onClick={() => setActiveSupportChatId(chat.id)}
+                            className={`shrink-0 rounded-full border px-3.5 py-1.5 text-xs font-semibold leading-none transition-all duration-200 text-(--app-text) ${
+                              activeSupportChatId === chat.id
+                                ? 'border-(--app-accent) bg-[color-mix(in_oklab,var(--app-accent)_14%,var(--app-surface)_86%)] shadow-sm'
+                                : 'border-[color-mix(in_oklab,var(--app-border)_88%,var(--app-accent)_12%)] bg-(--app-surface) hover:border-[color-mix(in_oklab,var(--app-accent)_24%,var(--app-border)_76%)] hover:bg-[color-mix(in_oklab,var(--app-surface-alt)_48%,var(--app-surface)_52%)]'
+                            }`}
+                          >
+                            {chat.problemType}
+                          </button>
+                        ))}
                     </div>
                   </div>
                 ) : null}
@@ -2555,12 +2604,17 @@ export default function HomePage() {
                 <div
                   ref={supportMessagesContainerRef}
                   onScroll={handleSupportMessagesScroll}
-                  className="flex-1 overflow-y-auto px-4 py-4 space-y-4 bg-[color-mix(in_oklab,var(--app-surface-alt)_36%,var(--app-surface)_64%)]"
+                  className="flex-1 overflow-y-auto overflow-x-hidden px-5 py-5 space-y-4 bg-[color-mix(in_oklab,var(--app-surface-alt)_32%,var(--app-surface)_68%)] scroll-smooth min-w-0"
+                  style={{ scrollbarWidth: 'thin', overflowWrap: 'anywhere' }}
                 >
                   {supportChatMessages.length === 0 ? (
-                    <p className="text-sm text-(--app-muted)">
-                      Aucun message pour le moment. Demarrez une conversation.
-                    </p>
+                    <div className="flex flex-col items-center justify-center py-10 text-center">
+                      <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-[color-mix(in_oklab,var(--app-accent)_10%,var(--app-surface)_90%)] text-[color-mix(in_oklab,var(--app-accent)_68%,var(--app-muted)_32%)]">
+                        <MessageCircle className="h-6 w-6" />
+                      </div>
+                      <p className="text-[14px] font-semibold text-(--app-text)">Aucun message pour le moment</p>
+                      <p className="mt-1 max-w-[260px] text-[13px] leading-5 text-(--app-muted)">Démarrez une conversation — décrivez votre problème et joignez des captures si besoin.</p>
+                    </div>
                   ) : (
                     supportChatMessages.map((message) => {
                       const isUserMessage = message.sender === 'user';
@@ -2568,24 +2622,28 @@ export default function HomePage() {
                       return (
                         <div
                           key={message.id}
-                          className={`flex ${isUserMessage ? 'justify-end' : 'justify-start'}`}
+                          className={`flex w-full min-w-0 ${isUserMessage ? 'justify-end' : 'justify-start'}`}
                         >
-                          <div className={`flex max-w-[94%] gap-3 ${isUserMessage ? 'flex-row-reverse' : 'flex-row'}`}>
-                            <div className="pt-0.5">{renderSenderAvatar(message.sender)}</div>
+                          <div className={`flex min-w-0 max-w-[84%] gap-2.5 ${isUserMessage ? 'flex-row-reverse' : 'flex-row'}`}>
+                            <div className="shrink-0 pt-1">{renderSenderAvatar(message.sender)}</div>
                             <div
-                              className={`rounded-2xl border px-3 py-2 text-sm text-(--app-text) border-[color-mix(in_oklab,var(--app-border)_88%,var(--app-accent)_12%)] ${
+                              className={`min-w-0 max-w-full overflow-hidden rounded-[18px] border px-4 py-3 text-[14px] leading-[1.55] shadow-[0_1px_8px_rgba(0,0,0,0.04)] text-(--app-text) break-words [overflow-wrap:anywhere] hyphens-auto border-[color-mix(in_oklab,var(--app-border)_84%,var(--app-accent)_16%)] ${
                                 isUserMessage
-                                  ? 'bg-[color-mix(in_oklab,var(--app-surface)_90%,white_10%)]'
+                                  ? 'rounded-br-[6px] bg-[linear-gradient(180deg,color-mix(in_oklab,var(--app-accent)_14%,white_86%)_0%,color-mix(in_oklab,var(--app-accent)_10%,var(--app-surface)_90%)_100%)] text-[color-mix(in_oklab,var(--app-text)_92%,black_8%)]'
                                   : message.sender === 'admin'
-                                    ? 'bg-[color-mix(in_oklab,var(--app-surface-alt)_72%,var(--app-accent)_28%)]'
-                                    : 'bg-(--app-surface)'
+                                    ? 'rounded-bl-[6px] bg-[color-mix(in_oklab,var(--app-surface-alt)_64%,var(--app-accent)_36%)]'
+                                    : 'rounded-bl-[6px] bg-(--app-surface)'
                               }`}
                             >
-                              <p className="text-[10px] uppercase tracking-wide opacity-70 mb-1">{resolveSenderLabel(message)}</p>
-                              {message.text.trim() ? <div>{renderMessageMarkdown(message.text)}</div> : null}
-                              {message.attachment ? (
-                                <div className="mt-2">
-                                  <SupportChatAttachmentCard attachment={message.attachment} />
+                              <p className="text-[11px] font-semibold uppercase tracking-wide opacity-60 mb-1.5 truncate">{resolveSenderLabel(message)}</p>
+                              {message.text.trim() ? <div className="min-w-0 max-w-full overflow-hidden text-[14px] leading-6 break-words whitespace-pre-wrap [overflow-wrap:anywhere]">{renderMessageMarkdown(message.text)}</div> : null}
+                              {message.attachments && message.attachments.length > 0 ? (
+                                <div className="mt-3 flex max-w-full flex-col gap-2 overflow-hidden">
+                                  {message.attachments.map((att, idx) => (
+                                    <div key={idx} className="max-w-full min-w-0 overflow-hidden">
+                                      <SupportChatAttachmentCard attachment={att} />
+                                    </div>
+                                  ))}
                                 </div>
                               ) : null}
                             </div>
@@ -2596,21 +2654,21 @@ export default function HomePage() {
                   )}
 
                   {!isActiveSupportChatResolved && quickReplyOptions.length > 0 ? (
-                    <div className="flex justify-start">
-                      <div className="flex max-w-[94%] gap-3">
-                        <div className="pt-0.5">{renderSenderAvatar('bot')}</div>
+                    <div className="flex w-full min-w-0 justify-start">
+                      <div className="flex min-w-0 max-w-[84%] gap-2.5">
+                        <div className="shrink-0 pt-1">{renderSenderAvatar('bot')}</div>
                         <div
-                          className="rounded-2xl border px-3 py-2 bg-(--app-surface) text-(--app-text) border-[color-mix(in_oklab,var(--app-border)_88%,var(--app-accent)_12%)]"
+                          className="min-w-0 max-w-full overflow-hidden rounded-[18px] rounded-bl-[6px] border px-4 py-3 bg-(--app-surface) text-(--app-text) border-[color-mix(in_oklab,var(--app-border)_84%,var(--app-accent)_16%)] shadow-[0_1px_8px_rgba(0,0,0,0.04)] break-words [overflow-wrap:anywhere]"
                         >
-                          <p className="text-[10px] uppercase tracking-wide opacity-70 mb-1">DEMS-ORL-Bot</p>
-                          <p className="text-xs mb-2 text-(--app-muted)">Suggestions selon votre contexte</p>
-                          <div className="flex flex-wrap gap-2">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide opacity-60 mb-1">DEMS-ORL-Bot</p>
+                          <p className="text-[11px] font-medium mb-2.5 tracking-wide text-(--app-muted)">Suggestions selon votre contexte</p>
+                          <div className="flex flex-wrap gap-2 min-w-0 max-w-full">
                       {quickReplyOptions.map((option) => (
                         <button
                           key={option.label}
                           type="button"
                           onClick={() => applyQuickReply(option.message)}
-                          className="shrink-0 rounded-full border px-3 py-1 text-xs font-semibold border-(--app-border) bg-(--app-surface) text-(--app-text)"
+                          className="shrink-0 rounded-full border px-3.5 py-1.5 text-xs font-semibold leading-none transition-colors border-[color-mix(in_oklab,var(--app-border)_86%,var(--app-accent)_14%)] bg-[color-mix(in_oklab,var(--app-surface-alt)_48%,var(--app-surface)_52%)] text-(--app-text) hover:border-(--app-accent) hover:bg-[color-mix(in_oklab,var(--app-accent)_10%,var(--app-surface)_90%)]"
                         >
                           {option.label}
                         </button>
@@ -2622,12 +2680,12 @@ export default function HomePage() {
                   ) : null}
                 </div>
 
-                <div className="border-t px-2.5 pb-2 pt-1.5 border-[color-mix(in_oklab,var(--app-border)_88%,var(--app-accent)_12%)] bg-[color-mix(in_oklab,var(--app-surface)_98%,white_2%)]">
+                <div className="border-t px-3.5 pb-3 pt-3 border-[color-mix(in_oklab,var(--app-border)_88%,var(--app-accent)_12%)] bg-[linear-gradient(180deg,color-mix(in_oklab,var(--app-surface)_98%,white_2%)_0%,color-mix(in_oklab,var(--app-surface-alt)_36%,var(--app-surface)_64%)_100%)]">
                   <div
-                    className="mx-0.5 flex flex-col rounded-[18px] border transition-all duration-200 hover:shadow-lg focus-within:shadow-xl border-[color-mix(in_oklab,var(--app-border)_86%,var(--app-accent)_14%)] bg-(--app-surface) shadow-[0_0.25rem_1.25rem_color-mix(in_oklab,black_6%,transparent),0_0_0_0.5px_color-mix(in_oklab,var(--app-border)_82%,transparent)]"
+                    className="mx-1 flex flex-col rounded-[22px] border transition-all duration-200 hover:shadow-md focus-within:shadow-lg focus-within:border-[color-mix(in_oklab,var(--app-accent)_24%,var(--app-border)_76%)] border-[color-mix(in_oklab,var(--app-border)_84%,var(--app-accent)_16%)] bg-(--app-surface) shadow-[0_2px_16px_rgba(0,0,0,0.06),0_0_0_1px_color-mix(in_oklab,var(--app-border)_58%,transparent)]"
                   >
-                    <div className="m-2.5 flex flex-col gap-2">
-                      <div className="relative">
+                    <div className="m-3 flex flex-col gap-3">
+                      <div className="relative min-h-[24px]">
                         <textarea
                           ref={chatComposerRef}
                           value={chatComposer}
@@ -2641,61 +2699,67 @@ export default function HomePage() {
                           disabled={isActiveSupportChatResolved}
                           placeholder={
                             isActiveSupportChatResolved
-                              ? 'Conversation resolue'
-                              : 'Ecrivez votre message...'
+                              ? 'Conversation résolue — ouvrez une nouvelle discussion si besoin'
+                              : 'Écrivez votre message… (joignez plusieurs fichiers)'
                           }
                           rows={chatComposerRows}
-                          className="w-full max-h-24 min-h-0 border-0 bg-transparent text-sm leading-5 resize-none outline-none focus:outline-none focus-visible:outline-none focus:ring-0 focus-visible:ring-0 focus:border-transparent text-(--app-text)"
+                          className="w-full max-h-32 min-h-[24px] border-0 bg-transparent text-[14px] leading-6 resize-none outline-none placeholder:text-[13px] placeholder:text-[color-mix(in_oklab,var(--app-muted)_82%,transparent)] focus:outline-none focus-visible:outline-none focus:ring-0 focus-visible:ring-0 focus:border-transparent text-(--app-text)"
                         />
                       </div>
 
-                      {pendingChatAttachment ? (
-                        <div className="px-0.5">
-                          <SupportChatAttachmentCard
-                            attachment={pendingChatAttachment}
-                            onRemove={clearSupportChatAttachment}
-                          />
+                      {pendingChatAttachments.length > 0 ? (
+                        <div className="max-h-28 overflow-y-auto px-0.5 flex flex-wrap gap-2 scrollbar-thin">
+                          {pendingChatAttachments.map((att, idx) => (
+                            <SupportChatAttachmentCard
+                              key={idx}
+                              attachment={att}
+                              onRemove={() => clearSupportChatAttachment(idx)}
+                              compact
+                            />
+                          ))}
                         </div>
                       ) : null}
 
-                      <div className="relative flex w-full items-center gap-2">
-                        <div className="relative flex min-w-0 flex-1 items-center gap-1">
+                      <div className="relative flex w-full items-center gap-2.5">
+                        <div className="relative flex min-w-0 flex-1 items-center gap-2">
                           <button
                             type="button"
                             onClick={() => chatAttachmentInputRef.current?.click()}
                             disabled={isUploadingChatAttachment || isSendingChatMessage || isActiveSupportChatResolved}
-                            className="h-7 w-7 rounded-lg flex items-center justify-center transition-colors text-(--app-text) bg-[color-mix(in_oklab,var(--app-surface-alt)_64%,var(--app-surface)_36%)] disabled:opacity-60"
-                            aria-label="Ajouter une piece jointe"
-                            title="Ajouter une piece jointe"
+                            className="h-9 w-9 rounded-xl flex items-center justify-center transition-all duration-200 text-(--app-text) bg-[color-mix(in_oklab,var(--app-surface-alt)_78%,var(--app-surface)_22%)] border border-[color-mix(in_oklab,var(--app-border)_72%,transparent)] hover:bg-[color-mix(in_oklab,var(--app-surface-alt)_88%,var(--app-surface)_12%)] hover:border-[color-mix(in_oklab,var(--app-border)_92%,var(--app-accent)_8%)] active:scale-[0.97] disabled:opacity-50 disabled:cursor-not-allowed"
+                            aria-label="Ajouter des pièces jointes"
+                            title="Ajouter des pièces jointes (images, PDF)"
                           >
-                            {isUploadingChatAttachment ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Paperclip className="h-3.5 w-3.5" />}
+                            {isUploadingChatAttachment ? <Loader2 className="h-4 w-4 animate-spin" /> : <Paperclip className="h-4 w-4" />}
                           </button>
+                          <span className="hidden text-[11px] font-medium text-(--app-muted) sm:inline">Joindre</span>
                           <input
                             ref={chatAttachmentInputRef}
                             type="file"
                             accept=".pdf,image/*"
+                            multiple
                             className="hidden"
                             onChange={(event) => void handleSupportChatAttachmentSelection(event)}
                             disabled={isUploadingChatAttachment || isSendingChatMessage || isActiveSupportChatResolved}
                           />
                         </div>
 
-                        <div className={`transition-all duration-200 ease-out ${showSendComposerAction ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-1 pointer-events-none'}`}>
+                        <div className={`transition-all duration-200 ease-out ${showSendComposerAction ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-1 scale-95 pointer-events-none'}`}>
                           <button
                             type="button"
                             onClick={() => void handleSendChatMessage()}
                             disabled={isSendingChatMessage || isUploadingChatAttachment || !showSendComposerAction}
-                            className="h-7 w-7 rounded-lg disabled:opacity-60 flex items-center justify-center bg-(--app-accent) text-(--app-accent-contrast)"
+                            className="h-9 w-9 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center bg-[linear-gradient(135deg,color-mix(in_oklab,var(--app-accent)_92%,white_8%),color-mix(in_oklab,var(--app-accent)_84%,black_16%))] text-(--app-accent-contrast) shadow-[0_4px_12px_color-mix(in_oklab,var(--app-accent)_32%,transparent)] transition-all duration-200 hover:shadow-[0_6px_16px_color-mix(in_oklab,var(--app-accent)_36%,transparent)] hover:scale-[1.02] active:scale-[0.96]"
                             aria-label="Envoyer"
                           >
-                            <ArrowUp className="h-3.5 w-3.5" />
+                            {isSendingChatMessage ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4" />}
                           </button>
                         </div>
                       </div>
                     </div>
                   </div>
-                  <p className="mt-1 px-2 text-[10px] text-(--app-muted)">
-                    Ctrl/Cmd + Entree pour envoyer
+                  <p className="mt-2 flex items-center justify-between px-1 text-[11px] leading-none text-(--app-muted)">
+                    <span>Ctrl + Entrée pour envoyer · {pendingChatAttachments.length > 0 ? `${pendingChatAttachments.length} fichier(s) joint(s)` : 'PDF et images autorisés'}</span>
                   </p>
                 </div>
               </>

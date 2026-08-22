@@ -55,6 +55,7 @@ type SupportChat = {
   lastSender?: 'user' | 'bot' | 'admin';
   createdAt?: string;
   updatedAt?: string;
+  isWelcomeChat?: boolean;
 };
 
 type SupportChatMessage = {
@@ -366,7 +367,11 @@ export default function UserDashboard() {
         );
 
         const nextSupportChats = chatsSnap.docs
-          .map((entry) => ({ ...(entry.data() as SupportChat), id: entry.id }))
+          .map((entry) => {
+            const data = entry.data() as SupportChat;
+            const isWelcome = data.isWelcomeChat === true || (data.isWelcomeChat !== false && data.lastSender === 'bot');
+            return { ...data, id: entry.id, isWelcomeChat: isWelcome };
+          })
           .sort((a, b) => {
             const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
             const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
@@ -423,7 +428,11 @@ export default function UserDashboard() {
         try {
           const chatsSnap = await getDocs(query(collection(db, 'supportChats'), where('userId', '==', user.uid)));
           const nextChats = chatsSnap.docs
-            .map((entry) => ({ ...(entry.data() as SupportChat), id: entry.id }))
+            .map((entry) => {
+              const data = entry.data() as SupportChat;
+              const isWelcome = data.isWelcomeChat === true || (data.isWelcomeChat !== false && data.lastSender === 'bot');
+              return { ...data, id: entry.id, isWelcomeChat: isWelcome };
+            })
             .sort((a, b) => {
               const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
               const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
@@ -689,7 +698,7 @@ export default function UserDashboard() {
   };
 
   const handleStartSupportChat = async () => {
-    if (!user || !profile) {
+    if (!user || !profile || profile.role === 'admin') {
       return;
     }
 
@@ -769,7 +778,7 @@ export default function UserDashboard() {
   };
 
   const handleSendChatMessage = async () => {
-    if (!user || !activeSupportChatId) {
+    if (!user || !activeSupportChatId || profile?.role === 'admin') {
       return;
     }
 

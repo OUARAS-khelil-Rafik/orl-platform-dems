@@ -107,6 +107,14 @@ type PreviewSource = {
   duration?: number;
 };
 
+type VideoSearchSelectProps = {
+  videos: VideoModel[];
+  videoId: string;
+  onVideoIdChange: (videoId: string) => void;
+  listId: string;
+  ariaLabel: string;
+};
+
 type VideoUploadPhase = 'idle' | 'uploading' | 'processing' | 'complete' | 'error';
 type SpreadsheetCell = string | number | boolean | null | undefined;
 
@@ -280,6 +288,43 @@ const getErrorMessage = (error: unknown, fallback: string) => {
   }
   return fallback;
 };
+
+function VideoSearchSelect({ videos, videoId, onVideoIdChange, listId, ariaLabel }: VideoSearchSelectProps) {
+  const selectedTitle = videos.find((video) => video.id === videoId)?.title || '';
+  const [query, setQuery] = useState(selectedTitle);
+
+  useEffect(() => {
+    setQuery(selectedTitle);
+  }, [selectedTitle]);
+
+  const handleChange = (value: string) => {
+    setQuery(value);
+    const selectedVideo = videos.find((video) => video.title === value);
+    onVideoIdChange(selectedVideo?.id || '');
+  };
+
+  return (
+    <div className="relative">
+      <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+      <input
+        type="search"
+        list={listId}
+        required
+        value={query}
+        onChange={(event) => handleChange(event.target.value)}
+        placeholder="Rechercher une vidéo..."
+        title={ariaLabel}
+        aria-label={ariaLabel}
+        className="w-full rounded-xl border border-slate-300 bg-white py-2.5 pl-11 pr-4 outline-none transition-all focus:border-transparent focus:ring-2 focus:ring-medical-500"
+      />
+      <datalist id={listId}>
+        {videos.map((video) => (
+          <option key={video.id} value={video.title || 'Vidéo sans titre'} />
+        ))}
+      </datalist>
+    </div>
+  );
+}
 
 const suggestAlternativeFileName = (fileName: string) => {
   const normalized = String(fileName || '').trim();
@@ -709,6 +754,7 @@ export function AdminContentManager() {
   const [diagrams, setDiagrams] = useState<DiagramModel[]>([]);
 
   const [editingVideoId, setEditingVideoId] = useState<string | null>(null);
+  const [videoSelectionQuery, setVideoSelectionQuery] = useState('');
   const [editingQcmId, setEditingQcmId] = useState<string | null>(null);
   const [editingCaseId, setEditingCaseId] = useState<string | null>(null);
   const [editingOpenQuestionId, setEditingOpenQuestionId] = useState<string | null>(null);
@@ -1014,6 +1060,7 @@ export function AdminContentManager() {
 
   const resetVideoFormState = () => {
     setEditingVideoId(null);
+    setVideoSelectionQuery('');
     setVideoData({
       title: '',
       description: '',
@@ -1339,6 +1386,7 @@ export function AdminContentManager() {
   const handleEditVideo = (video: VideoModel) => {
     void discardPendingVideoUploads();
     setEditingVideoId(video.id);
+    setVideoSelectionQuery(video.title || 'Vidéo sans titre');
     setVideoViewMode('editor');
     resetVideoUploadState();
     setVideoData({
@@ -1354,6 +1402,20 @@ export function AdminContentManager() {
       parts: Array.isArray(video.parts) ? video.parts : [],
     });
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleVideoSelection = (value: string) => {
+    setVideoSelectionQuery(value);
+
+    if (!value) {
+      void resetVideoForm();
+      return;
+    }
+
+    const video = videos.find((entry) => (entry.title || 'Vidéo sans titre') === value);
+    if (video) {
+      handleEditVideo(video);
+    }
   };
 
   const openCreationFromVideo = (target: 'qcm' | 'case' | 'openQuestion' | 'diagram', videoId: string) => {
@@ -1865,15 +1927,14 @@ export function AdminContentManager() {
   };
 
   const handleCaseImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const input = e.target;
+    const files = Array.from(input.files || []);
+    if (files.length === 0) return;
 
     const hasCloudinaryConfig = await ensureAdminCloudinaryConfigured();
     if (!hasCloudinaryConfig) {
       setErrorMessage(MISSING_ADMIN_CLOUDINARY_MESSAGE);
-      if (e.target) {
-        e.target.value = '';
-      }
+      input.value = '';
       return;
     }
 
@@ -1882,44 +1943,59 @@ export function AdminContentManager() {
     setErrorMessage('');
 
     try {
-      const response = await uploadCloudinaryAsset(file, {
-        resourceType: 'image',
-        folder: 'orl-platform/case-images',
-      });
+      const uploadedUrls: string[] = [];
+      const uploadedAssets: CloudinaryCleanupAsset[] = [];
+      const failedFiles: string[] = [];
 
-      const uploadedAsset = dedupeCleanupAssets([
-        {
-          publicId: response.publicId,
-          secureUrl: response.secureUrl,
-          resourceType: 'image',
-        },
-      ]);
-      if (uploadedAsset.length > 0) {
-        setPendingCaseUploads((prev) => dedupeCleanupAssets([...prev, ...uploadedAsset]));
+      for (const [index, file] of files.entries()) {
+        try {
+          const response = await uploadCloudinaryAsset(file, {
+            resourceType: 'image',
+            folder: 'orl-platform/case-images',
+            onProgress: (percentage) => {
+              setUploadProgress(Math.round(((index + percentage / 100) / files.length) * 100));
+            },
+          });
+
+          if (!response.secureUrl) {
+            throw new Error('L’URL de la figure est manquante après le téléversement.');
+          }
+
+          uploadedUrls.push(response.secureUrl);
+          uploadedAssets.push({
+            publicId: response.publicId,
+            secureUrl: response.secureUrl,
+            resourceType: 'image',
+          });
+        } catch (error) {
+          failedFiles.push(file.name);
+          console.error('Upload figure error:', error);
+        }
+      }
+
+      if (uploadedAssets.length > 0) {
+        setPendingCaseUploads((prev) => dedupeCleanupAssets([...prev, ...uploadedAssets]));
+      }
+
+      if (uploadedUrls.length > 0) {
+        setCaseData((prev) => ({
+          ...prev,
+          images: [...(prev.images || []), ...uploadedUrls],
+        }));
+        setSuccessMessage(`${uploadedUrls.length} figure${uploadedUrls.length > 1 ? 's ajoutées' : ' ajoutée'} avec succès.`);
+      }
+
+      if (failedFiles.length > 0) {
+        setErrorMessage(`Impossible d’ajouter : ${failedFiles.join(', ')}.`);
       }
 
       setUploadProgress(100);
-      setCaseData((prev) => ({
-        ...prev,
-        images: [...(prev.images || []), response.secureUrl],
-      }));
-      setSuccessMessage('Figure ajoutee avec succes.');
-      setIsUploading(false);
     } catch (error) {
-      const duplicateNameNotice = getCloudinaryDuplicateNameNotification(error, file.name, 'image');
-      if (duplicateNameNotice) {
-        console.warn('Upload case image duplicate filename conflict:', duplicateNameNotice);
-        setErrorMessage(duplicateNameNotice);
-      } else {
-        console.error('Upload figure error:', error);
-        setErrorMessage('Une erreur inattendue est survenue lors du téléchargement de la figure.');
-      }
-      setIsUploading(false);
+      console.error('Upload figure error:', error);
+      setErrorMessage('Une erreur inattendue est survenue lors du téléchargement des figures.');
     } finally {
-      // reset input value so same file can be re-selected if needed
-      if (e.target) {
-        e.target.value = '';
-      }
+      setIsUploading(false);
+      input.value = '';
     }
   };
 
@@ -2887,7 +2963,32 @@ export function AdminContentManager() {
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2 md:col-span-2">
-                    <label className="text-sm font-medium text-slate-700">Titre de la vidéo</label>
+                    <label className="text-sm font-medium text-slate-700">Rechercher une vidéo existante</label>
+                    <div className="relative">
+                      <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                      <input
+                        type="search"
+                        list="existing-video-titles"
+                        value={videoSelectionQuery}
+                        onChange={(e) => handleVideoSelection(e.target.value)}
+                        placeholder="Tapez un nom pour rechercher et modifier une vidéo..."
+                        title="Rechercher une vidéo existante"
+                        aria-label="Rechercher une vidéo existante"
+                        className="w-full py-2.5 pl-11 pr-4 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all bg-white"
+                      />
+                      <datalist id="existing-video-titles">
+                        {videos.map((video) => (
+                          <option key={video.id} value={video.title || 'Vidéo sans titre'} />
+                        ))}
+                      </datalist>
+                    </div>
+                    <p className="text-xs text-slate-500">
+                      Sélectionnez un résultat pour charger la vidéo et la modifier. Laissez ce champ vide pour ajouter une nouvelle vidéo.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2 md:col-span-2">
+                    <label className="text-sm font-medium text-slate-700">{editingVideoId ? 'Modifier le nom' : 'Nouveau nom'}</label>
                     <input
                       type="text"
                       required
@@ -3245,19 +3346,13 @@ export function AdminContentManager() {
                   <div className="space-y-4">
                     <div className="space-y-2">
                       <label className="text-sm font-medium text-slate-700">Vidéo associée</label>
-                      <select
-                        required
-                        value={qcmData.videoId}
-                        onChange={(e) => setQcmData({...qcmData, videoId: e.target.value})}
-                        title="Video associee au QCM"
-                        aria-label="Video associee au QCM"
-                        className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all bg-white"
-                      >
-                        <option value="" disabled>Sélectionner une vidéo...</option>
-                        {videos.map(v => (
-                          <option key={v.id} value={v.id}>{v.title}</option>
-                        ))}
-                      </select>
+                      <VideoSearchSelect
+                        videos={videos}
+                        videoId={qcmData.videoId}
+                        onVideoIdChange={(videoId) => setQcmData({ ...qcmData, videoId })}
+                        listId="qcm-video-list"
+                        ariaLabel="Vidéo associée au QCM"
+                      />
                       {renderSelectedVideoPreview(qcmData.videoId)}
                     </div>
 
@@ -3582,22 +3677,16 @@ export function AdminContentManager() {
                     <h4 className={sectionTitleClass}>Cadrage de la question</h4>
                     <p className={sectionHintClass}>Associez le QROC à la vidéo concernée.</p>
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-700">Vidéo associée</label>
-                    <select
-                      required
-                      value={openQuestionData.videoId}
-                      onChange={(e) => setOpenQuestionData({ ...openQuestionData, videoId: e.target.value })}
-                      title="Video associee au QROC"
-                      aria-label="Video associee au QROC"
-                      className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all bg-white"
-                    >
-                      <option value="" disabled>Sélectionner une vidéo...</option>
-                      {videos.map(v => (
-                        <option key={v.id} value={v.id}>{v.title}</option>
-                      ))}
-                    </select>
-                    {renderSelectedVideoPreview(openQuestionData.videoId)}
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-slate-700">Vidéo associée</label>
+                      <VideoSearchSelect
+                        videos={videos}
+                        videoId={openQuestionData.videoId}
+                        onVideoIdChange={(videoId) => setOpenQuestionData({ ...openQuestionData, videoId })}
+                        listId="qroc-video-list"
+                        ariaLabel="Vidéo associée au QROC"
+                      />
+                      {renderSelectedVideoPreview(openQuestionData.videoId)}
                   </div>
                 </section>
 
@@ -3802,19 +3891,13 @@ export function AdminContentManager() {
                   <div className="space-y-4">
                     <div className="space-y-2">
                   <label className="text-sm font-medium text-slate-700">Vidéo associée</label>
-                  <select
-                    required
-                    value={caseData.videoId}
-                    onChange={(e) => setCaseData({...caseData, videoId: e.target.value})}
-                    title="Video associee au cas clinique"
-                    aria-label="Video associee au cas clinique"
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all bg-white"
-                  >
-                    <option value="" disabled>Sélectionner une vidéo...</option>
-                    {videos.map(v => (
-                      <option key={v.id} value={v.id}>{v.title}</option>
-                    ))}
-                  </select>
+                  <VideoSearchSelect
+                    videos={videos}
+                    videoId={caseData.videoId}
+                    onVideoIdChange={(videoId) => setCaseData({ ...caseData, videoId })}
+                    listId="clinical-case-video-list"
+                    ariaLabel="Vidéo associée au cas clinique"
+                  />
                   {renderSelectedVideoPreview(caseData.videoId)}
                 </div>
 
@@ -3863,6 +3946,7 @@ export function AdminContentManager() {
                         <input
                           type="file"
                           accept="image/*"
+                          multiple
                           className="hidden"
                           onChange={handleCaseImageUpload}
                           disabled={isUploading}
@@ -4438,19 +4522,13 @@ export function AdminContentManager() {
                   <div className="space-y-4">
                     <div className="space-y-2">
                   <label className="text-sm font-medium text-slate-700">Vidéo associée</label>
-                  <select
-                    required
-                    value={diagramData.videoId}
-                    onChange={(e) => setDiagramData({...diagramData, videoId: e.target.value})}
-                    title="Vidéo associée au schéma"
-                    aria-label="Vidéo associée au schéma"
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all bg-white"
-                  >
-                    <option value="" disabled>Sélectionner une vidéo...</option>
-                    {videos.map(v => (
-                      <option key={v.id} value={v.id}>{v.title}</option>
-                    ))}
-                  </select>
+                  <VideoSearchSelect
+                    videos={videos}
+                    videoId={diagramData.videoId}
+                    onVideoIdChange={(videoId) => setDiagramData({ ...diagramData, videoId })}
+                    listId="diagram-video-list"
+                    ariaLabel="Vidéo associée au schéma"
+                  />
                   {renderSelectedVideoPreview(diagramData.videoId)}
                 </div>
 
