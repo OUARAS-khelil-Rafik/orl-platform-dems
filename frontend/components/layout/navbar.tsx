@@ -99,6 +99,7 @@ export function Navbar() {
     { name: 'Rhinologie', href: '/specialties/rhinologie' },
     { name: 'Laryngologie', href: '/specialties/laryngologie' },
     { name: 'Planning', href: '/planning' },
+    { name: 'Planner', href: '/planner' },
     { name: 'Tarifs', href: '/pricing' },
   ];
   const visibleNavLinks = isAdmin ? navLinks.filter((link) => link.name !== 'Tarifs') : navLinks;

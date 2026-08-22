@@ -4698,7 +4698,7 @@ export function AdminContentManager() {
                   <div className="space-y-4">
                     {diagramData.markers.map((marker, index) => (
                       <div key={index} className="flex gap-4 items-start p-4 bg-[var(--app-surface-alt)] border border-[var(--app-border)] rounded-xl">
-                        <div className="flex-1 space-y-4">
+                        <div className="flex-1">
                           <div className="flex gap-4 items-center">
                             <div className="w-24 px-4 py-2.5 rounded-xl bg-[var(--app-surface-2)] border border-[var(--app-border)] text-xs font-semibold text-[var(--app-text)] text-center">
                               N° {index + 1}
@@ -4715,16 +4715,6 @@ export function AdminContentManager() {
                               className="flex-1 px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all"
                             />
                           </div>
-                          <textarea
-                            placeholder="Description détaillée (optionnelle)"
-                            value={marker.description}
-                            onChange={(e) => {
-                              const newMarkers = [...diagramData.markers];
-                              newMarkers[index].description = e.target.value;
-                              setDiagramData({...diagramData, markers: newMarkers});
-                            }}
-                            className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all resize-none overflow-y-auto min-h-[80px]"
-                          />
                         </div>
                         <button
                           type="button"
