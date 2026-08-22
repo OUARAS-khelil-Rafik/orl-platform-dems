@@ -837,8 +837,9 @@ export default function PlanningPage() {
     }
 
     return (
+      <>
       <div
-        className="overflow-x-auto rounded-2xl border"
+        className="planning-desktop-table overflow-x-auto rounded-2xl border"
         style={{
           borderColor: 'var(--app-border)',
           backgroundColor: 'var(--app-surface)',
@@ -1019,6 +1020,59 @@ export default function PlanningPage() {
           </tbody>
         </table>
       </div>
+      {/* Mobile cards fallback */}
+      <div className="planning-mobile-cards space-y-3">
+        {(() => {
+          const itemRows = rows.filter((r): r is { kind: 'item'; value: PlanningItem } => r.kind === 'item');
+          // group by chapter/type for mobile display
+          let currentChapter = '';
+          let currentType = '';
+          return itemRows.map((row) => {
+            const item = row.value;
+            const progress = progressByItem[item.id] || DEFAULT_PROGRESS;
+            // find preceding chapter/type labels for this item in rows sequence
+            const idx = rows.indexOf(row);
+            for (let i = idx - 1; i >= 0; i--) {
+              if (!currentChapter && rows[i].kind === 'chapter') { currentChapter = (rows[i] as any).value; break; }
+            }
+            for (let i = idx - 1; i >= 0; i--) {
+              if (rows[i].kind === 'type') { currentType = (rows[i] as any).value; break; }
+              if (rows[i].kind === 'chapter') break;
+            }
+            return (
+              <div key={`mob-${item.id}`} className="rounded-2xl border p-3 bg-[var(--app-surface)] shadow-sm" style={{ borderColor: 'var(--app-border)' }}>
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {currentChapter ? <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full bg-[var(--app-surface-2)] border border-[var(--app-border)] text-[var(--app-muted)]">{currentChapter}</span> : null}
+                  <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full bg-[color-mix(in_oklab,var(--app-accent)_12%,var(--app-surface)_88%)] border border-[var(--app-border)] text-[var(--app-accent)]">{currentType}</span>
+                </div>
+                <div className="text-sm font-medium mb-3 break-words" style={{ color: 'var(--app-text)' }}>{renderCourseName(item.courseName)}</div>
+                <div className="grid grid-cols-4 gap-2">
+                  {(['round1','round2','round3','qcms'] as ProgressField[]).map((field) => {
+                    const labels: Record<ProgressField,string> = { round1:'T1', round2:'T2', round3:'T3', qcms:'QCM' };
+                    return (
+                      <div key={field} className="flex flex-col items-center gap-1">
+                        <span className="text-[10px] font-semibold" style={{ color: 'var(--app-muted)' }}>{labels[field]}</span>
+                        {canToggleProgress ? (
+                          <button type="button" onClick={() => toggleProgress(item.id, field)} className="w-9 h-9 rounded-xl border flex items-center justify-center text-sm font-bold" style={{ borderColor: 'var(--app-border)', color: 'var(--app-text)', backgroundColor: progress[field] ? 'color-mix(in oklab, var(--app-accent) 20%, var(--app-surface) 80%)' : 'var(--app-surface)' }}>{progress[field] ? 'X' : ''}</button>
+                        ) : (
+                          <span className="w-9 h-9 rounded-xl border flex items-center justify-center text-sm font-bold" style={{ borderColor: 'var(--app-border)', color: 'var(--app-text)', backgroundColor: progress[field] ? 'color-mix(in oklab, var(--app-accent) 16%, var(--app-surface) 84%)' : 'var(--app-surface)' }}>{progress[field] ? 'X' : ''}</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                {isAdmin ? (
+                  <div className="mt-3 flex justify-end gap-2">
+                    <button type="button" onClick={() => onEditItem(item)} className="px-3 py-1.5 rounded-xl border text-xs font-medium" style={{ borderColor: 'var(--app-border)', color: 'var(--app-text)' }}><Pencil className="h-3.5 w-3.5 inline mr-1" />Modifier</button>
+                    <button type="button" onClick={() => onDeleteItem(item.id)} className="px-3 py-1.5 rounded-xl border text-xs font-medium" style={{ borderColor: 'color-mix(in oklab, var(--app-danger) 44%, var(--app-border) 56%)', color: 'var(--app-danger)' }}><Trash2 className="h-3.5 w-3.5 inline mr-1" />Supprimer</button>
+                  </div>
+                ) : null}
+              </div>
+            );
+          });
+        })()}
+      </div>
+      </>
     );
   };
 

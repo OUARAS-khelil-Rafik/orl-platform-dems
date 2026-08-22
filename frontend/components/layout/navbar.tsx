@@ -746,7 +746,7 @@ export function Navbar() {
     <>
 
       <header className="fly-header-shell sticky top-0 z-50 w-full text-(--app-text)">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8 h-24 flex items-center justify-between gap-2 relative">
+        <div className="container mx-auto px-3 sm:px-6 lg:px-8 h-16 sm:h-20 lg:h-24 flex items-center justify-between gap-2 relative">
           {/* Logo à gauche */}
           <div className="flex items-center min-w-30">
             <Link href="/" className="flex items-center gap-2 text-(--app-accent) hover:opacity-85 transition-opacity group">
@@ -801,7 +801,7 @@ export function Navbar() {
                 onClick={() => setIsSearchOpen(true)}
                 onMouseEnter={() => setIsSearchHover(true)}
                 onMouseLeave={() => setIsSearchHover(false)}
-                className="no-fly-style relative inline-flex items-center gap-2 rounded-full bg-white/75 px-3.5 py-2 text-sm text-(--app-muted) hover:text-(--app-text) hover:bg-white transition-colors"
+                className="no-fly-style relative inline-flex items-center gap-2 rounded-full bg-[var(--app-surface)]/85 backdrop-blur px-3.5 py-2 text-sm text-(--app-muted) hover:text-(--app-text) hover:bg-[var(--app-surface-2)] transition-colors border border-[color-mix(in_oklab,var(--app-border)_60%,transparent)]"
                 title="Ouvrir la recherche"
                 aria-label="Ouvrir la recherche"
               >
@@ -818,7 +818,7 @@ export function Navbar() {
               <button
                 type="button"
                 onClick={toggleThemeMode}
-                className="no-fly-style p-2 rounded-full bg-white/75 text-(--app-muted) hover:text-(--app-text) hover:bg-white transition-colors"
+                className="no-fly-style p-2 rounded-full bg-[var(--app-surface)]/85 backdrop-blur text-(--app-muted) hover:text-(--app-text) hover:bg-[var(--app-surface-2)] transition-colors border border-[color-mix(in_oklab,var(--app-border)_60%,transparent)]"
                 title={themeMode === 'dark' ? 'Passer en mode clair' : 'Passer en mode sombre'}
                 aria-label={themeMode === 'dark' ? 'Passer en mode clair' : 'Passer en mode sombre'}
               >
@@ -968,28 +968,28 @@ export function Navbar() {
           </div>
 
           {/* Actions à droite (mobile / tablet) */}
-          <div className="flex lg:hidden items-center gap-1.5">
+          <div className="flex lg:hidden items-center gap-1 sm:gap-1.5">
             <button
               type="button"
               onClick={() => {
                 setIsSearchOpen(true);
                 setIsNotificationsOpen(false);
               }}
-              className="no-fly-style p-2 rounded-full bg-white/75 text-(--app-muted) hover:text-(--app-text) hover:bg-white transition-colors"
+              className="no-fly-style p-2 rounded-full bg-[var(--app-surface)]/85 backdrop-blur text-(--app-muted) hover:text-(--app-text) hover:bg-[var(--app-surface-2)] transition-colors border border-[color-mix(in_oklab,var(--app-border)_60%,transparent)]"
               title="Ouvrir la recherche"
               aria-label="Ouvrir la recherche"
             >
-              <Search className="h-5 w-5" />
+              <Search className="h-4 w-4 sm:h-5 sm:w-5" />
             </button>
 
             <button
               type="button"
               onClick={toggleThemeMode}
-              className="no-fly-style p-2 rounded-full bg-white/75 text-(--app-muted) hover:text-(--app-text) hover:bg-white transition-colors"
+              className="no-fly-style p-2 rounded-full bg-[var(--app-surface)]/85 backdrop-blur text-(--app-muted) hover:text-(--app-text) hover:bg-[var(--app-surface-2)] transition-colors border border-[color-mix(in_oklab,var(--app-border)_60%,transparent)]"
               title={themeMode === 'dark' ? 'Passer en mode clair' : 'Passer en mode sombre'}
               aria-label={themeMode === 'dark' ? 'Passer en mode clair' : 'Passer en mode sombre'}
             >
-              {themeMode === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+              {themeMode === 'dark' ? <Sun className="h-4 w-4 sm:h-5 sm:w-5" /> : <Moon className="h-4 w-4 sm:h-5 sm:w-5" />}
             </button>
 
             {user && (
@@ -1000,7 +1000,7 @@ export function Navbar() {
                   setIsMobileMenuOpen(false);
                   setIsUserMenuOpen(false);
                 }}
-                className="no-fly-style relative p-2 rounded-full bg-white/75 text-(--app-muted) hover:text-(--app-text) hover:bg-white transition-colors"
+                className="no-fly-style relative p-2 rounded-full bg-[var(--app-surface)]/85 backdrop-blur text-(--app-muted) hover:text-(--app-text) hover:bg-[var(--app-surface-2)] transition-colors border border-[color-mix(in_oklab,var(--app-border)_60%,transparent)]"
                 title="Notifications"
                 aria-label="Notifications"
               >
@@ -1016,9 +1016,9 @@ export function Navbar() {
             {user && !isAdmin && (
               <Link
                 href="/checkout"
-                className="relative p-2 no-fly-style rounded-full bg-white/75 text-(--app-muted) hover:text-(--app-text) hover:bg-white transition-colors"
+                className="relative p-2 no-fly-style rounded-full bg-[var(--app-surface)]/85 backdrop-blur text-(--app-muted) hover:text-(--app-text) hover:bg-[var(--app-surface-2)] transition-colors border border-[color-mix(in_oklab,var(--app-border)_60%,transparent)]"
               >
-                <ShoppingCart className="h-5 w-5" />
+                <ShoppingCart className="h-4 w-4 sm:h-5 sm:w-5" />
                 {itemCount > 0 && (
                   <span className="absolute top-0 right-0 w-4 h-4 bg-red-500 text-white text-[10px] font-bold flex items-center justify-center rounded-full">
                     {itemCount}
@@ -1034,7 +1034,7 @@ export function Navbar() {
                 setIsNotificationsOpen(false);
                 setIsUserMenuOpen(false);
               }}
-              className="no-fly-style p-2 rounded-full bg-white/75 text-(--app-muted) hover:text-(--app-text) hover:bg-white transition-colors"
+              className="no-fly-style p-2 rounded-full bg-[var(--app-surface)]/85 backdrop-blur text-(--app-muted) hover:text-(--app-text) hover:bg-[var(--app-surface-2)] transition-colors border border-[color-mix(in_oklab,var(--app-border)_60%,transparent)]"
               title="Ouvrir le menu"
               aria-label="Ouvrir le menu"
             >
@@ -1149,7 +1149,7 @@ export function Navbar() {
                     <Link
                       href="/sign-up"
                       onClick={() => setIsMobileMenuOpen(false)}
-                      className="flex items-center justify-center gap-2 bg-white/80 text-medical-700 border border-medical-200 px-4 py-3 rounded-xl text-base font-medium"
+                      className="flex items-center justify-center gap-2 bg-[var(--app-surface)] text-[var(--app-accent)] border border-[var(--app-border)] px-4 py-3 rounded-xl text-base font-medium hover:bg-[var(--app-surface-2)]"
                     >
                       Inscription
                     </Link>
@@ -1178,7 +1178,7 @@ export function Navbar() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.2, ease: 'easeOut' }}
-              className="lg:hidden absolute top-24 right-4 left-4 z-50"
+              className="lg:hidden absolute top-16 sm:top-20 right-3 left-3 sm:right-4 sm:left-4 z-50 max-h-[min(70vh,520px)] overflow-auto"
             >
               {renderNotificationsPanel('mobile')}
             </motion.div>

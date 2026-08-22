@@ -666,7 +666,7 @@ export default function VideoPage() {
   return (
     <div className="video-experience-shell video-page flex-1 text-[var(--app-text)] flex flex-col select-none">
       {/* Video Player Area */}
-      <div className="video-player-shell w-full relative aspect-video max-h-[70vh] flex justify-center">
+      <div className="video-player-shell w-full relative aspect-video max-h-[56vh] sm:max-h-[60vh] lg:max-h-[70vh] flex justify-center">
         {/* Anti-download overlay */}
         <div className="absolute inset-0 z-10 pointer-events-none" />
 
@@ -691,13 +691,13 @@ export default function VideoPage() {
       </div>
 
       {/* Content Area */}
-      <div className="container mx-auto px-4 py-8 flex-1 flex flex-col">
-        <div className="mb-8">
-          <h1 className="text-3xl md:text-4xl font-bold text-[var(--app-text)] mb-2">{video.title}</h1>
+      <div className="container mx-auto px-3 sm:px-4 py-6 sm:py-8 flex-1 flex flex-col">
+        <div className="mb-6 sm:mb-8">
+          <h1 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold text-[var(--app-text)] mb-2 break-words">{video.title}</h1>
           <div className="video-status-chip inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider mb-3">
             {purchaseStatusLabel}
           </div>
-          <p className="text-[var(--app-muted)] text-lg">{video.description}</p>
+          <p className="text-[var(--app-muted)] text-base sm:text-lg break-words">{video.description}</p>
         </div>
 
         {/* Tabs */}
@@ -728,7 +728,7 @@ export default function VideoPage() {
 
         {/* Tab Content */}
         {activeTab && (
-          <div className="video-tab-panel-header mb-6 rounded-[32px] border border-[var(--app-border)] bg-[var(--app-surface-alt)] p-5 shadow-sm">
+          <div className="video-tab-panel-header mb-6 rounded-2xl sm:rounded-[32px] border border-[var(--app-border)] bg-[var(--app-surface-alt)] p-4 sm:p-5 shadow-sm">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-3">
                 <activeTabMeta.icon className="w-5 h-5 text-[var(--app-accent)]" />

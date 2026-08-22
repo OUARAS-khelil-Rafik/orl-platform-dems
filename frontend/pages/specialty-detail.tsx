@@ -66,7 +66,7 @@ const getSectionBadgeClass = (section: string) => {
     return 'bg-amber-500/90 text-white border-amber-300/80';
   }
 
-  return 'bg-slate-900/75 text-slate-100 border-white/20';
+  return 'bg-black/60 text-white border-white/20 backdrop-blur-sm';
 };
 
 const formatMinutesAsHHMM = (totalMinutes: number) => {
@@ -674,8 +674,8 @@ export default function SpecialtyPage() {
         }}
       >
         <div className="absolute inset-0" style={{ background: 'var(--hero-overlay)' }} />
-        <div className="absolute -top-24 -right-16 w-80 h-80 rounded-full blur-3xl" style={{ background: 'color-mix(in oklab, var(--app-accent) 34%, transparent)' }} />
-        <div className="absolute -bottom-24 left-0 w-72 h-72 rounded-full blur-3xl" style={{ background: 'color-mix(in oklab, var(--app-accent) 22%, transparent)' }} />
+        <div className="absolute -top-24 -right-16 w-60 h-60 sm:w-80 sm:h-80 rounded-full blur-3xl" style={{ background: 'color-mix(in oklab, var(--app-accent) 34%, transparent)' }} />
+        <div className="absolute -bottom-24 left-0 w-60 h-60 sm:w-72 sm:h-72 rounded-full blur-3xl" style={{ background: 'color-mix(in oklab, var(--app-accent) 22%, transparent)' }} />
 
         <div className="container mx-auto px-4 relative z-10">
           <div>
@@ -733,10 +733,10 @@ export default function SpecialtyPage() {
           </div>
         ) : (
           <div className="space-y-16">
-            <div className="premium-panel rounded-3xl p-5 md:p-6 shadow-md">
+            <div className="premium-panel rounded-2xl sm:rounded-3xl p-4 sm:p-5 md:p-6 shadow-md">
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-end">
                 <div className="lg:col-span-8">
-                  <label htmlFor="video-name-filter" className="text-sm font-semibold text-slate-700 mb-2 inline-flex items-center gap-2">
+                  <label htmlFor="video-name-filter" className="text-sm font-semibold text-[var(--app-text)] mb-2 inline-flex items-center gap-2">
                     <Search className="h-4 w-4" />
                     Recherche intelligente
                   </label>
@@ -746,12 +746,12 @@ export default function SpecialtyPage() {
                     value={videoNameFilter}
                     onChange={(e) => setVideoNameFilter(e.target.value)}
                     placeholder="Ex: anatomie de l'oreille moyenne, sinusite, laryngite..."
-                    className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                    className="w-full rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface)] px-4 py-3 text-[var(--app-text)] placeholder:text-[var(--app-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--app-accent)] focus:border-[var(--app-accent)]"
                   />
                 </div>
 
                 <div className="lg:col-span-4">
-                  <label htmlFor="section-filter" className="text-sm font-semibold text-slate-700 mb-2 inline-flex items-center gap-2">
+                  <label htmlFor="section-filter" className="text-sm font-semibold text-[var(--app-text)] mb-2 inline-flex items-center gap-2">
                     <SlidersHorizontal className="h-4 w-4" />
                     Filtre par section
                   </label>
@@ -759,7 +759,7 @@ export default function SpecialtyPage() {
                     id="section-filter"
                     value={sectionFilter}
                     onChange={(e) => setSectionFilter(e.target.value as SectionFilter)}
-                    className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                    className="w-full rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface)] px-4 py-3 text-[var(--app-text)] focus:outline-none focus:ring-2 focus:ring-[var(--app-accent)] focus:border-[var(--app-accent)]"
                   >
                     {SECTION_OPTIONS.map((option) => (
                       <option key={option.value} value={option.value}>
@@ -781,8 +781,8 @@ export default function SpecialtyPage() {
                       onClick={() => setPlaylistFilter(option.value)}
                       className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
                         active
-                          ? 'border-amber-300 bg-amber-100 text-amber-800'
-                          : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                          ? 'border-[var(--app-accent)] bg-[color-mix(in_oklab,var(--app-accent)_16%,var(--app-surface)_84%)] text-[var(--app-accent)]'
+                          : 'border-[var(--app-border)] bg-[var(--app-surface)] text-[var(--app-muted)] hover:border-[var(--app-accent)]/40'
                       }`}
                     >
                       {option.label}
@@ -792,11 +792,11 @@ export default function SpecialtyPage() {
               </div>
 
               {favoriteActionError ? (
-                <p className="mt-3 text-sm font-medium text-rose-700">{favoriteActionError}</p>
+                <p className="mt-3 text-sm font-medium text-[var(--app-danger)]">{favoriteActionError}</p>
               ) : null}
 
               <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold">
-                <span className="inline-flex items-center rounded-full bg-white border border-slate-200 px-3 py-1 text-slate-700">
+                <span className="inline-flex items-center rounded-full bg-[var(--app-surface)] border border-[var(--app-border)] px-3 py-1 text-[var(--app-text)]">
                   {filteredVideos.length} vidéos affichées
                 </span>
                 <span className="inline-flex items-center rounded-full bg-emerald-50 border border-emerald-200 px-3 py-1 text-emerald-700">
@@ -816,11 +816,11 @@ export default function SpecialtyPage() {
 
             <section>
               {filteredVideos.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-500">
+                <div className="rounded-2xl border border-dashed border-[var(--app-border)] bg-[var(--app-surface)] p-6 sm:p-8 text-center text-[var(--app-muted)]">
                   Aucune vidéo disponible pour le moment.
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
                   {filteredVideos.map((video, i) => (
                     (() => {
                       const isInCart = items.some((item) => item.id === video.id);
@@ -958,10 +958,10 @@ function VideoCard({
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.05 }}
-      className="premium-panel rounded-2xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition-all hover:-translate-y-0.5 group flex flex-col interactive-card"
+      className="premium-panel rounded-2xl border border-[var(--app-border)] overflow-hidden shadow-sm hover:shadow-md transition-all hover:-translate-y-0.5 group flex flex-col interactive-card"
     >
       <div
-        className="aspect-video relative bg-slate-900 overflow-hidden"
+        className="aspect-video relative bg-[var(--app-deep-surface)] overflow-hidden"
         onMouseEnter={handlePreviewStart}
         onMouseLeave={handlePreviewStop}
         onFocus={handlePreviewStart}
@@ -1020,19 +1020,19 @@ function VideoCard({
             className={`text-[10px] sm:text-xs font-bold px-2 py-1 rounded-md uppercase tracking-wider backdrop-blur-sm border ${
               isViewed
                 ? 'bg-emerald-500/85 text-white border-emerald-300/70'
-                : 'bg-slate-900/70 text-slate-100 border-white/20'
+                : 'bg-black/60 text-white border-white/20'
             }`}
           >
             {isViewed ? 'Vue' : 'Non vue'}
           </span>
         </div>
         <div className="absolute inset-0 flex items-center justify-center">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             <button
               type="button"
               onClick={onToggleFavorite}
               disabled={arePlaylistActionsDisabled}
-              className={`inline-flex h-11 w-11 items-center justify-center rounded-full border backdrop-blur-sm transition-transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-rose-300 disabled:cursor-not-allowed disabled:opacity-60 ${
+              className={`inline-flex h-10 w-10 sm:h-11 sm:w-11 items-center justify-center rounded-full border backdrop-blur-sm transition-transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-rose-300 disabled:cursor-not-allowed disabled:opacity-60 ${
                 isFavorite
                   ? 'border-rose-200/80 bg-rose-500/80 text-white'
                   : 'border-white/45 bg-black/35 text-white hover:bg-black/50'
@@ -1047,13 +1047,13 @@ function VideoCard({
               <Link
                 href={`/videos/${video.id}`}
                 aria-label={`Ouvrir le contenu de ${video.title}`}
-                className="w-14 h-14 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center group-hover:scale-110 transition-transform focus:outline-none focus:ring-2 focus:ring-white/70"
+                className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-black/35 backdrop-blur-sm border border-white/30 flex items-center justify-center group-hover:scale-110 transition-transform focus:outline-none focus:ring-2 focus:ring-white/70"
               >
-                <PlayCircle className="h-8 w-8 text-white" />
+                <PlayCircle className="h-7 w-7 sm:h-8 sm:w-8 text-white" />
               </Link>
             ) : (
-              <div className="w-14 h-14 rounded-full bg-slate-900/60 backdrop-blur-sm flex items-center justify-center">
-                <Lock className="h-6 w-6 text-slate-300" />
+              <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-black/55 backdrop-blur-sm border border-white/20 flex items-center justify-center">
+                <Lock className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
               </div>
             )}
 
@@ -1061,7 +1061,7 @@ function VideoCard({
               type="button"
               onClick={onToggleImportant}
               disabled={arePlaylistActionsDisabled}
-              className={`inline-flex h-11 w-11 items-center justify-center rounded-full border backdrop-blur-sm transition-transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-amber-300 disabled:cursor-not-allowed disabled:opacity-60 ${
+              className={`inline-flex h-10 w-10 sm:h-11 sm:w-11 items-center justify-center rounded-full border backdrop-blur-sm transition-transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-amber-300 disabled:cursor-not-allowed disabled:opacity-60 ${
                 isImportant
                   ? 'border-amber-200/80 bg-amber-500/80 text-white'
                   : 'border-white/45 bg-black/35 text-white hover:bg-black/50'
@@ -1079,11 +1079,11 @@ function VideoCard({
           {statusLabel}
         </div>
       </div>
-      <div className="p-5 flex-1 flex flex-col">
-        <h3 className="text-lg font-bold text-slate-900 mb-2 line-clamp-2">{video.title}</h3>
-        <p className="text-sm text-slate-500 mb-4 line-clamp-2 flex-1">{video.description}</p>
-        <div className="mb-4 flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-700">
-          <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 border border-slate-200 px-2.5 py-1.5">
+      <div className="p-4 sm:p-5 flex-1 flex flex-col">
+        <h3 className="text-base sm:text-lg font-bold text-[var(--app-text)] mb-2 line-clamp-2 break-words">{video.title}</h3>
+        <p className="text-sm text-[var(--app-muted)] mb-4 line-clamp-2 flex-1 break-words">{video.description}</p>
+        <div className="mb-4 flex flex-wrap items-center gap-2 text-xs font-semibold text-[var(--app-text)]">
+          <span className="inline-flex items-center gap-2 rounded-full bg-[var(--app-surface-2)] border border-[var(--app-border)] px-2.5 py-1.5">
             <Clock3 className="h-3.5 w-3.5" />
             <span>{durationLabel}</span>
           </span>
@@ -1126,8 +1126,8 @@ function VideoCard({
         </div>
         
         {hasAccess ? null : (
-          <div className="flex items-center justify-between">
-            <span className="text-lg font-bold text-slate-900">{video.price} DZD</span>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-lg font-bold text-[var(--app-text)]">{video.price} DZD</span>
             <button
               type="button"
               onClick={onUnlock}

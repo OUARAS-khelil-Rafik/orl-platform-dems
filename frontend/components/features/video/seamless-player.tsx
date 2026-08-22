@@ -511,52 +511,52 @@ export default function SeamlessPlayer({
           className="absolute inset-0 flex items-center justify-center bg-black/20"
           type="button"
         >
-          <div className="w-16 h-16 rounded-full bg-white/90 flex items-center justify-center shadow-lg">
-            <Play className="w-8 h-8 text-black ml-1" />
+          <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-full flex items-center justify-center shadow-lg" style={{ backgroundColor: 'rgba(255,255,255,0.92)' }}>
+            <Play className="w-6 h-6 sm:w-8 sm:h-8 text-black ml-1" />
           </div>
         </button>
       )}
 
       <div
-        className={`absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent px-4 pt-8 pb-3 transition-opacity duration-300 ${
+        className={`absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent px-2 sm:px-4 pt-6 sm:pt-8 pb-2 sm:pb-3 transition-opacity duration-300 ${
           showControls || !playing ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
       >
         <div
           ref={progressRef}
-          className="relative h-1 hover:h-2 transition-all cursor-pointer mb-3 group/bar"
+          className="relative h-1.5 sm:h-1 hover:h-2 transition-all cursor-pointer mb-2 sm:mb-3 group/bar"
           onClick={handleSeek}
         >
-          <div className="h-full w-full absolute inset-0 bg-white/30 rounded-full" />
+          <div className="h-full w-full absolute inset-0 rounded-full" style={{ backgroundColor: 'rgba(255,255,255,0.28)' }} />
           <div
-            className="h-full w-full absolute inset-y-0 left-0 bg-white/50 rounded-full"
-            style={{ width: `${bufferedPct}%` }}
+            className="h-full w-full absolute inset-y-0 left-0 rounded-full"
+            style={{ width: `${bufferedPct}%`, backgroundColor: 'rgba(255,255,255,0.45)' }}
           />
           <div
-            className="h-full w-full absolute inset-y-0 left-0 bg-(--app-accent) opacity-55 rounded-full"
+            className="h-full w-full absolute inset-y-0 left-0 bg-(--app-accent) opacity-70 rounded-full"
             style={{ width: `${progressPct}%` }}
           />
           <div
-            className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3 h-3 bg-(--app-accent) opacity-55 rounded-full opacity-0 group-hover/bar:opacity-100 transition-opacity"
+            className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3 h-3 bg-(--app-accent) rounded-full opacity-0 group-hover/bar:opacity-100 transition-opacity"
             style={{ left: `${progressPct}%` }}
           />
         </div>
 
-        <div className="flex items-center justify-between text-white text-sm">
-          <div className="flex items-center space-x-3">
-            <button onClick={togglePlay} className="hover:scale-110 transition-transform" type="button">
-              {playing ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
+        <div className="flex items-center justify-between text-white text-xs sm:text-sm gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-3 min-w-0">
+            <button onClick={togglePlay} className="hover:scale-110 transition-transform shrink-0" type="button">
+              {playing ? <Pause className="w-4 h-4 sm:w-5 sm:h-5" /> : <Play className="w-4 h-4 sm:w-5 sm:h-5" />}
             </button>
 
-            <button onClick={() => skip(-10)} className="hover:scale-110 transition-transform" type="button">
+            <button onClick={() => skip(-10)} className="hover:scale-110 transition-transform hidden sm:block shrink-0" type="button">
               <SkipBack className="w-4 h-4" />
             </button>
 
-            <button onClick={() => skip(10)} className="hover:scale-110 transition-transform" type="button">
+            <button onClick={() => skip(10)} className="hover:scale-110 transition-transform hidden sm:block shrink-0" type="button">
               <SkipForward className="w-4 h-4" />
             </button>
 
-            <div className="flex items-center space-x-1">
+            <div className="hidden sm:flex items-center gap-1 shrink-0">
               <button onClick={toggleMute} className="hover:scale-110 transition-transform" type="button">
                 {muted || volume === 0 ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
               </button>
@@ -567,17 +567,17 @@ export default function SeamlessPlayer({
                 step="0.05"
                 value={muted ? 0 : volume}
                 onChange={handleVolumeChange}
-                className="w-16 h-1 accent-blue-500 cursor-pointer"
+                className="w-12 sm:w-16 h-1 accent-[var(--app-accent)] cursor-pointer"
               />
             </div>
 
-            <span className="tabular-nums">
+            <span className="tabular-nums text-[11px] sm:text-sm truncate">
               {formatTime(currentTime)} / {formatTime(computedTotalDuration)}
             </span>
           </div>
 
-          <button onClick={toggleFullscreen} className="hover:scale-110 transition-transform" type="button">
-            {isFullscreen ? <Minimize className="w-5 h-5" /> : <Maximize className="w-5 h-5" />}
+          <button onClick={toggleFullscreen} className="hover:scale-110 transition-transform shrink-0" type="button">
+            {isFullscreen ? <Minimize className="w-4 h-4 sm:w-5 sm:h-5" /> : <Maximize className="w-4 h-4 sm:w-5 sm:h-5" />}
           </button>
         </div>
       </div>

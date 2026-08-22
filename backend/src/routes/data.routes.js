@@ -1579,6 +1579,115 @@ const createNewContentNotifications = async ({ db, collection, payload, inserted
   await db.collection('notifications').insertMany(docs, { ordered: false });
 };
 
+const createVideoBlockNotifications = async ({ db, targetUserId, beforeIds, afterIds, actor }) => {
+  try {
+    if (!actor || actor.role !== 'admin') {
+      return;
+    }
+
+    const targetUser = await User.findOne({ uid: targetUserId }, { role: 1, uid: 1 }).lean();
+    if (!targetUser || targetUser.role === 'admin') {
+      return;
+    }
+
+    // Notifier seulement les utilisateurs non-admin (incluant VIP, VIP_PLUS)
+    // Si besoin de restreindre aux VIP uniquement, decommentez la ligne suivante :
+    // if (!['vip', 'vip_plus'].includes(targetUser.role)) return;
+
+    const normalizeIds = (ids) =>
+      Array.isArray(ids)
+        ? ids.map((value) => String(value || '').trim()).filter(Boolean)
+        : [];
+
+    const beforeSet = new Set(normalizeIds(beforeIds));
+    const afterSet = new Set(normalizeIds(afterIds));
+
+    const added = [...afterSet].filter((id) => !beforeSet.has(id));
+    const removed = [...beforeSet].filter((id) => !afterSet.has(id));
+
+    if (added.length === 0 && removed.length === 0) {
+      return;
+    }
+
+    const now = new Date();
+    const nowIso = now.toISOString();
+    const recentThreshold = new Date(now.getTime() - 10000).toISOString();
+
+    const allIds = [...new Set([...added, ...removed])];
+    const titleById = new Map();
+
+    for (const videoId of allIds) {
+      const videoDoc = await findDocByCollectionId({ db, collection: 'videos', id: videoId });
+      const title = String(videoDoc?.title || '').trim() || `Video ${videoId}`;
+      titleById.set(videoId, title);
+    }
+
+    const docsToInsert = [];
+
+    for (const videoId of added) {
+      const title = titleById.get(videoId) || `Video ${videoId}`;
+      const targetHref = `/videos/${videoId}`;
+
+      const recent = await db.collection('notifications').findOne({
+        userId: targetUserId,
+        targetHref,
+        title: 'Video bloquee',
+        createdAt: { $gte: recentThreshold },
+      });
+
+      if (recent) {
+        continue;
+      }
+
+      docsToInsert.push({
+        userId: targetUserId,
+        type: 'video',
+        category: 'video-block',
+        title: 'Video bloquee',
+        description: `L'admin a bloque votre acces a "${title}".`,
+        targetHref,
+        isRead: false,
+        createdAt: nowIso,
+        updatedAt: nowIso,
+      });
+    }
+
+    for (const videoId of removed) {
+      const title = titleById.get(videoId) || `Video ${videoId}`;
+      const targetHref = `/videos/${videoId}`;
+
+      const recent = await db.collection('notifications').findOne({
+        userId: targetUserId,
+        targetHref,
+        title: 'Video debloquee',
+        createdAt: { $gte: recentThreshold },
+      });
+
+      if (recent) {
+        continue;
+      }
+
+      docsToInsert.push({
+        userId: targetUserId,
+        type: 'video',
+        category: 'video-block',
+        title: 'Video debloquee',
+        description: `L'admin a debloque votre acces a "${title}".`,
+        targetHref,
+        isRead: false,
+        createdAt: nowIso,
+        updatedAt: nowIso,
+      });
+    }
+
+    if (docsToInsert.length > 0) {
+      await db.collection('notifications').insertMany(docsToInsert, { ordered: false });
+    }
+  } catch (error) {
+    console.error('[video-block-notification]', error);
+  }
+};
+
 router.get('/:collection', async (req, res) => {
   try {
     const collection = normalizeCollectionName(req.params.collection);
@@ -2183,6 +2292,29 @@ router.post('/:collection', authOptional, async (req, res) => {
       excludeId: null,
     });
 
+    // Deduplication pour notifications de blocage video (frontend + backend peuvent creer en meme temps)
+    if (collection === 'notifications') {
+      const payloadType = String(payload.type || '').toLowerCase();
+      const payloadTitle = String(payload.title || '').trim();
+      const isVideoBlockNotif =
+        payloadType === 'video' &&
+        (payloadTitle === 'Video bloquee' || payloadTitle === 'Video debloquee');
+
+      if (isVideoBlockNotif) {
+        const recentThreshold = new Date(Date.now() - 10000).toISOString();
+        const existing = await mongoose.connection.db.collection('notifications').findOne({
+          userId: String(payload.userId || '').trim(),
+          targetHref: String(payload.targetHref || '').trim(),
+          title: payloadTitle,
+          createdAt: { $gte: recentThreshold },
+        });
+
+        if (existing) {
+          return res.status(201).json({ id: String(existing._id) });
+        }
+      }
+    }
+
     const now = new Date().toISOString();
     const enriched = {
       ...payload,
@@ -2228,6 +2360,9 @@ router.put('/:collection/:id', authOptional, async (req, res) => {
     }
 
     if (isUsersCollection(collection)) {
+      const beforeUser = await User.findOne({ uid: id }, { blockedVideoIds: 1, uid: 1, role: 1 }).lean();
+      const beforeBlockedIds = beforeUser?.blockedVideoIds || [];
+
       const payload = {
         ...(req.body || {}),
         uid: id,
@@ -2238,6 +2373,24 @@ router.put('/:collection/:id', authOptional, async (req, res) => {
       delete payload._id;
 
       await User.updateOne({ uid: id }, { $set: payload }, { upsert: true });
+
+      if (beforeUser) {
+        const hasBlockedIdsInPayload = Object.prototype.hasOwnProperty.call(req.body || {}, 'blockedVideoIds');
+        const hasPurchasedVideosInPayload = Object.prototype.hasOwnProperty.call(req.body || {}, 'purchasedVideos');
+        // Eviter double notif lors de l'ajout de video (handleAddVideoToUser) qui gere deja sa propre notif "Acces video ajoute"
+        if (hasBlockedIdsInPayload && !hasPurchasedVideosInPayload) {
+          const afterUser = await User.findOne({ uid: id }, { blockedVideoIds: 1 }).lean();
+          const afterBlockedIds = afterUser?.blockedVideoIds || [];
+          await createVideoBlockNotifications({
+            db: mongoose.connection.db,
+            targetUserId: id,
+            beforeIds: beforeBlockedIds,
+            afterIds: afterBlockedIds,
+            actor: req.authUser,
+          });
+        }
+      }
+
       return res.json({ ok: true });
     }
 
@@ -2292,6 +2445,13 @@ router.patch('/:collection/:id', authOptional, async (req, res) => {
     }
 
     if (isUsersCollection(collection)) {
+      const beforeUser = await User.findOne({ uid: id }, { blockedVideoIds: 1, uid: 1, role: 1 }).lean();
+      if (!beforeUser) {
+        return res.status(404).json({ message: `Document ${collection}/${id} does not exist.` });
+      }
+
+      const beforeBlockedIds = beforeUser.blockedVideoIds || [];
+
       const operations = applyUpdateOperators({
         ...(req.body || {}),
         updatedAt: new Date().toISOString(),
@@ -2306,6 +2466,22 @@ router.patch('/:collection/:id', authOptional, async (req, res) => {
       const result = await User.updateOne({ uid: id }, operations);
       if (result.matchedCount === 0) {
         return res.status(404).json({ message: `Document ${collection}/${id} does not exist.` });
+      }
+
+      const hasBlockedIdsInRawBody = Object.prototype.hasOwnProperty.call(req.body || {}, 'blockedVideoIds');
+      const hasPurchasedVideosInRawBody = Object.prototype.hasOwnProperty.call(req.body || {}, 'purchasedVideos');
+
+      if (hasBlockedIdsInRawBody && !hasPurchasedVideosInRawBody) {
+        const afterUser = await User.findOne({ uid: id }, { blockedVideoIds: 1 }).lean();
+        const afterBlockedIds = afterUser?.blockedVideoIds || [];
+
+        await createVideoBlockNotifications({
+          db: mongoose.connection.db,
+          targetUserId: id,
+          beforeIds: beforeBlockedIds,
+          afterIds: afterBlockedIds,
+          actor: req.authUser,
+        });
       }
 
       return res.json({ ok: true });

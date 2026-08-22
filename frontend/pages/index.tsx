@@ -2061,7 +2061,7 @@ export default function HomePage() {
     <div className="flex flex-col w-full bg-[linear-gradient(180deg,color-mix(in_oklab,var(--app-surface)_95%,white_5%)_0%,color-mix(in_oklab,var(--app-surface-alt)_78%,var(--app-accent)_22%)_100%)]">
       <div className="fixed top-0 left-0 right-0 h-1 z-60 origin-left bg-[linear-gradient(90deg,color-mix(in_oklab,var(--app-accent)_82%,#f8ecdd_18%),color-mix(in_oklab,var(--app-accent)_60%,#2f2118_40%))]" />
 
-      <div className="relative overflow-hidden pt-24 pb-28 text-(--hero-title)">
+      <div className="relative overflow-hidden pt-12 sm:pt-16 lg:pt-24 pb-16 sm:pb-20 lg:pb-28 text-(--hero-title)">
         <div className="absolute inset-0 bg-[linear-gradient(140deg,var(--hero-bg-start)_0%,color-mix(in_oklab,var(--hero-bg-end)_78%,var(--app-accent)_22%)_56%,color-mix(in_oklab,var(--hero-bg-end)_86%,transparent_14%)_100%)]" />
         <div className="absolute inset-0 z-0">
           <Image
@@ -2075,19 +2075,19 @@ export default function HomePage() {
             onError={(event) => applyImageFallback(event, IMAGE_FALLBACK_SRC)}
           />
           <div className="absolute inset-0 bg-(--hero-overlay)" />
-          <div className="absolute -top-24 -right-20 w-96 h-96 rounded-full blur-3xl bg-[color-mix(in_srgb,var(--app-accent)_32%,transparent)]" />
-          <div className="absolute -bottom-32 -left-16 w-md h-112 rounded-full blur-3xl bg-[color-mix(in_srgb,var(--app-accent)_22%,transparent)]" />
+          <div className="absolute -top-24 -right-20 w-64 h-64 sm:w-96 sm:h-96 rounded-full blur-3xl bg-[color-mix(in_srgb,var(--app-accent)_32%,transparent)]" />
+          <div className="absolute -bottom-32 -left-16 w-64 h-64 sm:w-md sm:h-112 rounded-full blur-3xl bg-[color-mix(in_srgb,var(--app-accent)_22%,transparent)]" />
           <div className="absolute inset-0 opacity-35 bg-[radial-gradient(circle_at_24%_18%,color-mix(in_srgb,var(--app-accent)_34%,transparent)_0%,transparent_38%),radial-gradient(circle_at_80%_70%,color-mix(in_srgb,var(--app-accent)_18%,transparent)_0%,transparent_36%)]" />
         </div>
 
-        <div className="container mx-auto px-4 relative z-10">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-stretch">
+        <div className="container mx-auto px-4 sm:px-6 relative z-10">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-10 items-stretch">
             <div className="lg:col-span-12">
               <motion.h1
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.5, delay: 0.1 }}
-                className="text-5xl md:text-7xl font-bold tracking-tight mb-6 leading-[1.05] text-(--hero-title)"
+                className="text-3xl sm:text-4xl md:text-5xl lg:text-7xl font-bold tracking-tight mb-4 sm:mb-6 leading-[1.05] text-(--hero-title) break-words"
               >
                 Refondez vos révisions en <span className="text-transparent bg-clip-text bg-[linear-gradient(90deg,color-mix(in_srgb,var(--app-accent)_65%,#f5e0cc_35%),color-mix(in_srgb,var(--app-accent)_84%,#fff_16%))]">performance clinique</span>
               </motion.h1>
@@ -2096,7 +2096,7 @@ export default function HomePage() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.5, delay: 0.2 }}
-                className="text-lg md:text-xl mb-10 max-w-2xl leading-relaxed text-(--hero-body)"
+                className="text-base sm:text-lg md:text-xl mb-8 sm:mb-10 max-w-2xl leading-relaxed text-(--hero-body)"
               >
                 DEMS ENT combine vidéos expertes, cas cliniques, évaluations actives et supports visuels pour accélérer votre maîtrise ORL sans dispersion.
               </motion.p>
@@ -2105,20 +2105,20 @@ export default function HomePage() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.5, delay: 0.3 }}
-                className="flex flex-col sm:flex-row gap-4"
+                className="flex flex-col sm:flex-row gap-3 sm:gap-4"
               >
                 <Link
                   href="/specialties"
-                  className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-full text-lg font-semibold transition-all bg-(--app-accent) text-(--app-accent-contrast) shadow-[0_12px_28px_color-mix(in_srgb,var(--app-accent)_36%,transparent)]"
+                  className="inline-flex items-center justify-center gap-2 px-6 sm:px-8 py-3 sm:py-4 rounded-full text-base sm:text-lg font-semibold transition-all bg-(--app-accent) text-(--app-accent-contrast) shadow-[0_12px_28px_color-mix(in_srgb,var(--app-accent)_36%,transparent)]"
                 >
                   Explorer toutes les spécialités
-                  <ArrowRight className="h-5 w-5" />
+                  <ArrowRight className="h-5 w-5 shrink-0" />
                 </Link>
                 <Link
                   href="#demo-section"
-                  className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-full text-lg font-semibold transition-all backdrop-blur-sm bg-(--hero-ghost-bg) text-(--hero-title) border border-(--hero-ghost-border)"
+                  className="inline-flex items-center justify-center gap-2 px-6 sm:px-8 py-3 sm:py-4 rounded-full text-base sm:text-lg font-semibold transition-all backdrop-blur-sm bg-(--hero-ghost-bg) text-(--hero-title) border border-(--hero-ghost-border)"
                 >
-                  <PlayCircle className="h-5 w-5" />
+                  <PlayCircle className="h-5 w-5 shrink-0" />
                   Découvrir une démo
                 </Link>
               </motion.div>
@@ -2153,15 +2153,15 @@ export default function HomePage() {
       </div>
 
       {isAuthReady && user && unfinishedVideos.length > 0 && (
-        <div className="relative py-10">
-          <div className="container mx-auto px-4">
+        <div className="relative py-6 sm:py-10">
+          <div className="container mx-auto px-4 sm:px-6">
             <div
-              className="rounded-3xl border p-6 md:p-8 border-[color-mix(in_oklab,var(--app-accent)_22%,var(--app-border)_78%)] bg-[linear-gradient(180deg,color-mix(in_oklab,var(--app-surface)_96%,white_4%)_0%,color-mix(in_oklab,var(--app-surface-alt)_84%,var(--app-accent)_16%)_100%)]"
+              className="rounded-2xl sm:rounded-3xl border p-4 sm:p-6 md:p-8 border-[color-mix(in_oklab,var(--app-accent)_22%,var(--app-border)_78%)] bg-[linear-gradient(180deg,color-mix(in_oklab,var(--app-surface)_96%,white_4%)_0%,color-mix(in_oklab,var(--app-surface-alt)_84%,var(--app-accent)_16%)_100%)]"
             >
               <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3 mb-5">
                 <div>
                   <p className="text-xs uppercase tracking-[0.14em] text-(--app-muted)">Continuer vos vidéos</p>
-                  <h2 className="text-2xl md:text-3xl font-bold text-(--app-text)">
+                  <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-(--app-text) break-words">
                     Reprenez la lecture de vos contenus en cours
                   </h2>
                 </div>
@@ -2180,7 +2180,7 @@ export default function HomePage() {
                       href={`/videos/${item.id}`}
                       className={`group overflow-hidden rounded-2xl border transition-all hover:-translate-y-0.5 hover:shadow-lg ${theme.cardClass}`}
                     >
-                      <div className="relative aspect-video overflow-hidden bg-slate-900">
+                      <div className="relative aspect-video overflow-hidden bg-[var(--app-deep-surface)]">
                         <Image
                           src={item.thumbnailUrl || VIDEO_CARD_PLACEHOLDER}
                           alt={item.title}
@@ -2197,7 +2197,7 @@ export default function HomePage() {
                           {item.subspecialtyLabel}
                         </div>
                         <div className="absolute inset-0 flex items-center justify-center">
-                          <span className="inline-flex h-12 w-12 items-center justify-center rounded-full border border-white/50 bg-white/20 text-white">
+                          <span className="inline-flex h-12 w-12 items-center justify-center rounded-full border border-white/40 bg-black/35 backdrop-blur text-white">
                             <PlayCircle className="h-7 w-7" />
                           </span>
                         </div>
@@ -2231,14 +2231,14 @@ export default function HomePage() {
         </div>
       )}
 
-      <div className="relative py-20">
-        <div className="container mx-auto px-4">
+      <div className="relative py-12 sm:py-16 lg:py-20">
+        <div className="container mx-auto px-4 sm:px-6">
           <motion.div
             variants={containerStagger}
             initial="hidden"
             whileInView="show"
             viewport={{ once: true }}
-            className="grid grid-cols-1 md:grid-cols-3 gap-4"
+            className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4"
           >
             {outcomes.map((item) => (
               <motion.div
@@ -2248,22 +2248,22 @@ export default function HomePage() {
                 className="rounded-2xl border p-5 shadow-sm border-[color-mix(in_oklab,var(--app-accent)_22%,var(--app-border)_78%)] bg-[linear-gradient(180deg,color-mix(in_oklab,var(--app-surface)_96%,white_4%)_0%,color-mix(in_oklab,var(--app-surface-alt)_84%,var(--app-accent)_16%)_100%)]"
               >
                 <item.icon className="h-5 w-5 mb-3 text-[color-mix(in_oklab,var(--app-accent)_76%,var(--app-text)_24%)]" />
-                <h3 className="text-lg font-bold mb-1 text-(--app-text)">{item.title}</h3>
-                <p className="text-(--app-muted)">{item.text}</p>
+                <h3 className="text-base sm:text-lg font-bold mb-1 text-(--app-text) break-words">{item.title}</h3>
+                <p className="text-sm text-(--app-muted) break-words">{item.text}</p>
               </motion.div>
             ))}
           </motion.div>
         </div>
       </div>
 
-      <div className="relative py-24">
-        <div className="container mx-auto px-4">
-          <div className="text-center max-w-3xl mx-auto mb-16">
-            <h2 className="text-3xl md:text-4xl font-bold text-slate-900 mb-4">Trois spécialités, un même niveau d&apos;exigence</h2>
-            <p className="text-lg text-slate-600">Chaque module combine fondements anatomiques, raisonnement clinique et entraînement évaluatif.</p>
+      <div className="relative py-12 sm:py-16 lg:py-24">
+        <div className="container mx-auto px-4 sm:px-6">
+          <div className="text-center max-w-3xl mx-auto mb-10 sm:mb-16">
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-[var(--app-text)] mb-3 sm:mb-4 break-words">Trois spécialités, un même niveau d&apos;exigence</h2>
+            <p className="text-base sm:text-lg text-[var(--app-muted)]">Chaque module combine fondements anatomiques, raisonnement clinique et entraînement évaluatif.</p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8">
             {specialties.map((spec, i) => (
               <motion.div
                 key={spec.title}
@@ -2272,7 +2272,7 @@ export default function HomePage() {
                 viewport={{ once: true }}
                 transition={{ duration: 0.5, delay: i * 0.1 }}
                 whileHover={{ y: -7 }}
-                className="group relative rounded-3xl p-8 border shadow-sm hover:shadow-xl transition-all overflow-hidden border-[color-mix(in_oklab,var(--app-accent)_22%,var(--app-border)_78%)] bg-[linear-gradient(180deg,color-mix(in_oklab,var(--app-surface)_96%,white_4%)_0%,color-mix(in_oklab,var(--app-surface-alt)_82%,var(--app-accent)_18%)_100%)]"
+                className="group relative rounded-2xl sm:rounded-3xl p-6 sm:p-8 border shadow-sm hover:shadow-xl transition-all overflow-hidden border-[color-mix(in_oklab,var(--app-accent)_22%,var(--app-border)_78%)] bg-[linear-gradient(180deg,color-mix(in_oklab,var(--app-surface)_96%,white_4%)_0%,color-mix(in_oklab,var(--app-surface-alt)_82%,var(--app-accent)_18%)_100%)]"
               >
                 <div className={`absolute top-0 left-0 w-full h-1 bg-linear-to-r ${spec.gradient}`} />
                 <span className="inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold mb-4 border-[color-mix(in_oklab,var(--app-accent)_24%,var(--app-border)_76%)] bg-[color-mix(in_oklab,var(--app-accent)_10%,var(--app-surface)_90%)] text-[color-mix(in_oklab,var(--app-accent)_78%,var(--app-text)_22%)]">
@@ -2281,13 +2281,13 @@ export default function HomePage() {
                 <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform bg-[color-mix(in_oklab,var(--app-accent)_14%,var(--app-surface)_86%)]">
                   <spec.icon className="h-7 w-7 text-[color-mix(in_oklab,var(--app-accent)_80%,var(--app-text)_20%)]" />
                 </div>
-                <h3 className="text-2xl font-bold text-slate-900 mb-3">{spec.title}</h3>
-                <p className="text-slate-600 mb-8 leading-relaxed">{spec.desc}</p>
+                <h3 className="text-xl sm:text-2xl font-bold text-[var(--app-text)] mb-3 break-words">{spec.title}</h3>
+                <p className="text-[var(--app-muted)] mb-8 leading-relaxed text-sm sm:text-base break-words">{spec.desc}</p>
                 <Link 
                   href={spec.href}
                   className="inline-flex items-center gap-2 font-semibold transition-colors text-[color-mix(in_oklab,var(--app-accent)_78%,var(--app-text)_22%)]"
                 >
-                  Explorer le module <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
+                  Explorer le module <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform shrink-0" />
                 </Link>
               </motion.div>
             ))}
@@ -2295,15 +2295,15 @@ export default function HomePage() {
         </div>
       </div>
 
-      <div id="demo-section" className="relative py-24 overflow-hidden bg-[linear-gradient(180deg,color-mix(in_oklab,var(--app-surface)_92%,var(--app-bg)_8%)_0%,color-mix(in_oklab,var(--app-surface-alt)_76%,var(--app-accent)_24%)_100%)]">
+      <div id="demo-section" className="relative py-12 sm:py-16 lg:py-24 overflow-hidden bg-[linear-gradient(180deg,color-mix(in_oklab,var(--app-surface)_92%,var(--app-bg)_8%)_0%,color-mix(in_oklab,var(--app-surface-alt)_76%,var(--app-accent)_24%)_100%)]">
         <div className="absolute inset-0 opacity-35 bg-[radial-gradient(circle_at_20%_20%,color-mix(in_oklab,var(--app-accent)_22%,transparent)_0%,transparent_45%),radial-gradient(circle_at_80%_60%,color-mix(in_oklab,var(--app-accent)_16%,transparent)_0%,transparent_45%)]" />
-        <div className="container mx-auto px-4">
-          <div className="grid grid-cols-1 lg:grid-cols-[0.95fr_1.05fr] gap-16 items-center">
+        <div className="container mx-auto px-4 sm:px-6">
+          <div className="grid grid-cols-1 lg:grid-cols-[0.95fr_1.05fr] gap-8 lg:gap-16 items-center">
             <div>
-              <h2 className="text-3xl md:text-4xl font-bold text-slate-900 mb-6">Une pédagogie conçue pour la rétention et la performance</h2>
-              <p className="text-lg text-slate-600 mb-8">Chaque leçon active plusieurs formats pour ancrer le savoir, vérifier la compréhension et accélérer la prise de décision clinique.</p>
+              <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-[var(--app-text)] mb-4 sm:mb-6 break-words">Une pédagogie conçue pour la rétention et la performance</h2>
+              <p className="text-base sm:text-lg text-[var(--app-muted)] mb-6 sm:mb-8 break-words">Chaque leçon active plusieurs formats pour ancrer le savoir, vérifier la compréhension et accélérer la prise de décision clinique.</p>
               
-              <div className="space-y-6">
+              <div className="space-y-4 sm:space-y-6">
                 {featurePillars.map((feature, i) => (
                   <motion.div 
                     key={feature.title}
@@ -2311,14 +2311,14 @@ export default function HomePage() {
                     whileInView={{ opacity: 1, x: 0 }}
                     viewport={{ once: true }}
                     transition={{ duration: 0.5, delay: i * 0.1 }}
-                    className="flex gap-4"
+                    className="flex gap-3 sm:gap-4"
                   >
-                    <div className="shrink-0 w-12 h-12 rounded-full bg-white border border-slate-200 flex items-center justify-center shadow-sm">
-                      <feature.icon className="h-6 w-6 text-[color-mix(in_oklab,var(--app-accent)_78%,var(--app-text)_22%)]" />
+                    <div className="shrink-0 w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-[var(--app-surface)] border border-[var(--app-border)] flex items-center justify-center shadow-sm">
+                      <feature.icon className="h-5 w-5 sm:h-6 sm:w-6 text-[color-mix(in_oklab,var(--app-accent)_78%,var(--app-text)_22%)]" />
                     </div>
-                    <div>
-                      <h4 className="text-xl font-bold text-slate-900 mb-1">{feature.title}</h4>
-                      <p className="text-slate-600">{feature.desc}</p>
+                    <div className="min-w-0">
+                      <h4 className="text-base sm:text-xl font-bold text-[var(--app-text)] mb-1 break-words">{feature.title}</h4>
+                      <p className="text-sm sm:text-base text-[var(--app-muted)] break-words">{feature.desc}</p>
                     </div>
                   </motion.div>
                 ))}
@@ -2330,7 +2330,7 @@ export default function HomePage() {
                 whileInView={{ opacity: 1, x: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.55 }}
-                className={`aspect-video rounded-3xl overflow-hidden shadow-2xl relative ${isPlaying && !areVideoControlsVisible ? 'cursor-none' : 'cursor-default'}`}
+                className={`aspect-video rounded-2xl sm:rounded-3xl overflow-hidden shadow-2xl relative ${isPlaying && !areVideoControlsVisible ? 'cursor-none' : 'cursor-default'}`}
                 onMouseMove={revealVideoControls}
                 onMouseEnter={revealVideoControls}
                 onMouseLeave={() => {
@@ -2356,30 +2356,30 @@ export default function HomePage() {
                   />
                 )}
                 <motion.div
-                  className={`absolute inset-0 z-20 flex items-end p-8 bg-(--demo-video-overlay) ${areVideoControlsVisible ? 'pointer-events-auto' : 'pointer-events-none'}`}
+                  className={`absolute inset-0 z-20 flex items-end p-3 sm:p-8 bg-(--demo-video-overlay) ${areVideoControlsVisible ? 'pointer-events-auto' : 'pointer-events-none'}`}
                   animate={{ opacity: areVideoControlsVisible ? 1 : 0, y: areVideoControlsVisible ? 0 : 28 }}
                   transition={{ duration: 0.3, ease: 'easeOut' }}
                 >
                   <div
-                    className="backdrop-blur-md border rounded-2xl p-6 w-full bg-(--demo-video-card-bg) border-(--demo-video-card-border) text-(--demo-video-title)"
+                    className="backdrop-blur-md border rounded-2xl p-3 sm:p-6 w-full bg-(--demo-video-card-bg) border-(--demo-video-card-border) text-(--demo-video-title)"
                   >
-                    <div className="flex items-center gap-4 mb-4">
+                    <div className="flex items-center gap-3 sm:gap-4 mb-3 sm:mb-4">
                       <button
                         type="button"
                         onClick={togglePreviewPlayback}
                         aria-label={isPlaying ? 'Pause preview video' : 'Play preview video'}
-                        className="w-12 h-12 rounded-full flex items-center justify-center transition-transform hover:scale-105 bg-(--app-accent)"
+                        className="w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center transition-transform hover:scale-105 bg-(--app-accent) shrink-0"
                       >
                         {isPlaying ? (
-                          <Pause className="h-6 w-6 text-(--app-accent-contrast)" />
+                          <Pause className="h-5 w-5 sm:h-6 sm:w-6 text-(--app-accent-contrast)" />
                         ) : (
-                          <PlayCircle className="h-6 w-6 text-(--app-accent-contrast)" />
+                          <PlayCircle className="h-5 w-5 sm:h-6 sm:w-6 text-(--app-accent-contrast)" />
                         )}
                       </button>
-                      <div>
-                        <p className="font-semibold text-(--demo-video-title)">{previewTitle}</p>
+                      <div className="min-w-0">
+                        <p className="font-semibold text-sm sm:text-base text-(--demo-video-title) truncate">{previewTitle}</p>
                         <p
-                          className="text-sm text-(--demo-video-subtitle)"
+                          className="text-xs sm:text-sm text-(--demo-video-subtitle) truncate"
                         >
                           Module {previewSubspecialty} • {previewDurationLabel}
                         </p>
@@ -2399,13 +2399,13 @@ export default function HomePage() {
                           className="absolute inset-0 h-2 w-full cursor-pointer demo-video-seek"
                         />
                       </div>
-                      <div className="flex items-center justify-between gap-4">
-                        <div className="flex items-center gap-3 text-xs text-(--demo-video-time)">
+                      <div className="flex items-center justify-between gap-2 sm:gap-4">
+                        <div className="flex items-center gap-2 sm:gap-3 text-xs text-(--demo-video-time)">
                           <span>{formatClock(currentTime)}</span>
                           <span>•</span>
                           <span>{formatClock(effectivePlaybackDuration)}</span>
                         </div>
-                        <div className="flex items-center gap-2 min-w-33">
+                        <div className="hidden sm:flex items-center gap-2 min-w-24 sm:min-w-28">
                           <button
                             type="button"
                             onClick={toggleMute}
@@ -2437,18 +2437,18 @@ export default function HomePage() {
         </div>
       </div>
 
-      <div className="py-20">
-        <div className="container mx-auto px-4">
-          <div className="max-w-3xl mx-auto text-center mb-10">
-            <h2 className="text-3xl md:text-4xl font-bold text-slate-900 mb-3">Un parcours clair, de la théorie à la décision</h2>
-            <p className="text-slate-600">Chaque étape prépare la suivante pour éviter l&apos;apprentissage fragmenté.</p>
+      <div className="py-12 sm:py-16 lg:py-20">
+        <div className="container mx-auto px-4 sm:px-6">
+          <div className="max-w-3xl mx-auto text-center mb-8 sm:mb-10">
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-[var(--app-text)] mb-3 break-words">Un parcours clair, de la théorie à la décision</h2>
+            <p className="text-sm sm:text-base text-[var(--app-muted)]">Chaque étape prépare la suivante pour éviter l&apos;apprentissage fragmenté.</p>
           </div>
           <motion.div
             variants={containerStagger}
             initial="hidden"
             whileInView="show"
             viewport={{ once: true }}
-            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"
+            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"
           >
             {journey.map((node) => (
               <motion.div
@@ -2459,8 +2459,8 @@ export default function HomePage() {
                 <span className="inline-flex h-8 min-w-8 items-center justify-center rounded-full px-2 text-xs font-bold mb-3 bg-[color-mix(in_oklab,var(--app-accent)_18%,var(--app-surface)_82%)] text-[color-mix(in_oklab,var(--app-accent)_82%,var(--app-text)_18%)]">
                   {node.step}
                 </span>
-                <h3 className="text-lg font-bold text-slate-900 mb-1">{node.title}</h3>
-                <p className="text-sm text-slate-600">{node.text}</p>
+                <h3 className="text-base sm:text-lg font-bold text-[var(--app-text)] mb-1 break-words">{node.title}</h3>
+                <p className="text-sm text-[var(--app-muted)] break-words">{node.text}</p>
               </motion.div>
             ))}
           </motion.div>
@@ -2512,16 +2512,16 @@ export default function HomePage() {
       ) : null}
 
       {!isAdmin ? (
-        <div className="fixed bottom-5 right-5 z-70">
+        <div className="fixed right-3 sm:right-5 z-70" style={{ bottom: 'calc(1rem + env(safe-area-inset-bottom))' }}>
           <motion.button
             type="button"
             whileHover={{ scale: 1.04 }}
             whileTap={{ scale: 0.96 }}
             onClick={() => setIsChatOpen((current) => !current)}
-            className="h-14 w-14 rounded-full shadow-xl flex items-center justify-center bg-[linear-gradient(135deg,color-mix(in_oklab,var(--app-accent)_90%,#ffe5c6_10%),color-mix(in_oklab,var(--app-accent)_70%,#1e1e1e_30%))] text-(--app-accent-contrast)"
+            className="h-12 w-12 sm:h-14 sm:w-14 rounded-full shadow-xl flex items-center justify-center bg-[linear-gradient(135deg,color-mix(in_oklab,var(--app-accent)_90%,#ffe5c6_10%),color-mix(in_oklab,var(--app-accent)_70%,#1e1e1e_30%))] text-(--app-accent-contrast)"
             aria-label={isChatOpen ? 'Fermer le chatbot support' : 'Ouvrir le chatbot support'}
           >
-            {isChatOpen ? <X className="h-6 w-6" /> : <MessageCircle className="h-6 w-6" />}
+            {isChatOpen ? <X className="h-5 w-5 sm:h-6 sm:w-6" /> : <MessageCircle className="h-5 w-5 sm:h-6 sm:w-6" />}
           </motion.button>
 
           {isChatOpen ? (
@@ -2530,7 +2530,7 @@ export default function HomePage() {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 10, scale: 0.98 }}
               transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-              className="absolute bottom-16 right-0 flex h-[min(82vh,680px)] w-[min(96vw,440px)] flex-col rounded-[28px] border shadow-[0_24px_64px_rgba(0,0,0,0.14),0_8px_24px_rgba(0,0,0,0.08)] overflow-hidden border-[color-mix(in_oklab,var(--app-border)_78%,var(--app-accent)_22%)] bg-[color-mix(in_oklab,var(--app-surface)_98%,white_2%)] backdrop-blur-xl"
+              className="absolute bottom-16 right-0 flex h-[min(82dvh,680px)] max-h-[calc(100dvh-88px)] w-[min(96vw,440px)] max-w-[calc(100vw-1.5rem)] sm:max-w-[440px] flex-col rounded-[20px] sm:rounded-[28px] border shadow-[0_24px_64px_rgba(0,0,0,0.14),0_8px_24px_rgba(0,0,0,0.08)] overflow-hidden border-[color-mix(in_oklab,var(--app-border)_78%,var(--app-accent)_22%)] bg-[color-mix(in_oklab,var(--app-surface)_98%,white_2%)] backdrop-blur-xl"
             >
             <div
               className="px-5 py-4 border-b border-[color-mix(in_oklab,var(--app-border)_88%,var(--app-accent)_12%)] bg-[linear-gradient(180deg,color-mix(in_oklab,var(--app-surface)_98%,white_2%)_0%,color-mix(in_oklab,var(--app-surface-alt)_42%,var(--app-surface)_58%)_100%)]"

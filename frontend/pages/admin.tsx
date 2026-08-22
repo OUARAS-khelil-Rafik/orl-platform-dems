@@ -1201,31 +1201,37 @@ export default function AdminDashboard() {
       );
 
         const videoTitle = String(videos.find((video) => video.id === videoId)?.title || '').trim() || `Video ${videoId}`;
+        const nowIso = new Date().toISOString();
         const payload: UserNotificationPayload = {
           userId: user.id,
           type: 'video',
           title: isNowBlocked ? 'Video bloquee' : 'Video debloquee',
           description: isNowBlocked
-            ? `L'admin a bloque votre acces a \"${videoTitle}\".`
-            : `L'admin a debloque votre acces a \"${videoTitle}\".`,
+            ? `L'admin a bloque votre acces a "${videoTitle}".`
+            : `L'admin a debloque votre acces a "${videoTitle}".`,
           targetHref: `/videos/${videoId}`,
         };
 
+        // Notification pour l'utilisateur VIP (et tout utilisateur) – affichage dans page Notifications et navbar
+        // Le backend cree aussi automatiquement une notification (deduplication 10s) en cas d'echec frontend
         try {
           await addDoc(collection(db, 'notifications'), {
             ...payload,
-            createdAt: new Date().toISOString(),
+            category: 'video-block',
+            isRead: false,
+            createdAt: nowIso,
+            updatedAt: nowIso,
           });
-          
-          // Success feedback for admin
-          alert(isNowBlocked 
-            ? `Video "${videoTitle}" bloquee pour ${user.displayName || user.email}.`
-            : `Video "${videoTitle}" debloquee pour ${user.displayName || user.email}.`
-          );
         } catch (notificationError) {
-          console.error('Error creating video block notification:', notificationError);
-          alert('Erreur: Impossible de creer la notification de blocage.');
+          console.error('Error creating video block notification (frontend):', notificationError);
+          // Le backend va creer la notification via PATCH /data/users/:id, donc on ne bloque pas le flux
         }
+
+        // Feedback admin toujours affiche, meme si la notif frontend echoue (backend en backup)
+        alert(isNowBlocked 
+          ? `Video "${videoTitle}" bloquee pour ${user.displayName || user.email}.`
+          : `Video "${videoTitle}" debloquee pour ${user.displayName || user.email}.`
+        );
     } catch (error) {
       console.error('Error blocking video for user:', error);
       alert('Erreur lors du blocage de la video.');
@@ -2149,8 +2155,8 @@ export default function AdminDashboard() {
 
   return (
     <div className="flex-1 bg-linear-to-br from-slate-100 via-stone-50 to-slate-100 text-[15px] md:text-base">
-      <main className="p-8 md:p-12 overflow-y-auto">
-        <div className="max-w-375 mx-auto">
+      <main className="p-4 sm:p-6 md:p-8 lg:p-12 overflow-y-auto">
+        <div className="max-w-7xl mx-auto px-0 sm:px-2">
           <div className="mb-6">
             <div className="min-w-0 overflow-x-auto rounded-2xl sm:rounded-full border border-[color-mix(in_oklab,var(--app-border)_78%,transparent)] bg-[color-mix(in_oklab,var(--app-surface-2)_55%,transparent)] p-1 sm:p-1.5">
               <nav className="flex min-w-max sm:min-w-0 items-stretch sm:items-center gap-1.5 sm:gap-2 rounded-2xl sm:rounded-full">
@@ -2184,8 +2190,8 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-10">
-            <h1 className="text-4xl md:text-5xl font-bold text-slate-900">{activeTabLabel}</h1>
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 sm:mb-10">
+            <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-[var(--app-text)] break-words">{activeTabLabel}</h1>
             {activeTab === 'users' && (
               <button
                 type="button"

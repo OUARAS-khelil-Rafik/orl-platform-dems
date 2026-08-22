@@ -10,13 +10,13 @@ export function Footer() {
 
   return (
     <footer
-      className="relative overflow-hidden py-14 mt-auto bg-[linear-gradient(145deg,var(--footer-bg-start)_0%,color-mix(in_oklab,var(--footer-bg-end)_82%,var(--app-accent)_18%)_100%)]"
+      className="relative overflow-hidden py-10 sm:py-14 mt-auto bg-[linear-gradient(145deg,var(--footer-bg-start)_0%,color-mix(in_oklab,var(--footer-bg-end)_82%,var(--app-accent)_18%)_100%)]"
     >
-      <div className="absolute -top-24 left-0 w-80 h-80 rounded-full blur-3xl bg-[color-mix(in_oklab,var(--app-accent)_30%,transparent)]" />
-      <div className="absolute -bottom-28 right-0 w-96 h-96 rounded-full blur-3xl bg-[color-mix(in_oklab,var(--app-accent)_18%,transparent)]" />
+      <div className="absolute -top-24 left-0 w-60 h-60 sm:w-80 sm:h-80 rounded-full blur-3xl bg-[color-mix(in_oklab,var(--app-accent)_30%,transparent)]" />
+      <div className="absolute -bottom-28 right-0 w-72 h-72 sm:w-96 sm:h-96 rounded-full blur-3xl bg-[color-mix(in_oklab,var(--app-accent)_18%,transparent)]" />
 
-      <div className="container mx-auto px-4 relative z-10">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+      <div className="container mx-auto px-4 sm:px-6 relative z-10">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6 sm:gap-8">
         <div className="flex flex-col gap-4">
           <Link href="/" className="flex items-center gap-2 text-[color-mix(in_oklab,var(--app-accent)_78%,white_22%)]">
             <Stethoscope className="h-6 w-6" />

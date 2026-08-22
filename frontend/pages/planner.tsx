@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState, FormEvent } from 'react';
+import { useEffect, useMemo, useState, FormEvent, useRef } from 'react';
 import Link from 'next/link';
 import {
   addDoc,
@@ -23,6 +23,7 @@ import {
   Edit2,
   Filter,
   List,
+  ListOrdered,
   LayoutGrid,
   Columns,
   Plus,
@@ -36,6 +37,9 @@ import {
   User,
   MapPin,
   Timer,
+  Bold,
+  Italic,
+  Underline,
 } from 'lucide-react';
 
 type ViewMode = 'month' | 'week' | 'day' | 'agenda';
@@ -177,6 +181,18 @@ const formatRange = (startIso: string, endIso: string, allDay: boolean) => {
   return `${s.toLocaleDateString('fr-FR')} ${formatTime(s)} → ${e.toLocaleDateString('fr-FR')} ${formatTime(e)}`;
 };
 
+const isHtmlNote = (s: string) => /<[^>]+>/.test(s);
+// compact : bullets visibles même en version tronquée semaine
+const stripHtmlToText = (html: string) =>
+  html
+    .replace(/<\/li>/gi, ' • ')
+    .replace(/<br\s*\/?>/gi, ' ')
+    .replace(/<\/p>/gi, ' ')
+    .replace(/<\/div>/gi, ' ')
+    .replace(/<[^>]+>/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
 const getMonthMatrix = (current: Date) => {
   const year = current.getFullYear();
   const month = current.getMonth();
@@ -205,6 +221,93 @@ const getWeekDays = (current: Date) => {
     d.setDate(monday.getDate() + i);
     return d;
   });
+};
+
+// — Fix agenda semaine : helpers pour clamping multi-jours et layout chevauchements
+const clampEventToDay = (day: Date, ev: PlannerEvent): { startMin: number; endMin: number; clampedStart: Date; clampedEnd: Date } | null => {
+  const dayStart = new Date(day);
+  dayStart.setHours(0, 0, 0, 0);
+  const dayEnd = new Date(day);
+  dayEnd.setHours(23, 59, 59, 999);
+  const s = new Date(ev.start);
+  const e = new Date(ev.end);
+  if (e.getTime() <= s.getTime()) return null;
+  if (e.getTime() <= dayStart.getTime() || s.getTime() > dayEnd.getTime()) return null;
+  const clampedStart = s < dayStart ? dayStart : s;
+  const clampedEnd = e > dayEnd ? dayEnd : e;
+  const startMin = clampedStart.getHours() * 60 + clampedStart.getMinutes();
+  // si fin == 23:59 du jour et événement déborde au lendemain, on étend à 24*60 pour remplir la grille
+  const isEndOfDay = clampedEnd.getHours() === 23 && clampedEnd.getMinutes() === 59 && e.getTime() > dayEnd.getTime();
+  const endMin = isEndOfDay ? 24 * 60 : clampedEnd.getHours() * 60 + clampedEnd.getMinutes();
+  if (endMin <= startMin) return null;
+  return { startMin, endMin, clampedStart, clampedEnd };
+};
+
+type WeekLayoutEvent = {
+  ev: PlannerEvent;
+  startMin: number;
+  endMin: number;
+  column: number;
+  totalColumns: number;
+};
+
+const layoutWeekDayEvents = (day: Date, events: PlannerEvent[]): WeekLayoutEvent[] => {
+  const withClamp = events
+    .map((ev) => {
+      const c = clampEventToDay(day, ev);
+      return c ? { ev, startMin: c.startMin, endMin: c.endMin } : null;
+    })
+    .filter((x): x is { ev: PlannerEvent; startMin: number; endMin: number } => Boolean(x))
+    .sort((a, b) => a.startMin - b.startMin || a.endMin - b.endMin);
+
+  if (withClamp.length === 0) return [];
+
+  // regroupement par clusters qui se chevauchent (transitivement)
+  const clusters: Array<Array<{ ev: PlannerEvent; startMin: number; endMin: number }>> = [];
+  let current: Array<{ ev: PlannerEvent; startMin: number; endMin: number }> = [];
+  let clusterEnd = -1;
+  for (const item of withClamp) {
+    if (current.length === 0) {
+      current = [item];
+      clusterEnd = item.endMin;
+    } else if (item.startMin < clusterEnd) {
+      current.push(item);
+      clusterEnd = Math.max(clusterEnd, item.endMin);
+    } else {
+      clusters.push(current);
+      current = [item];
+      clusterEnd = item.endMin;
+    }
+  }
+  if (current.length) clusters.push(current);
+
+  const result: WeekLayoutEvent[] = [];
+  for (const cluster of clusters) {
+    const sorted = [...cluster].sort((a, b) => a.startMin - b.startMin || a.endMin - b.endMin);
+    const colEnds: number[] = [];
+    const colOf = new Map<string, number>();
+    for (const it of sorted) {
+      let colIdx = colEnds.findIndex((end) => it.startMin >= end);
+      if (colIdx === -1) {
+        colIdx = colEnds.length;
+        colEnds.push(it.endMin);
+      } else {
+        colEnds[colIdx] = it.endMin;
+      }
+      colOf.set(it.ev.id, colIdx);
+    }
+    const total = colEnds.length || 1;
+    for (const it of cluster) {
+      result.push({
+        ev: it.ev,
+        startMin: it.startMin,
+        endMin: it.endMin,
+        column: colOf.get(it.ev.id) ?? 0,
+        totalColumns: total,
+      });
+    }
+  }
+  return result.sort((a, b) => a.startMin - b.startMin);
 };
 
 const addMonths = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth() + n, 1, 12, 0, 0, 0);
@@ -287,6 +390,78 @@ export default function PlannerPage() {
   const [formState, setFormState] = useState<PlannerFormState>(() => defaultFormState(new Date()));
   const [isSaving, setIsSaving] = useState(false);
   const [selectedDayKey, setSelectedDayKey] = useState<string | null>(null);
+  const [nowTick, setNowTick] = useState(() => new Date());
+
+  useEffect(() => {
+    const id = setInterval(() => setNowTick(new Date()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const noteEditorRef = useRef<HTMLDivElement>(null);
+
+  const execNoteCommand = (command: string, value?: string) => {
+    noteEditorRef.current?.focus();
+    // execCommand est deprecated mais reste le plus léger pour bold/italic/underline/liste sans lib externe
+    document.execCommand(command, false, value);
+    if (noteEditorRef.current) {
+      const rawHtml = noteEditorRef.current.innerHTML;
+      const text = noteEditorRef.current.innerText?.trim() ?? '';
+      const next = text ? rawHtml : '';
+      setFormState((p) => ({ ...p, description: next }));
+      if (!text && rawHtml) {
+        requestAnimationFrame(() => {
+          if (noteEditorRef.current && noteEditorRef.current.innerText.trim() === '') {
+            noteEditorRef.current.innerHTML = '';
+          }
+        });
+      }
+    }
+  };
+
+  const syncNoteFromEditor = () => {
+    if (noteEditorRef.current) {
+      const rawHtml = noteEditorRef.current.innerHTML;
+      const text = noteEditorRef.current.innerText?.trim() ?? '';
+      const next = text ? rawHtml : '';
+      setFormState((p) => ({ ...p, description: next }));
+      // placeholder CSS :empty ne matche pas <br> seul -> on vide réellement le DOM
+      if (!text && rawHtml && rawHtml !== '') {
+        // ne pas casser le curseur pendant la frappe -> nettoyage différé
+        requestAnimationFrame(() => {
+          if (noteEditorRef.current && noteEditorRef.current.innerText.trim() === '') {
+            noteEditorRef.current.innerHTML = '';
+          }
+        });
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (isModalOpen && noteEditorRef.current) {
+      // initialise le contenu éditable depuis formState (HTML ou texte brut)
+      const raw = formState.description || '';
+      const isHtml = /<[^>]+>/.test(raw);
+      const html = isHtml ? raw : raw.replace(/\n/g, '<br>');
+      if (noteEditorRef.current.innerHTML !== html) {
+        noteEditorRef.current.innerHTML = html;
+      }
+    }
+  }, [isModalOpen, editingEvent?.id]);
+
+  // Modal Ajouter événement : dark/light + accessibilité (Escape, lock scroll)
+  useEffect(() => {
+    if (!isModalOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeModal();
+    };
+    document.addEventListener('keydown', onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [isModalOpen]);
 
   const fetchEvents = async () => {
     if (!user) {
@@ -488,6 +663,16 @@ export default function PlannerPage() {
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key)!.push(ev);
     });
+    groups.forEach((list, key) => {
+      groups.set(
+        key,
+        [...list].sort((a, b) => {
+          if (a.allDay && !b.allDay) return -1;
+          if (!a.allDay && b.allDay) return 1;
+          return new Date(a.start).getTime() - new Date(b.start).getTime();
+        })
+      );
+    });
     return Array.from(groups.entries())
       .sort((a, b) => parseDateKey(a[0]).getTime() - parseDateKey(b[0]).getTime())
       .slice(0, 30);
@@ -531,10 +716,11 @@ export default function PlannerPage() {
             <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
               <Link
                 href="/sign-up"
-                className="inline-flex items-center justify-center rounded-xl px-5 py-2.5 text-sm font-semibold text-white"
+                className="inline-flex items-center justify-center rounded-xl px-5 py-2.5 text-sm font-semibold"
                 style={{
                   background:
                     'linear-gradient(135deg, color-mix(in oklab, var(--app-accent) 88%, #000 12%) 0%, var(--app-accent) 100%)',
+                  color: 'var(--app-accent-contrast)',
                 }}
               >
                 S&apos;inscrire
@@ -585,10 +771,11 @@ export default function PlannerPage() {
           <button
             type="button"
             onClick={() => openCreateModal()}
-            className="inline-flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold text-white shrink-0 shadow-lg hover:brightness-95 transition"
+            className="inline-flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold shrink-0 shadow-lg hover:brightness-95 transition"
             style={{
               background:
                 'linear-gradient(135deg, color-mix(in oklab, var(--app-accent) 88%, #000 12%) 0%, var(--app-accent) 100%)',
+              color: 'var(--app-accent-contrast)',
             }}
           >
             <Plus className="h-4 w-4" /> Nouvel événement
@@ -631,10 +818,10 @@ export default function PlannerPage() {
                   <button
                     key={mode}
                     onClick={() => setViewMode(mode)}
-                    className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${isActive ? 'text-white shadow-sm' : ''}`}
+                    className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${isActive ? 'shadow-sm' : ''}`}
                     style={{
                       backgroundColor: isActive ? 'var(--app-accent)' : 'transparent',
-                      color: isActive ? 'white' : 'var(--app-text)',
+                      color: isActive ? 'var(--app-accent-contrast)' : 'var(--app-text)',
                     }}
                   >
                     <Icon className="h-3.5 w-3.5" />
@@ -651,7 +838,7 @@ export default function PlannerPage() {
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Rechercher..."
                 className="rounded-xl border pl-9 pr-3 py-2 text-sm w-40 md:w-56 focus:outline-none focus:ring-2 focus:ring-medical-500"
-                style={{ borderColor: 'var(--app-border)', backgroundColor: 'var(--app-surface)', color: 'var(--app-text)' }}
+                style={{ borderColor: 'var(--app-border)', backgroundColor: 'var(--app-surface)', color: 'var(--app-text)', colorScheme: 'light dark' } as React.CSSProperties}
               />
             </div>
 
@@ -661,7 +848,7 @@ export default function PlannerPage() {
                 value={categoryFilter}
                 onChange={(e) => setCategoryFilter(e.target.value as any)}
                 className="rounded-xl border pl-9 pr-8 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 appearance-none"
-                style={{ borderColor: 'var(--app-border)', backgroundColor: 'var(--app-surface)', color: 'var(--app-text)' }}
+                style={{ borderColor: 'var(--app-border)', backgroundColor: 'var(--app-surface)', color: 'var(--app-text)', colorScheme: 'light dark' } as React.CSSProperties}
               >
                 <option value="all">Toutes catégories</option>
                 <option value="cours">Cours</option>
@@ -720,10 +907,10 @@ export default function PlannerPage() {
                           setCurrentDate(nd);
                           setViewMode('day');
                         }}
-                        className={`relative h-8 w-8 mx-auto rounded-full text-xs flex items-center justify-center transition ${selected ? 'text-white' : isCurrentMonth ? '' : 'opacity-40'}`}
+                        className={`relative h-8 w-8 mx-auto rounded-full text-xs flex items-center justify-center transition ${selected ? '' : isCurrentMonth ? '' : 'opacity-40'}`}
                         style={{
                           backgroundColor: selected ? 'var(--app-accent)' : today ? 'color-mix(in oklab, var(--app-accent) 14%, var(--app-surface) 86%)' : 'transparent',
-                          color: selected ? 'white' : isCurrentMonth ? 'var(--app-text)' : 'var(--app-muted)',
+                          color: selected ? 'var(--app-accent-contrast)' : isCurrentMonth ? 'var(--app-text)' : 'var(--app-muted)',
                           border: today && !selected ? '1px solid var(--app-accent)' : '1px solid transparent',
                         }}
                       >
@@ -885,10 +1072,10 @@ export default function PlannerPage() {
                       >
                         <div className="flex items-center justify-between">
                           <span
-                            className={`h-7 w-7 flex items-center justify-center rounded-full text-sm font-semibold ${today ? 'text-white' : isCurrentMonth ? '' : 'opacity-50'}`}
+                            className={`h-7 w-7 flex items-center justify-center rounded-full text-sm font-semibold ${today ? '' : isCurrentMonth ? '' : 'opacity-50'}`}
                             style={{
                               backgroundColor: today ? 'var(--app-accent)' : 'transparent',
-                              color: today ? 'white' : isCurrentMonth ? 'var(--app-text)' : 'var(--app-muted)',
+                              color: today ? 'var(--app-accent-contrast)' : isCurrentMonth ? 'var(--app-text)' : 'var(--app-muted)',
                             }}
                           >
                             {date.getDate()}
@@ -987,45 +1174,100 @@ export default function PlannerPage() {
               </div>
             ) : viewMode === 'week' ? (
               <div
-                className="rounded-2xl border overflow-hidden"
+                className="rounded-2xl border overflow-hidden flex flex-col"
                 style={{ borderColor: 'var(--app-border)', backgroundColor: 'var(--app-surface)' }}
               >
-                <div className="grid grid-cols-[64px_repeat(7,1fr)] border-b" style={{ borderColor: 'var(--app-border)', backgroundColor: 'var(--app-surface-2)' }}>
-                  <div className="p-3 border-r text-xs font-semibold" style={{ borderColor: 'var(--app-border)', color: 'var(--app-muted)' }}>
-                    GMT+1
+                {/* Semaine : grid responsive — fix oversize (pas de min-w forcé sur desktop, scroll horizontal seulement sur mobile) */}
+                <div className="overflow-auto max-h-[560px] overscroll-contain" id="week-scroll">
+                  <div className="min-w-[640px] md:min-w-0">
+                    {/* En-tête semaine */}
+                    <div className="grid grid-cols-[52px_repeat(7,minmax(0,1fr))] md:grid-cols-[64px_repeat(7,1fr)] border-b sticky top-0 z-20 shrink-0" style={{ borderColor: 'var(--app-border)', backgroundColor: 'var(--app-surface-2)' }}>
+                  <div className="p-3 border-r flex items-center justify-center" style={{ borderColor: 'var(--app-border)' }}>
+                    <span className="inline-flex items-center gap-1 text-xs font-semibold" style={{ color: 'var(--app-muted)' }}>
+                      <Clock className="h-3.5 w-3.5" /> Heure
+                    </span>
                   </div>
                   {weekDays.map((d) => {
                     const today = isToday(d);
                     const dd = toDateKey(d);
                     const count = eventsByDayKey.get(dd)?.length || 0;
                     return (
-                      <div
+                      <button
                         key={dd}
-                        className={`p-3 text-center border-r last:border-r-0 ${today ? 'bg-[color-mix(in_oklab,var(--app-accent)_10%,var(--app-surface)_90%)]' : ''}`}
+                        type="button"
+                        onClick={() => {
+                          const nd = new Date(d);
+                          nd.setHours(12, 0, 0, 0);
+                          setCurrentDate(nd);
+                          setViewMode('day');
+                        }}
+                        className={`p-3 text-center border-r last:border-r-0 hover:brightness-[0.98] transition ${today ? 'bg-[color-mix(in_oklab,var(--app-accent)_8%,var(--app-surface)_92%)]' : ''}`}
                         style={{ borderColor: 'var(--app-border)' }}
                       >
                         <p className="text-xs uppercase tracking-widest font-semibold" style={{ color: today ? 'var(--app-accent)' : 'var(--app-muted)' }}>
                           {WEEKDAYS_FR[(d.getDay() + 6) % 7]}
                         </p>
                         <p
-                          className={`mx-auto mt-1 h-8 w-8 flex items-center justify-center rounded-full text-sm font-bold ${today ? 'text-white' : ''}`}
-                          style={{ backgroundColor: today ? 'var(--app-accent)' : 'transparent', color: today ? 'white' : 'var(--app-text)' }}
+                          className={`mx-auto mt-1 h-8 w-8 flex items-center justify-center rounded-full text-sm font-bold`}
+                          style={{ backgroundColor: today ? 'var(--app-accent)' : 'transparent', color: today ? 'var(--app-accent-contrast)' : 'var(--app-text)' }}
                         >
                           {d.getDate()}
                         </p>
                         {count > 0 && <p className="text-[11px] mt-1 font-medium" style={{ color: 'var(--app-accent)' }}>{count} évènement{count > 1 ? 's' : ''}</p>}
-                      </div>
+                      </button>
                     );
                   })}
                 </div>
 
-                <div className="relative overflow-auto max-h-[640px]">
-                  <div className="grid grid-cols-[64px_repeat(7,1fr)]">
+                {/* Bande journée entière — fix : plus d'overlay absolu par colonne */}
+                {(() => {
+                  const hasAnyAllDay = weekDays.some((d) => (eventsByDayKey.get(toDateKey(d)) || []).some((e) => e.allDay));
+                  if (!hasAnyAllDay) return null;
+                  return (
+                    <div className="grid grid-cols-[52px_repeat(7,minmax(0,1fr))] md:grid-cols-[64px_repeat(7,1fr)] border-b shrink-0" style={{ borderColor: 'var(--app-border)', backgroundColor: 'var(--app-surface)' }}>
+                      <div
+                        className="p-2 border-r text-[10px] font-bold uppercase tracking-widest flex items-center justify-center"
+                        style={{ borderColor: 'var(--app-border)', color: 'var(--app-muted)', backgroundColor: 'color-mix(in oklab, var(--app-surface-2) 60%, var(--app-surface) 40%)' }}
+                      >
+                        Journée
+                      </div>
+                      {weekDays.map((day) => {
+                        const key = toDateKey(day);
+                        const all = (eventsByDayKey.get(key) || []).filter((e) => e.allDay);
+                        return (
+                          <div key={key} className="border-r last:border-r-0 p-1 space-y-1 min-h-[52px]" style={{ borderColor: 'var(--app-border)' }}>
+                            {all.slice(0, 3).map((ev) => (
+                              <button
+                                key={ev.id}
+                                type="button"
+                                onClick={() => openEditModal(ev)}
+                                className="w-full text-left rounded-md px-1.5 py-1 text-[11px] font-semibold truncate border flex items-center gap-1 hover:brightness-95 transition"
+                                style={{ backgroundColor: `${ev.color}22`, borderColor: `${ev.color}40`, borderLeft: `3px solid ${ev.color}`, color: 'var(--app-text)' }}
+                                title={`${ev.title} · Journée entière`}
+                              >
+                                <span className="truncate">{ev.title}</span>
+                              </button>
+                            ))}
+                            {all.length > 3 && (
+                              <span className="block text-[11px] font-semibold px-1" style={{ color: 'var(--app-accent)' }}>
+                                + {all.length - 3} autre{all.length - 3 > 1 ? 's' : ''}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+
+                {/* Grille horaire — layout chevauchements + indicateur temps réel — fix grid gap & oversize */}
+                <div className="relative">
+                  <div className="grid grid-cols-[52px_repeat(7,minmax(0,1fr))] md:grid-cols-[64px_repeat(7,1fr)]">
                     <div className="relative">
                       {HOURS.map((h) => (
                         <div key={h} className="h-[56px] border-b border-r relative" style={{ borderColor: 'var(--app-border)' }}>
                           <span
-                            className="absolute -top-2 right-2 text-xs font-mono px-1"
+                            className="absolute -top-2 right-1.5 text-[11px] font-mono px-1 rounded"
                             style={{ color: 'var(--app-muted)', backgroundColor: 'var(--app-surface)' }}
                           >
                             {String(h).padStart(2, '0')}:00
@@ -1035,69 +1277,93 @@ export default function PlannerPage() {
                     </div>
                     {weekDays.map((day) => {
                       const key = toDateKey(day);
-                      const dayEvents = (eventsByDayKey.get(key) || []).filter((e) => !e.allDay);
-                      const allDayEvents = (eventsByDayKey.get(key) || []).filter((e) => e.allDay);
+                      const rawDayEvents = (eventsByDayKey.get(key) || []).filter((e) => !e.allDay);
+                      const layouts = layoutWeekDayEvents(day, rawDayEvents);
+                      const isCurrentDay = sameDay(day, nowTick);
+                      const nowMin = nowTick.getHours() * 60 + nowTick.getMinutes();
+                      const nowTop = (nowMin / 60) * 56;
                       return (
                         <div key={key} className="relative border-r last:border-r-0" style={{ borderColor: 'var(--app-border)' }}>
                           {HOURS.map((h) => (
                             <div
                               key={h}
                               onClick={() => openCreateModal(day, h)}
-                              className="h-[56px] border-b hover:bg-[color-mix(in_oklab,var(--app-accent)_4%,transparent)] cursor-pointer transition"
-                              style={{ borderColor: 'var(--app-border)' }}
+                              className="h-[56px] border-b hover:bg-[color-mix(in_oklab,var(--app-accent)_5%,transparent)] cursor-pointer transition"
+                              style={{ borderColor: 'color-mix(in oklab, var(--app-border) 70%, transparent)' }}
                             />
                           ))}
-                          {/* All-day strip */}
-                          {allDayEvents.length > 0 && (
-                            <div className="absolute top-0 left-0 right-0 p-1 space-y-1 pointer-events-none">
-                              {allDayEvents.slice(0, 2).map((ev) => (
-                                <div
-                                  key={ev.id}
-                                  className="rounded-md px-1.5 py-0.5 text-[11px] font-semibold truncate border pointer-events-auto cursor-pointer"
-                                  style={{ backgroundColor: `${ev.color}22`, borderColor: `${ev.color}40`, borderLeft: `3px solid ${ev.color}`, color: 'var(--app-text)' }}
-                                  onClick={() => openEditModal(ev)}
-                                >
-                                  {ev.title}
-                                </div>
-                              ))}
+                          {/* Indicateur heure actuelle */}
+                          {isCurrentDay && nowMin >= 0 && nowMin < 24 * 60 && (
+                            <div
+                              className="absolute left-0 right-0 pointer-events-none z-10"
+                              style={{ top: `${nowTop}px` }}
+                              aria-hidden
+                            >
+                              <div className="relative h-0.5 bg-red-500/90">
+                                <span className="absolute -left-1 -top-[5px] h-2.5 w-2.5 rounded-full bg-red-500 shadow-sm border-2" style={{ borderColor: 'var(--app-surface)' }} />
+                              </div>
                             </div>
                           )}
-                          {/* Timed events */}
-                          {dayEvents.map((ev) => {
+                          {/* Événements calés avec clamping + colonnes */}
+                          {layouts.map(({ ev, startMin, endMin, column, totalColumns }) => {
                             const s = new Date(ev.start);
                             const e = new Date(ev.end);
-                            const startMin = s.getHours() * 60 + s.getMinutes();
-                            const endMin = e.getHours() * 60 + e.getMinutes();
-                            const dur = Math.max(30, endMin - startMin);
-                            const top = (startMin / 60) * 56 + (allDayEvents.length > 0 ? 34 : 0);
-                            const height = (dur / 60) * 56 - 2;
-                            const overlapCount = dayEvents.length;
+                            const dayStart = new Date(day);
+                            dayStart.setHours(0, 0, 0, 0);
+                            const dayEnd = new Date(day);
+                            dayEnd.setHours(23, 59, 59, 999);
+                            const isContinuedBefore = s < dayStart;
+                            const isContinuedAfter = e > dayEnd;
+                            const top = (startMin / 60) * 56;
+                            const height = ((endMin - startMin) / 60) * 56 - 2;
+                            const h = Math.max(22, height);
+                            const leftPct = (column / totalColumns) * 100;
+                            const widthPct = (1 / totalColumns) * 100;
+                            const showDesc = h > 44;
+                            const showLoc = h > 58;
                             return (
                               <button
                                 key={ev.id}
                                 onClick={() => openEditModal(ev)}
-                                className="absolute left-1 right-1 rounded-lg border px-2 py-1 text-left shadow-sm hover:brightness-95 transition overflow-hidden flex flex-col"
+                                className="absolute rounded-lg border px-2 py-1 text-left shadow-sm hover:brightness-95 hover:shadow-md transition overflow-hidden flex flex-col"
                                 style={{
                                   top: `${top}px`,
-                                  height: `${Math.max(24, height)}px`,
+                                  height: `${h}px`,
+                                  left: `calc(${leftPct}% + 2px)`,
+                                  width: `calc(${widthPct}% - 4px)`,
                                   backgroundColor: `${ev.color}18`,
                                   borderColor: `${ev.color}38`,
                                   borderLeft: `3px solid ${ev.color}`,
+                                  zIndex: 5 + column,
+                                  opacity: isContinuedBefore || isContinuedAfter ? 0.96 : 1,
                                 }}
+                                title={`${ev.title} · ${formatRange(ev.start, ev.end, ev.allDay)}${isContinuedBefore ? ' · ↩ continue' : ''}${isContinuedAfter ? ' · ↪ suite' : ''}`}
                               >
-                                <span className="text-xs font-bold truncate" style={{ color: 'var(--app-text)' }}>
-                                  {ev.title}
+                                <span className="text-xs font-bold truncate flex items-center gap-1" style={{ color: 'var(--app-text)' }}>
+                                  {isContinuedBefore && <span className="text-[10px] leading-none">↩</span>}
+                                  <span className="truncate">{ev.title}</span>
+                                  {isContinuedAfter && <span className="text-[10px] leading-none">↪</span>}
                                 </span>
-                                <span className="text-[11px] truncate" style={{ color: 'var(--app-muted)' }}>
-                                  {formatTime(s)} – {formatTime(e)}
+                                <span className="text-[11px] truncate font-mono" style={{ color: 'var(--app-muted)' }}>
+                                  {(() => {
+                                    // affichage clampé pour le jour courant
+                                    const clamp = clampEventToDay(day, ev);
+                                    if (!clamp) return `${formatTime(s)} – ${formatTime(e)}`;
+                                    const sd = clamp.clampedStart;
+                                    const ed = clamp.clampedEnd;
+                                    if (isContinuedBefore && isContinuedAfter) return `00:00 – 23:59`;
+                                    if (isContinuedBefore) return `00:00 – ${formatTime(ed)}`;
+                                    if (isContinuedAfter) return `${formatTime(sd)} – 23:59`;
+                                    return `${formatTime(sd)} – ${formatTime(ed)}`;
+                                  })()}
                                 </span>
-                                {height > 48 && ev.description && (
-                                  <span className="text-[11px] line-clamp-2 mt-1" style={{ color: 'var(--app-muted)' }}>
-                                    {ev.description}
+                                {showDesc && ev.description && (
+                                  <span className="text-[11px] line-clamp-2 mt-0.5 leading-tight" style={{ color: 'var(--app-muted)' }}>
+                                    {isHtmlNote(ev.description) ? stripHtmlToText(ev.description) : ev.description}
                                   </span>
                                 )}
-                                {height > 60 && ev.location && (
-                                  <span className="text-[11px] flex items-center gap-1 mt-1" style={{ color: 'var(--app-muted)' }}>
+                                {showLoc && ev.location && (
+                                  <span className="text-[11px] flex items-center gap-1 mt-0.5 leading-tight" style={{ color: 'var(--app-muted)' }}>
                                     <MapPin className="h-3 w-3 shrink-0" /> <span className="truncate">{ev.location}</span>
                                   </span>
                                 )}
@@ -1107,6 +1373,8 @@ export default function PlannerPage() {
                         </div>
                       );
                     })}
+                  </div>
+                </div>
                   </div>
                 </div>
               </div>
@@ -1139,8 +1407,8 @@ export default function PlannerPage() {
                       </p>
                       <button
                         onClick={() => openCreateModal(currentDate)}
-                        className="mt-4 inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-white"
-                        style={{ backgroundColor: 'var(--app-accent)' }}
+                        className="mt-4 inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold"
+                        style={{ backgroundColor: 'var(--app-accent)', color: 'var(--app-accent-contrast)' }}
                       >
                         <Plus className="h-4 w-4" /> Ajouter un événement
                       </button>
@@ -1173,9 +1441,17 @@ export default function PlannerPage() {
                             {ev.title}
                           </h4>
                           {ev.description ? (
-                            <p className="mt-1 text-sm whitespace-pre-wrap break-words" style={{ color: 'var(--app-muted)' }}>
-                              {ev.description}
-                            </p>
+                            isHtmlNote(ev.description) ? (
+                              <div
+                                className="mt-1 text-sm break-words [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-0.5 [&_strong]:font-bold [&_b]:font-bold [&_em]:italic [&_i]:italic [&_u]:underline [&_p]:my-1"
+                                style={{ color: 'var(--app-muted)' }}
+                                dangerouslySetInnerHTML={{ __html: ev.description }}
+                              />
+                            ) : (
+                              <p className="mt-1 text-sm whitespace-pre-wrap break-words" style={{ color: 'var(--app-muted)' }}>
+                                {ev.description}
+                              </p>
+                            )
                           ) : (
                             <p className="mt-1 text-xs italic" style={{ color: 'var(--app-muted)' }}>
                               Aucune note.
@@ -1296,18 +1572,18 @@ export default function PlannerPage() {
                         <div key={key} className="flex gap-4 p-4 hover:bg-[color-mix(in_oklab,var(--app-surface-2)_60%,transparent)] transition">
                           <div className="w-24 shrink-0 text-center">
                             <div
-                              className={`rounded-2xl border p-3 ${today ? 'text-white' : ''}`}
+                              className={`rounded-2xl border p-3 ${today ? '' : ''}`}
                               style={{
                                 borderColor: today ? 'var(--app-accent)' : 'var(--app-border)',
                                 backgroundColor: today ? 'var(--app-accent)' : 'var(--app-surface-2)',
-                                color: today ? 'white' : 'var(--app-text)',
+                                color: today ? 'var(--app-accent-contrast)' : 'var(--app-text)',
                               }}
                             >
-                              <p className="text-xs uppercase tracking-widest font-bold" style={{ color: today ? 'white' : 'var(--app-muted)' }}>
+                              <p className="text-xs uppercase tracking-widest font-bold" style={{ color: today ? 'var(--app-accent-contrast)' : 'var(--app-muted)' }}>
                                 {WEEKDAYS_FR[(d.getDay() + 6) % 7]}
                               </p>
                               <p className="text-2xl font-bold leading-none mt-1">{d.getDate()}</p>
-                              <p className="text-xs font-semibold mt-1" style={{ color: today ? 'white' : 'var(--app-muted)' }}>
+                              <p className="text-xs font-semibold mt-1" style={{ color: today ? 'var(--app-accent-contrast)' : 'var(--app-muted)' }}>
                                 {MONTHS_FR[d.getMonth()].slice(0, 3)} {d.getFullYear()}
                               </p>
                             </div>
@@ -1341,9 +1617,17 @@ export default function PlannerPage() {
                                     </span>
                                   </span>
                                   {ev.description && (
-                                    <span className="block text-sm mt-1 whitespace-pre-wrap break-words line-clamp-2" style={{ color: 'var(--app-muted)' }}>
-                                      {ev.description}
-                                    </span>
+                                    isHtmlNote(ev.description) ? (
+                                      <span
+                                        className="block text-sm mt-1 break-words line-clamp-2 [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4 [&_strong]:font-bold [&_b]:font-bold [&_em]:italic [&_u]:underline"
+                                        style={{ color: 'var(--app-muted)' }}
+                                        dangerouslySetInnerHTML={{ __html: ev.description }}
+                                      />
+                                    ) : (
+                                      <span className="block text-sm mt-1 whitespace-pre-wrap break-words line-clamp-2" style={{ color: 'var(--app-muted)' }}>
+                                        {ev.description}
+                                      </span>
+                                    )
                                   )}
                                   {ev.location && (
                                     <span className="inline-flex items-center gap-1 mt-2 text-xs rounded-full border px-2 py-1" style={{ borderColor: 'var(--app-border)', backgroundColor: 'var(--app-surface)', color: 'var(--app-muted)' }}>
@@ -1364,20 +1648,20 @@ export default function PlannerPage() {
           </div>
         </div>
 
-        {/* Modal */}
+        {/* Modal Ajouter / Modifier événement — dark/light corrigé */}
         {isModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <button type="button" onClick={closeModal} className="absolute inset-0 bg-black/40 backdrop-blur-sm" aria-label="Fermer" />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="planner-modal-title">
+            <button type="button" onClick={closeModal} className="absolute inset-0 bg-black/50 dark:bg-black/60 backdrop-blur-sm" aria-label="Fermer" />
             <div
               className="relative w-full max-w-xl max-h-[90vh] overflow-auto rounded-3xl border shadow-2xl"
-              style={{ borderColor: 'var(--app-border)', backgroundColor: 'var(--app-surface)' }}
+              style={{ borderColor: 'var(--app-border)', backgroundColor: 'var(--app-surface)', colorScheme: 'light dark' } as React.CSSProperties}
             >
-              <div className="sticky top-0 z-10 flex items-center justify-between p-5 border-b backdrop-blur" style={{ borderColor: 'var(--app-border)', backgroundColor: 'color-mix(in oklab, var(--app-surface) 92%, white 8%)' }}>
-                <h3 className="text-lg font-bold flex items-center gap-2" style={{ color: 'var(--app-text)' }}>
+              <div className="sticky top-0 z-10 flex items-center justify-between p-5 border-b backdrop-blur" style={{ borderColor: 'var(--app-border)', backgroundColor: 'color-mix(in oklab, var(--app-surface) 92%, var(--app-surface-2) 8%)' }}>
+                <h3 id="planner-modal-title" className="text-lg font-bold flex items-center gap-2" style={{ color: 'var(--app-text)' }}>
                   <CalendarIcon className="h-5 w-5" style={{ color: 'var(--app-accent)' }} />
                   {editingEvent ? 'Modifier l’événement' : 'Nouvel événement'}
                 </h3>
-                <button onClick={closeModal} className="h-9 w-9 inline-flex items-center justify-center rounded-xl border hover:brightness-95" style={{ borderColor: 'var(--app-border)', backgroundColor: 'var(--app-surface-2)' }}>
+                <button onClick={closeModal} className="h-9 w-9 inline-flex items-center justify-center rounded-xl border hover:brightness-95" style={{ borderColor: 'var(--app-border)', backgroundColor: 'var(--app-surface-2)', color: 'var(--app-text)' }} aria-label="Fermer">
                   <X className="h-4 w-4" />
                 </button>
               </div>
@@ -1392,7 +1676,7 @@ export default function PlannerPage() {
                     onChange={(e) => setFormState((p) => ({ ...p, title: e.target.value }))}
                     placeholder="Ex. Cours Larynx – Chapitre 3, Révision QCM Otologie..."
                     className="w-full rounded-xl border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500"
-                    style={{ borderColor: 'var(--app-border)', backgroundColor: 'var(--app-surface-2)', color: 'var(--app-text)' }}
+                    style={{ borderColor: 'var(--app-border)', backgroundColor: 'var(--app-surface-2)', color: 'var(--app-text)', colorScheme: 'light dark' } as React.CSSProperties}
                     required
                   />
                 </div>
@@ -1401,16 +1685,85 @@ export default function PlannerPage() {
                   <label className="text-sm font-semibold mb-1.5 block" style={{ color: 'var(--app-text)' }}>
                     Notes / description
                   </label>
-                  <textarea
-                    value={formState.description}
-                    onChange={(e) => setFormState((p) => ({ ...p, description: e.target.value }))}
-                    placeholder={"Objectifs, pages à réviser, liens, checklist...\n- Revoir schéma pyramide nasale\n- Faire 20 QCM rhinologie"}
-                    rows={4}
-                    className="w-full rounded-xl border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 resize-y"
-                    style={{ borderColor: 'var(--app-border)', backgroundColor: 'var(--app-surface-2)', color: 'var(--app-text)' }}
+                  {/* Toolbar riche : puces / gras / italique / souligné – dark/light via var(--app-*) */}
+                  <div
+                    className="flex flex-wrap items-center gap-1.5 p-2 rounded-t-xl border border-b-0"
+                    style={{ borderColor: 'var(--app-border)', backgroundColor: 'color-mix(in oklab, var(--app-surface-2) 85%, var(--app-surface) 15%)' }}
+                  >
+                    <button
+                      type="button"
+                      onMouseDown={(e) => { e.preventDefault(); execNoteCommand('bold'); }}
+                      className="h-8 w-8 inline-flex items-center justify-center rounded-lg border hover:brightness-95 transition"
+                      style={{ borderColor: 'var(--app-border)', backgroundColor: 'var(--app-surface)', color: 'var(--app-text)' }}
+                      title="Gras"
+                      aria-label="Gras"
+                    >
+                      <Bold className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onMouseDown={(e) => { e.preventDefault(); execNoteCommand('italic'); }}
+                      className="h-8 w-8 inline-flex items-center justify-center rounded-lg border hover:brightness-95 transition"
+                      style={{ borderColor: 'var(--app-border)', backgroundColor: 'var(--app-surface)', color: 'var(--app-text)' }}
+                      title="Italique"
+                      aria-label="Italique"
+                    >
+                      <Italic className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onMouseDown={(e) => { e.preventDefault(); execNoteCommand('underline'); }}
+                      className="h-8 w-8 inline-flex items-center justify-center rounded-lg border hover:brightness-95 transition"
+                      style={{ borderColor: 'var(--app-border)', backgroundColor: 'var(--app-surface)', color: 'var(--app-text)' }}
+                      title="Souligné"
+                      aria-label="Souligné"
+                    >
+                      <Underline className="h-4 w-4" />
+                    </button>
+                    <span className="w-px h-6 mx-1" style={{ backgroundColor: 'var(--app-border)' }} />
+                    <button
+                      type="button"
+                      onMouseDown={(e) => { e.preventDefault(); execNoteCommand('insertUnorderedList'); }}
+                      className="h-8 w-8 inline-flex items-center justify-center rounded-lg border hover:brightness-95 transition"
+                      style={{ borderColor: 'var(--app-border)', backgroundColor: 'var(--app-surface)', color: 'var(--app-text)' }}
+                      title="Puces"
+                      aria-label="Puces"
+                    >
+                      <List className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onMouseDown={(e) => { e.preventDefault(); execNoteCommand('insertOrderedList'); }}
+                      className="h-8 w-8 inline-flex items-center justify-center rounded-lg border hover:brightness-95 transition"
+                      style={{ borderColor: 'var(--app-border)', backgroundColor: 'var(--app-surface)', color: 'var(--app-text)' }}
+                      title="Numérotation"
+                      aria-label="Numérotation"
+                    >
+                      <ListOrdered className="h-4 w-4" />
+                    </button>
+                    <span className="ml-auto text-[11px] font-medium hidden sm:inline" style={{ color: 'var(--app-muted)' }}>
+                      Sélectionne du texte puis choisis un style
+                    </span>
+                  </div>
+                  <div
+                    ref={noteEditorRef}
+                    contentEditable
+                    role="textbox"
+                    aria-multiline="true"
+                    data-placeholder="Objectifs, pages à réviser, liens, checklist..."
+                    onInput={syncNoteFromEditor}
+                    onBlur={syncNoteFromEditor}
+                    className="w-full min-h-[110px] max-h-[180px] overflow-auto rounded-b-xl border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 prose prose-sm max-w-none [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-0.5 [&_strong]:font-bold [&_b]:font-bold [&_em]:italic [&_i]:italic [&_u]:underline"
+                    style={{
+                      borderColor: 'var(--app-border)',
+                      backgroundColor: 'var(--app-surface-2)',
+                      color: 'var(--app-text)',
+                      colorScheme: 'light dark',
+                    } as React.CSSProperties}
+                    suppressContentEditableWarning
                   />
                   <p className="mt-1 text-xs" style={{ color: 'var(--app-muted)' }}>
-                    Astuce: utilise <strong>-</strong> ou <strong>1.</strong> pour structurer tes notes comme une checklist.
+                    Puces, gras, italique et souligné pris en charge. Le contenu s'affiche tel quel en semaine/jour/agenda (clair/sombre).
                   </p>
                 </div>
 
@@ -1426,7 +1779,7 @@ export default function PlannerPage() {
                         setFormState((p) => ({ ...p, category: cat, color: CATEGORY_COLORS[cat] }));
                       }}
                       className="w-full rounded-xl border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500"
-                      style={{ borderColor: 'var(--app-border)', backgroundColor: 'var(--app-surface-2)', color: 'var(--app-text)' }}
+                      style={{ borderColor: 'var(--app-border)', backgroundColor: 'var(--app-surface-2)', color: 'var(--app-text)', colorScheme: 'light dark' } as React.CSSProperties}
                     >
                       <option value="cours">Cours</option>
                       <option value="revision">Révision</option>
@@ -1445,7 +1798,7 @@ export default function PlannerPage() {
                         value={formState.color}
                         onChange={(e) => setFormState((p) => ({ ...p, color: e.target.value }))}
                         className="h-11 w-14 rounded-xl border p-1 cursor-pointer"
-                        style={{ borderColor: 'var(--app-border)', backgroundColor: 'var(--app-surface-2)' }}
+                        style={{ borderColor: 'var(--app-border)', backgroundColor: 'var(--app-surface-2)', colorScheme: 'light dark' } as React.CSSProperties}
                         title="Couleur de l'événement"
                       />
                       <div className="flex flex-wrap gap-1.5">
@@ -1483,21 +1836,21 @@ export default function PlannerPage() {
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <div className="md:col-span-1">
-                      <label className="text-xs font-semibold uppercase tracking-widest mb-1 block" style={{ color: 'var(--app-muted)' }}>
-                        Date
+                      <label className="text-xs font-semibold uppercase tracking-widest mb-1 flex items-center gap-1.5" style={{ color: 'var(--app-muted)' }}>
+                        <CalendarDays className="h-3 w-3" style={{ color: 'var(--app-muted)' }} /> Date
                       </label>
                       <input
                         type="date"
                         value={formState.date}
                         onChange={(e) => setFormState((p) => ({ ...p, date: e.target.value }))}
                         className="w-full rounded-xl border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500"
-                        style={{ borderColor: 'var(--app-border)', backgroundColor: 'var(--app-surface)', color: 'var(--app-text)' }}
+                        style={{ borderColor: 'var(--app-border)', backgroundColor: 'var(--app-surface)', color: 'var(--app-text)', colorScheme: 'light dark' } as React.CSSProperties}
                         required
                       />
                     </div>
                     <div>
-                      <label className="text-xs font-semibold uppercase tracking-widest mb-1 block" style={{ color: 'var(--app-muted)' }}>
-                        Début
+                      <label className="text-xs font-semibold uppercase tracking-widest mb-1 flex items-center gap-1.5" style={{ color: 'var(--app-muted)' }}>
+                        <Clock className="h-3 w-3" style={{ color: 'var(--app-muted)' }} /> Début
                       </label>
                       <input
                         type="time"
@@ -1505,13 +1858,13 @@ export default function PlannerPage() {
                         onChange={(e) => setFormState((p) => ({ ...p, startTime: e.target.value }))}
                         disabled={formState.allDay}
                         className="w-full rounded-xl border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 disabled:opacity-50"
-                        style={{ borderColor: 'var(--app-border)', backgroundColor: 'var(--app-surface)', color: 'var(--app-text)' }}
+                        style={{ borderColor: 'var(--app-border)', backgroundColor: 'var(--app-surface)', color: 'var(--app-text)', colorScheme: 'light dark' } as React.CSSProperties}
                         required={!formState.allDay}
                       />
                     </div>
                     <div>
-                      <label className="text-xs font-semibold uppercase tracking-widest mb-1 block" style={{ color: 'var(--app-muted)' }}>
-                        Fin
+                      <label className="text-xs font-semibold uppercase tracking-widest mb-1 flex items-center gap-1.5" style={{ color: 'var(--app-muted)' }}>
+                        <Clock className="h-3 w-3" style={{ color: 'var(--app-muted)' }} /> Fin
                       </label>
                       <input
                         type="time"
@@ -1519,7 +1872,7 @@ export default function PlannerPage() {
                         onChange={(e) => setFormState((p) => ({ ...p, endTime: e.target.value }))}
                         disabled={formState.allDay}
                         className="w-full rounded-xl border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500 disabled:opacity-50"
-                        style={{ borderColor: 'var(--app-border)', backgroundColor: 'var(--app-surface)', color: 'var(--app-text)' }}
+                        style={{ borderColor: 'var(--app-border)', backgroundColor: 'var(--app-surface)', color: 'var(--app-text)', colorScheme: 'light dark' } as React.CSSProperties}
                         required={!formState.allDay}
                       />
                     </div>
@@ -1535,7 +1888,7 @@ export default function PlannerPage() {
                     onChange={(e) => setFormState((p) => ({ ...p, location: e.target.value }))}
                     placeholder="Ex. CHU, salle TD, visio, bibliothèque..."
                     className="w-full rounded-xl border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-medical-500"
-                    style={{ borderColor: 'var(--app-border)', backgroundColor: 'var(--app-surface-2)', color: 'var(--app-text)' }}
+                    style={{ borderColor: 'var(--app-border)', backgroundColor: 'var(--app-surface-2)', color: 'var(--app-text)', colorScheme: 'light dark' } as React.CSSProperties}
                   />
                 </div>
 
@@ -1543,10 +1896,11 @@ export default function PlannerPage() {
                   <button
                     type="submit"
                     disabled={isSaving}
-                    className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold text-white disabled:opacity-60 hover:brightness-95 transition"
+                    className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold disabled:opacity-60 hover:brightness-95 transition"
                     style={{
                       background:
                         'linear-gradient(135deg, color-mix(in oklab, var(--app-accent) 88%, #000 12%) 0%, var(--app-accent) 100%)',
+                      color: 'var(--app-accent-contrast)',
                     }}
                   >
                     {isSaving ? 'Enregistrement...' : editingEvent ? 'Enregistrer les modifications' : 'Créer l’événement'}

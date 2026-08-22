@@ -606,19 +606,19 @@ export default function CheckoutPage() {
 
   return (
     <div
-      className="flex-1 py-12"
+      className="flex-1 py-8 sm:py-12"
       style={{
         background: pageBackground,
       }}
     >
-      <div className="container mx-auto px-4 max-w-5xl">
-        <h1 className="text-3xl font-bold text-slate-900 mb-2">Panier & Mes achats</h1>
-        <p className="text-slate-600 mb-8">Une interface unique pour payer et suivre tous vos achats.</p>
+      <div className="container mx-auto px-4 sm:px-6 max-w-5xl">
+        <h1 className="text-2xl sm:text-3xl font-bold text-[var(--app-text)] mb-2 break-words">Panier & Mes achats</h1>
+        <p className="text-[var(--app-muted)] mb-6 sm:mb-8 text-sm sm:text-base">Une interface unique pour payer et suivre tous vos achats.</p>
 
-        <div className="grid md:grid-cols-3 gap-8">
+        <div className="grid md:grid-cols-3 gap-6 md:gap-8">
           <div className="md:col-span-2 space-y-4">
             {items.length === 0 ? (
-              <div className="bg-white p-10 rounded-3xl shadow-sm border border-slate-200 text-center">
+              <div className="bg-[var(--app-surface)] p-6 sm:p-10 rounded-2xl sm:rounded-3xl shadow-sm border border-[var(--app-border)] text-center">
                 <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-6">
                   <ShoppingCart className="w-10 h-10 text-slate-400" />
                 </div>
@@ -671,7 +671,7 @@ export default function CheckoutPage() {
           </div>
 
           <div className="md:col-span-1">
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 sticky top-24">
+            <div className="bg-[var(--app-surface)] p-5 sm:p-6 rounded-2xl shadow-sm border border-[var(--app-border)] sticky top-20 sm:top-24">
               <h2 className="text-xl font-bold text-slate-900 mb-6">Résumé de la commande</h2>
               
               <div className="space-y-4 mb-6">
@@ -729,7 +729,7 @@ export default function CheckoutPage() {
         </div>
 
         <section className="mt-10">
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="rounded-2xl border p-8" style={cardStyle}>
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="rounded-2xl border p-5 sm:p-8" style={cardStyle}>
             <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
               <div>
                 <h2 className="text-2xl md:text-3xl font-bold" style={{ color: 'var(--app-text)' }}>Mes Achats</h2>
