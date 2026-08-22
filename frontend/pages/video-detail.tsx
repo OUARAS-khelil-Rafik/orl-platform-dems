@@ -1022,19 +1022,21 @@ export default function VideoPage() {
 
                                       return (
                                         <>
-                                          <div className="cas-question-card rounded-xl border overflow-hidden">
-                                            {/* Question header bar */}
-                                            <div className="cas-question-header flex items-center gap-2 px-4 py-3 border-b border-[var(--app-border)]">
-                                              <span className="cas-q-number flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold">
+                                          <div className="cas-question-card rounded-2xl border overflow-hidden">
+                                            <div className="cas-question-header flex flex-wrap items-center gap-2 px-4 py-3 sm:px-5 border-b border-[var(--app-border)]">
+                                              <span className="cas-q-number flex-shrink-0 w-8 h-8 rounded-xl flex items-center justify-center text-xs font-bold">
                                                 {String(activeQuestionIndex + 1).padStart(2, '0')}
                                               </span>
-                                              <span className="cas-q-type-badge px-2.5 py-0.5 rounded-full text-[10px] font-semibold">
+                                              <div className="min-w-0">
+                                                <p className="cas-question-eyebrow">Question {activeQuestionIndex + 1} sur {totalQuestions}</p>
+                                                <span className="cas-q-type-badge inline-flex mt-0.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold">
                                                 {kind === 'qcm'
                                                   ? 'QCM · Plusieurs réponses'
                                                   : kind === 'select'
                                                     ? 'Sélecteur · Une réponse'
                                                     : 'QROC'}
-                                              </span>
+                                                </span>
+                                              </div>
                                               {validated && (
                                                 <div className="ml-auto flex items-center">
                                                   {isCorrect === true && (
@@ -1058,25 +1060,62 @@ export default function VideoPage() {
                                                 </div>
                                               )}
                                             </div>
-                                            {/* Question body */}
-                                            <div className="p-4 space-y-3">
-                                            <div className="flex items-start gap-2">
+                                            <div className="p-4 sm:p-5 space-y-4">
+                                            <div className="cas-question-prompt flex items-start gap-3">
                                               {kind === 'open' && (
-                                                <MessageSquare className="w-4 h-4 text-[var(--app-accent)] flex-shrink-0 mt-1" />
+                                                <MessageSquare className="w-5 h-5 text-[var(--app-accent)] flex-shrink-0 mt-0.5" />
                                               )}
-                                              <p className="text-lg font-semibold text-[var(--app-text)] whitespace-pre-wrap leading-relaxed">
+                                              <p className="text-lg sm:text-xl font-semibold text-[var(--app-text)] whitespace-pre-wrap leading-relaxed">
                                                 {q.prompt}
                                               </p>
                                             </div>
 
+                                            {Array.isArray(q.images) && q.images.length > 0 && (
+                                              <div className="cas-question-figures">
+                                                <p className="cas-section-label text-center">Figures associées à la question</p>
+                                                <div className="cas-question-figures-grid">
+                                                  {q.images.map((imgUrl: string, imgIndex: number) => (
+                                                    <button
+                                                      key={imgIndex}
+                                                      type="button"
+                                                      className="video-figure-thumb cas-question-figure relative w-full aspect-video overflow-hidden border border-[var(--app-border)] bg-[var(--app-surface-alt)] group"
+                                                      onClick={() =>
+                                                        setSelectedImage({
+                                                          url: imgUrl,
+                                                          title: `Cas Clinique #${String(index + 1).padStart(2, '0')} - Question ${String(activeQuestionIndex + 1).padStart(2, '0')} - Figure ${String(getGlobalFigureNumber(imgUrl, imgIndex)).padStart(2, '0')}`,
+                                                        })
+                                                      }
+                                                    >
+                                                      <Image
+                                                        src={imgUrl}
+                                                        alt={`Figure ${String(getGlobalFigureNumber(imgUrl, imgIndex)).padStart(2, '0')} associée à la question`}
+                                                        fill
+                                                        sizes="(max-width: 640px) 100vw, (max-width: 1024px) 80vw, 560px"
+                                                        className="object-contain"
+                                                        referrerPolicy="no-referrer"
+                                                        onError={(event) => applyImageFallback(event, IMAGE_FALLBACK_SRC)}
+                                                      />
+                                                      <div className="video-figure-caption video-figure-caption--compact absolute inset-x-0 bottom-0 px-2 py-1.5 text-[10px] flex items-center justify-center text-center">
+                                                        <span>Fig. {String(getGlobalFigureNumber(imgUrl, imgIndex)).padStart(2, '0')}</span>
+                                                      </div>
+                                                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                                        <Maximize2 className="w-6 h-6 text-white" />
+                                                      </div>
+                                                    </button>
+                                                  ))}
+                                                </div>
+                                              </div>
+                                            )}
+
                                             {kind === 'qcm' && (
-                                              <div className="space-y-2">
+                                              <div className="space-y-2.5">
+                                                <p className="cas-answer-instruction">Sélectionnez toutes les propositions que vous jugez exactes.</p>
                                                 {q.options?.map((opt: string, optIndex: number) => {
                                                   const isSelected = selectedIndexes.includes(optIndex);
                                                   const isCorrectOption = correctIndexes.includes(optIndex);
 
                                                   let rowClass =
-                                                    'video-option-row w-full text-left px-3 py-2 rounded-lg border text-base flex items-center justify-between transition-all ';
+                                                    'video-option-row cas-option-row w-full text-left px-3.5 py-3 rounded-xl border text-base flex items-center justify-between transition-all ';
 
                                                   if (validated) {
                                                     if (isCorrectOption) {
@@ -1145,9 +1184,9 @@ export default function VideoPage() {
                                             )}
 
                                             {kind === 'select' && (
-                                              <div className="space-y-2">
-                                                <label className="text-[11px] font-medium text-[var(--app-muted)]">
-                                                  Choisissez la bonne réponse
+                                              <div className="space-y-2.5">
+                                                <label className="cas-answer-instruction block">
+                                                  Choisissez la réponse la plus pertinente.
                                                 </label>
                                                 {(() => {
                                                   let selectClass =
@@ -1190,43 +1229,6 @@ export default function VideoPage() {
                                                   );
                                                 })()}
                                               </div>
-                                            )}
-
-                                            {Array.isArray(q.images) && q.images.length > 0 && (
-
-                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 place-items-center">
-                                                  {q.images.map((imgUrl: string, imgIndex: number) => (
-                                                    <button
-                                                      key={imgIndex}
-                                                      type="button"
-                                                      className="video-figure-thumb relative w-full max-w-[320px] aspect-video min-h-[140px] rounded-lg overflow-hidden border border-[var(--app-border)] bg-[var(--app-surface-alt)] group mx-auto"
-                                                      onClick={() =>
-                                                        setSelectedImage({
-                                                          url: imgUrl,
-                                                          title: `Cas Clinique #${String(index + 1).padStart(2, '0')} - Question ${String(activeQuestionIndex + 1).padStart(2, '0')} - Figure ${String(getGlobalFigureNumber(imgUrl, imgIndex)).padStart(2, '0')}`,
-                                                        })
-                                                      }
-                                                    >
-                                                      <Image
-                                                        src={imgUrl}
-                                                        alt={`Figure ${String(imgIndex + 1).padStart(2, '0')}`}
-                                                        fill
-                                                        sizes="(max-width: 640px) 100vw, 50vw"
-                                                        className="object-cover transition-transform duration-500 group-hover:scale-110"
-                                                        referrerPolicy="no-referrer"
-                                                        onError={(event) => applyImageFallback(event, IMAGE_FALLBACK_SRC)}
-                                                      />
-                                                      <div className="video-figure-caption video-figure-caption--compact absolute inset-x-0 bottom-0 px-2 py-1 text-[10px] flex items-center justify-center text-center">
-                                                        <span>
-                                                          Fig. {String(getGlobalFigureNumber(imgUrl, imgIndex)).padStart(2, '0')}
-                                                        </span>
-                                                      </div>
-                                                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                                        <Maximize2 className="w-5 h-5 text-white" />
-                                                      </div>
-                                                    </button>
-                                                  ))}
-                                                </div>
                                             )}
 
                                             {showExplanation && (q.explanation || q.answer) && (
@@ -1279,7 +1281,7 @@ export default function VideoPage() {
                                               </div>
                                             )}
                                           
-                                            <div className="flex items-center justify-between gap-2 pt-1">
+                                            <div className="cas-question-actions flex flex-wrap items-center justify-between gap-3 pt-2">
                                               <div className="flex items-center gap-2">
                                                 {kind !== 'open' && (
                                                   <>
@@ -1287,7 +1289,7 @@ export default function VideoPage() {
                                                       type="button"
                                                       onClick={handleValidate}
                                                       disabled={!hasSelection || validated}
-                                                      className="px-3 py-1.5 rounded-lg cas-validate-btn text-white text-[11px] font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
+                                                    className="px-4 py-2 rounded-xl cas-validate-btn text-white text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
                                                     >
                                                       Valider
                                                     </button>
@@ -1325,7 +1327,7 @@ export default function VideoPage() {
                                               </div>
                                             </div>
 
-                                            <div className="cas-question-nav flex items-center justify-between gap-2 pt-2 border-t border-[var(--app-border)]">
+                                            <div className="cas-question-nav flex items-center justify-between gap-2 pt-3 border-t border-[var(--app-border)]">
                                               <button
                                                 type="button"
                                                 onClick={() => gotoQuestion(Math.max(activeQuestionIndex - 1, 0))}
@@ -1335,9 +1337,22 @@ export default function VideoPage() {
                                                 <ChevronLeft className="w-3.5 h-3.5" />
                                                 Précédente
                                               </button>
-                                              <span className="text-[11px] text-[var(--app-muted)] font-medium tabular-nums">
-                                                {String(activeQuestionIndex + 1).padStart(2, '0')} / {String(totalQuestions).padStart(2, '0')}
-                                              </span>
+                                              <div className="cas-question-progress" aria-label={`Progression: question ${activeQuestionIndex + 1} sur ${totalQuestions}`}>
+                                                {c.questions.map((question, questionIndex) => {
+                                                  const progressQuestionId = question.id || `q-${questionIndex}`;
+                                                  const progressState = caseQuestionAnswers[c.id]?.[progressQuestionId];
+                                                  return (
+                                                    <button
+                                                      key={progressQuestionId}
+                                                      type="button"
+                                                      onClick={() => gotoQuestion(questionIndex)}
+                                                      className={`cas-progress-dot ${questionIndex === activeQuestionIndex ? 'cas-progress-dot--active' : ''} ${progressState?.validated ? 'cas-progress-dot--complete' : ''}`}
+                                                      aria-label={`Aller à la question ${questionIndex + 1}`}
+                                                      aria-current={questionIndex === activeQuestionIndex ? 'step' : undefined}
+                                                    />
+                                                  );
+                                                })}
+                                              </div>
                                               <button
                                                 type="button"
                                                 onClick={() =>
@@ -1448,14 +1463,17 @@ export default function VideoPage() {
 
                       return (
                         <>
-                          <div key={q.id} className="cas-question-card rounded-xl border overflow-hidden">
-                            <div className="cas-question-header flex items-center gap-2 px-4 py-3 border-b border-[var(--app-border)]">
-                              <span className="cas-q-number flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold">
+                          <div key={q.id} className="cas-question-card rounded-2xl border overflow-hidden">
+                            <div className="cas-question-header flex flex-wrap items-center gap-2 px-4 py-3 sm:px-5 border-b border-[var(--app-border)]">
+                              <span className="cas-q-number flex-shrink-0 w-8 h-8 rounded-xl flex items-center justify-center text-xs font-bold">
                                 {String(index + 1).padStart(2, '0')}
                               </span>
-                              <span className="cas-q-type-badge px-2.5 py-0.5 rounded-full text-[10px] font-semibold">
-                                {q.mode === 'single' ? 'QCM · Une réponse' : 'QCM · Plusieurs réponses'}
-                              </span>
+                              <div>
+                                <p className="cas-question-eyebrow">Question {index + 1} sur {qcms.length}</p>
+                                <span className="cas-q-type-badge inline-flex mt-0.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold">
+                                  {q.mode === 'single' ? 'QCM · Une réponse' : 'QCM · Plusieurs réponses'}
+                                </span>
+                              </div>
                               {result && (
                                 <div className="ml-auto flex items-center">
                                   {result.isCorrect ? (
@@ -1473,10 +1491,10 @@ export default function VideoPage() {
                               )}
                             </div>
 
-                            <div className="p-4 space-y-3">
-                              <div className="flex items-start gap-2">
-                                <MessageSquare className="w-4 h-4 text-[var(--app-accent)] flex-shrink-0 mt-1" />
-                                <p className="text-lg font-semibold text-[var(--app-text)] whitespace-pre-wrap leading-relaxed">{q.question}</p>
+                            <div className="p-4 sm:p-5 space-y-4">
+                              <div className="cas-question-prompt flex items-start gap-3">
+                                <CheckCircle2 className="w-5 h-5 text-[var(--app-accent)] flex-shrink-0 mt-0.5" />
+                                <p className="text-lg sm:text-xl font-semibold text-[var(--app-text)] whitespace-pre-wrap leading-relaxed">{q.question}</p>
                               </div>
 
                               {qcmConfigError && (
@@ -1492,12 +1510,13 @@ export default function VideoPage() {
                               )}
 
                               {safeOptions.length > 0 ? (
-                                <div className="space-y-2">
+                                <div className="space-y-2.5">
+                                  <p className="cas-answer-instruction">{q.mode === 'single' ? 'Choisissez la réponse la plus pertinente.' : 'Sélectionnez toutes les propositions que vous jugez exactes.'}</p>
                                   {safeOptions.map((opt: string, optIndex: number) => {
                                     const isSelected = selectedIndices.includes(optIndex);
                                     const isCorrectOption = correctIndexes.includes(optIndex);
                                     let rowClass =
-                                      'video-option-row w-full text-left px-3 py-2 rounded-lg border text-base flex items-center justify-between transition-all ';
+                                      'video-option-row cas-option-row w-full text-left px-3.5 py-3 rounded-xl border text-base flex items-center justify-between transition-all ';
 
                                     if (result) {
                                       if (isCorrectOption) {
@@ -1600,13 +1619,13 @@ export default function VideoPage() {
                                 </div>
                               )}
 
-                              <div className="flex items-center justify-between gap-2 pt-1">
+                              <div className="cas-question-actions flex flex-wrap items-center justify-between gap-3 pt-2">
                                 <div className="flex items-center gap-2">
                                   <button
                                     type="button"
                                     onClick={validateAnswer}
                                     disabled={!!result || !!qcmConfigError || !(qcmSelections[q.id]?.length)}
-                                    className="px-3 py-1.5 rounded-lg cas-validate-btn text-white text-[11px] font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
+                                    className="px-4 py-2 rounded-xl cas-validate-btn text-white text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
                                   >
                                     Valider
                                   </button>
@@ -1641,7 +1660,7 @@ export default function VideoPage() {
                               </div>
 
                               {qcms.length > 0 && (
-                                <div className="cas-question-nav flex items-center justify-between gap-2 pt-2 border-t border-[var(--app-border)]">
+                                <div className="cas-question-nav flex items-center justify-between gap-2 pt-3 border-t border-[var(--app-border)]">
                                   <button
                                     type="button"
                                     onClick={() => setActiveQcmIndex((prev) => Math.max(prev - 1, 0))}
@@ -1651,9 +1670,18 @@ export default function VideoPage() {
                                     <ChevronLeft className="w-3.5 h-3.5" />
                                     Précédent
                                   </button>
-                                  <span className="text-[11px] text-[var(--app-muted)] font-medium tabular-nums">
-                                    {String(index + 1).padStart(2, '0')} / {String(qcms.length).padStart(2, '0')}
-                                  </span>
+                                  <div className="cas-question-progress" aria-label={`Progression: QCM ${index + 1} sur ${qcms.length}`}>
+                                    {qcms.map((qcm, qcmIndex) => (
+                                      <button
+                                        key={qcm.id}
+                                        type="button"
+                                        onClick={() => setActiveQcmIndex(qcmIndex)}
+                                        className={`cas-progress-dot ${qcmIndex === index ? 'cas-progress-dot--active' : ''} ${qcmResults[qcm.id] ? 'cas-progress-dot--complete' : ''}`}
+                                        aria-label={`Aller au QCM ${qcmIndex + 1}`}
+                                        aria-current={qcmIndex === index ? 'step' : undefined}
+                                      />
+                                    ))}
+                                  </div>
                                   <button
                                     type="button"
                                     onClick={() => setActiveQcmIndex((prev) => Math.min(prev + 1, qcms.length - 1))}
@@ -1696,23 +1724,24 @@ export default function VideoPage() {
 
                       return (
                         <>
-                          <div key={item.id} className="cas-question-card rounded-xl border overflow-hidden">
-                            <div className="cas-question-header flex items-center gap-2 px-4 py-3 border-b border-[var(--app-border)]">
-                              <span className="cas-q-number flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold">
+                          <div key={item.id} className="cas-question-card rounded-2xl border overflow-hidden">
+                            <div className="cas-question-header flex flex-wrap items-center gap-2 px-4 py-3 sm:px-5 border-b border-[var(--app-border)]">
+                              <span className="cas-q-number flex-shrink-0 w-8 h-8 rounded-xl flex items-center justify-center text-xs font-bold">
                                 {String(index + 1).padStart(2, '0')}
                               </span>
-                              <span className="cas-q-type-badge px-2.5 py-0.5 rounded-full text-[10px] font-semibold">
-                                QROC
-                              </span>
+                              <div>
+                                <p className="cas-question-eyebrow">Question {index + 1} sur {openQuestions.length}</p>
+                                <span className="cas-q-type-badge inline-flex mt-0.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold">QROC</span>
+                              </div>
                             </div>
 
-                            <div className="p-4 space-y-3">
-                              <div className="flex items-start gap-2">
-                                <MessageSquare className="w-4 h-4 text-[var(--app-accent)] flex-shrink-0 mt-1" />
-                                <p className="text-lg font-semibold text-[var(--app-text)] whitespace-pre-wrap leading-relaxed">{item.question}</p>
+                            <div className="p-4 sm:p-5 space-y-4">
+                              <div className="cas-question-prompt flex items-start gap-3">
+                                <MessageSquare className="w-5 h-5 text-[var(--app-accent)] flex-shrink-0 mt-0.5" />
+                                <p className="text-lg sm:text-xl font-semibold text-[var(--app-text)] whitespace-pre-wrap leading-relaxed">{item.question}</p>
                               </div>
 
-                              <div className="flex justify-end">
+                              <div className="cas-question-actions flex justify-end pt-2">
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -1723,7 +1752,7 @@ export default function VideoPage() {
                                     }));
                                     setOpenQuestionFeedbackVisible((prev) => ({ ...prev, [item.id]: nextVisible }));
                                   }}
-                                  className="text-[11px] font-medium text-[var(--app-muted)] hover:text-[var(--app-accent)]"
+                                  className="cas-nav-btn px-4 py-2 rounded-xl border text-xs font-semibold"
                                 >
                                   {isAnswerVisible ? 'Masquer la réponse' : 'Afficher la réponse'}
                                 </button>
@@ -1774,7 +1803,7 @@ export default function VideoPage() {
                               )}
 
                               {openQuestions.length > 0 && (
-                                <div className="cas-question-nav flex items-center justify-between gap-2 pt-2 border-t border-[var(--app-border)]">
+                                <div className="cas-question-nav flex items-center justify-between gap-2 pt-3 border-t border-[var(--app-border)]">
                                   <button
                                     type="button"
                                     onClick={() => setActiveOpenQuestionIndex((prev) => Math.max(prev - 1, 0))}
@@ -1784,9 +1813,18 @@ export default function VideoPage() {
                                     <ChevronLeft className="w-3.5 h-3.5" />
                                     Précédent
                                   </button>
-                                  <span className="text-[11px] text-[var(--app-muted)] font-medium tabular-nums">
-                                    {String(index + 1).padStart(2, '0')} / {String(openQuestions.length).padStart(2, '0')}
-                                  </span>
+                                  <div className="cas-question-progress" aria-label={`Progression: QROC ${index + 1} sur ${openQuestions.length}`}>
+                                    {openQuestions.map((question, questionIndex) => (
+                                      <button
+                                        key={question.id}
+                                        type="button"
+                                        onClick={() => setActiveOpenQuestionIndex(questionIndex)}
+                                        className={`cas-progress-dot ${questionIndex === index ? 'cas-progress-dot--active' : ''} ${openQuestionAnswersVisible[question.id] ? 'cas-progress-dot--complete' : ''}`}
+                                        aria-label={`Aller au QROC ${questionIndex + 1}`}
+                                        aria-current={questionIndex === index ? 'step' : undefined}
+                                      />
+                                    ))}
+                                  </div>
                                   <button
                                     type="button"
                                     onClick={() =>
@@ -1831,20 +1869,18 @@ export default function VideoPage() {
 
                       return (
                         <>
-                          <div key={d.id} className="video-learning-card video-module-card rounded-2xl overflow-hidden border shadow-xl">
-                            <div className="cas-question-header flex items-center gap-2 px-4 py-3 border-b border-[var(--app-border)]">
-                              <span className="cas-q-number flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold">
+                          <div key={d.id} className="cas-question-card rounded-2xl overflow-hidden border">
+                            <div className="cas-question-header flex flex-wrap items-center gap-2 px-4 py-3 sm:px-5 border-b border-[var(--app-border)]">
+                              <span className="cas-q-number flex-shrink-0 w-8 h-8 rounded-xl flex items-center justify-center text-xs font-bold">
                                 {String(index + 1).padStart(2, '0')}
                               </span>
-                              <span className="cas-q-type-badge px-2.5 py-0.5 rounded-full text-[10px] font-semibold">
-                                Schéma interactif
-                              </span>
-                              <h3 className="ml-auto text-sm md:text-base font-semibold text-[var(--app-text)]">
-                                Figure {String(index + 1).padStart(2, '0')}
-                              </h3>
+                              <div>
+                                <p className="cas-question-eyebrow">Figure {index + 1} sur {diagrams.length}</p>
+                                <span className="cas-q-type-badge inline-flex mt-0.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold">Schéma interactif</span>
+                              </div>
                             </div>
-                            <div className="p-6 md:p-8 space-y-5">
-                              <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-2)] px-4 py-3">
+                            <div className="p-4 sm:p-5 md:p-6 space-y-5">
+                              <div className="cas-diagram-instruction rounded-xl border px-4 py-3">
                                 <p className="video-section-intro text-sm md:text-base text-[var(--app-muted)] flex items-center gap-2">
                                   <FileText className="w-4 h-4 text-[var(--app-accent)] flex-shrink-0" />
                                   <span>Mettez un titre et légendez la figure suivante :</span>
@@ -1864,7 +1900,7 @@ export default function VideoPage() {
                                 {/* plus de calque SVG sur l'image : les marqueurs sont uniquement listés en dessous */}
                               </div>
 
-                              <div className="flex justify-center">
+                              <div className="cas-question-actions flex justify-center">
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -1879,7 +1915,7 @@ export default function VideoPage() {
                                       setDiagramFeedbackVisible((prev) => ({ ...prev, [d.id]: false }));
                                     }
                                   }}
-                                  className="px-4 py-2 rounded-lg cas-nav-btn border text-xs font-medium"
+                                  className="px-4 py-2 rounded-xl cas-validate-btn text-white text-xs font-semibold"
                                 >
                                   {showAnswers ? 'Masquer les réponses' : 'Afficher les réponses'}
                                 </button>
@@ -1956,7 +1992,7 @@ export default function VideoPage() {
                               )}
 
                               {diagrams.length > 0 && (
-                                <div className="cas-question-nav flex items-center justify-between gap-2 pt-2 border-t border-[var(--app-border)]">
+                                <div className="cas-question-nav flex items-center justify-between gap-2 pt-3 border-t border-[var(--app-border)]">
                                   <button
                                     type="button"
                                     onClick={() => setActiveDiagramIndex((prev) => Math.max(prev - 1, 0))}
@@ -1966,9 +2002,18 @@ export default function VideoPage() {
                                     <ChevronLeft className="w-3.5 h-3.5" />
                                     Précédent
                                   </button>
-                                  <span className="text-[11px] text-[var(--app-muted)] font-medium tabular-nums">
-                                    {String(index + 1).padStart(2, '0')} / {String(diagrams.length).padStart(2, '0')}
-                                  </span>
+                                  <div className="cas-question-progress" aria-label={`Progression: schéma ${index + 1} sur ${diagrams.length}`}>
+                                    {diagrams.map((diagram, diagramIndex) => (
+                                      <button
+                                        key={diagram.id}
+                                        type="button"
+                                        onClick={() => setActiveDiagramIndex(diagramIndex)}
+                                        className={`cas-progress-dot ${diagramIndex === index ? 'cas-progress-dot--active' : ''} ${diagramAnswersVisible[diagram.id] ? 'cas-progress-dot--complete' : ''}`}
+                                        aria-label={`Aller au schéma ${diagramIndex + 1}`}
+                                        aria-current={diagramIndex === index ? 'step' : undefined}
+                                      />
+                                    ))}
+                                  </div>
                                   <button
                                     type="button"
                                     onClick={() => setActiveDiagramIndex((prev) => Math.min(prev + 1, diagrams.length - 1))}
