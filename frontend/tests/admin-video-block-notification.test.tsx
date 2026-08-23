@@ -23,7 +23,13 @@ const mockVideos = [
   },
 ];
 
-const mockUsers = [
+const mockUsers: Array<{
+  id: string;
+  email: string;
+  role: string;
+  blockedVideoIds: string[];
+  purchasedVideos: string[];
+}> = [
   {
     id: 'vip-user-1',
     email: 'vip@test.com',
