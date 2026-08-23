@@ -345,11 +345,13 @@ export const extractCloudinaryPublicId = (secureUrl) => {
 };
 
 // ─────────────────────────────────────────────────────────────
-// Organisation des dossiers Cloudinary par spécialité / vidéo
-// Structure cible : orl-platform/<specialite>/<videoSlug>[/<subFolder>]
-// ex: orl-platform/otologie/anatomie-oreille-moyenne/videos
-//     orl-platform/rhinologie/sinusite-aigue/cases
-//     orl-platform/laryngologie/dysphonie/diagrams
+// Organisation des dossiers Cloudinary — nouvelle structure demandée
+//   Vidéos          : orl-platform/videos/<speciality>/<nom-video>/
+//   Cas cliniques   : orl-platform/videos/<speciality>/<nom-video>/cas-images/
+//   Questions cas   : orl-platform/videos/<speciality>/<nom-video>/cas-question-images/
+//   Avatars         : orl-platform/avatars/<name-user>/
+//   Support chat    : orl-platform/support-chat/<name-user>/
+//   Schémas/Diagrams: orl-platform/diagrams/<speciality>/<nom-video>/
 // ─────────────────────────────────────────────────────────────
 export const sanitizeCloudinaryFolderSegment = (value, fallback = '') => {
   const raw = String(value || '').trim();
@@ -375,6 +377,98 @@ export const sanitizeCloudinaryFolderPath = (folder, fallback = 'orl-platform') 
   return parts.length > 0 ? parts.join('/') : fallback;
 };
 
+// ── Helpers bas niveau (spécialité / vidéo / user) ──────────────────
+const resolveSpecialtySlug = (specialty) => sanitizeCloudinaryFolderSegment(specialty, '');
+const resolveVideoSlug = (videoSlug, videoTitle) =>
+  sanitizeCloudinaryFolderSegment(videoSlug, '') ||
+  sanitizeCloudinaryFolderSegment(videoTitle, '');
+
+const resolveUserSlug = (userName, userId, fallback = 'user') => {
+  const fromName = sanitizeCloudinaryFolderSegment(userName, '');
+  if (fromName) return fromName;
+  const fromId = sanitizeCloudinaryFolderSegment(userId, '');
+  if (fromId) return fromId;
+  return fallback;
+};
+
+// ── Builders dédiés à la nouvelle arborescence ───────────────────────
+export const buildCloudinaryVideoFolder = ({
+  specialty,
+  videoTitle,
+  videoSlug,
+  baseFolder = 'orl-platform',
+} = {}) => {
+  const base = sanitizeCloudinaryFolderSegment(baseFolder, 'orl-platform');
+  const specialtySlug = resolveSpecialtySlug(specialty);
+  const videoSlugResolved = resolveVideoSlug(videoSlug, videoTitle);
+  const segments = [base, 'videos'];
+  if (specialtySlug) segments.push(specialtySlug);
+  if (videoSlugResolved) segments.push(videoSlugResolved);
+  return segments.join('/');
+};
+
+export const buildCloudinaryCaseImagesFolder = ({
+  specialty,
+  videoTitle,
+  videoSlug,
+  baseFolder = 'orl-platform',
+} = {}) => {
+  const videoFolder = buildCloudinaryVideoFolder({ specialty, videoTitle, videoSlug, baseFolder });
+  return `${videoFolder}/cas-images`;
+};
+
+export const buildCloudinaryCaseQuestionImagesFolder = ({
+  specialty,
+  videoTitle,
+  videoSlug,
+  baseFolder = 'orl-platform',
+} = {}) => {
+  const videoFolder = buildCloudinaryVideoFolder({ specialty, videoTitle, videoSlug, baseFolder });
+  return `${videoFolder}/cas-question-images`;
+};
+
+export const buildCloudinaryDiagramFolder = ({
+  specialty,
+  videoTitle,
+  videoSlug,
+  baseFolder = 'orl-platform',
+} = {}) => {
+  const base = sanitizeCloudinaryFolderSegment(baseFolder, 'orl-platform');
+  const specialtySlug = resolveSpecialtySlug(specialty);
+  const videoSlugResolved = resolveVideoSlug(videoSlug, videoTitle);
+  const segments = [base, 'diagrams'];
+  if (specialtySlug) segments.push(specialtySlug);
+  if (videoSlugResolved) segments.push(videoSlugResolved);
+  return segments.join('/');
+};
+
+export const buildCloudinaryAvatarFolder = ({
+  userName,
+  userId,
+  baseFolder = 'orl-platform',
+} = {}) => {
+  const base = sanitizeCloudinaryFolderSegment(baseFolder, 'orl-platform');
+  const userSlug = resolveUserSlug(userName, userId, 'user');
+  return `${base}/avatars/${userSlug}`;
+};
+
+export const buildCloudinarySupportChatFolder = ({
+  userName,
+  userId,
+  baseFolder = 'orl-platform',
+} = {}) => {
+  const base = sanitizeCloudinaryFolderSegment(baseFolder, 'orl-platform');
+  const userSlug = resolveUserSlug(userName, userId, 'user');
+  return `${base}/support-chat/${userSlug}`;
+};
+
+// ── Builder générique (compatibilité) ─────────────────────────────────
+// subFolder peut être :
+//   ''                       → orl-platform/videos/<spec>/<video>
+//   'cas-images' | 'cases'   → .../cas-images
+//   'cas-question-images' | 'cases/questions' → .../cas-question-images
+//   'diagrams'               → orl-platform/diagrams/<spec>/<video>
+//   'avatars' / 'support-chat' → géré via builders dédiés (fallback ici)
 export const buildCloudinaryOrganizedFolder = ({
   specialty,
   videoTitle,
@@ -382,22 +476,57 @@ export const buildCloudinaryOrganizedFolder = ({
   subFolder = '',
   baseFolder = 'orl-platform',
 } = {}) => {
+  const normalizedSub = String(subFolder || '').trim().toLowerCase();
   const base = sanitizeCloudinaryFolderSegment(baseFolder, 'orl-platform');
-  const specialtySlug = sanitizeCloudinaryFolderSegment(specialty, '');
-  const resolvedVideoSlug =
-    sanitizeCloudinaryFolderSegment(videoSlug, '') ||
-    sanitizeCloudinaryFolderSegment(videoTitle, '');
-  const subParts = String(subFolder || '')
-    .split('/')
-    .map((seg) => sanitizeCloudinaryFolderSegment(seg, ''))
-    .filter(Boolean);
 
-  const segments = [base];
-  if (specialtySlug) segments.push(specialtySlug);
-  if (resolvedVideoSlug) segments.push(resolvedVideoSlug);
-  if (subParts.length > 0) segments.push(...subParts);
+  // Cas diagrams → arbre séparé orl-platform/diagrams/...
+  if (
+    normalizedSub === 'diagrams' ||
+    normalizedSub === 'diagram' ||
+    normalizedSub.includes('diagram')
+  ) {
+    return buildCloudinaryDiagramFolder({ specialty, videoTitle, videoSlug, baseFolder: base });
+  }
 
-  return segments.join('/');
+  // Cas avatars / support-chat transmis par erreur via ce builder générique
+  if (normalizedSub === 'avatars' || normalizedSub.includes('avatar')) {
+    // nécessite userName/userId ; on retourne seulement le préfixe pour éviter crash
+    return `${base}/avatars`;
+  }
+  if (normalizedSub === 'support-chat' || normalizedSub.includes('support')) {
+    return `${base}/support-chat`;
+  }
+
+  // Détermination du suffixe vidéo
+  let suffix = '';
+  if (
+    normalizedSub === 'cas-images' ||
+    normalizedSub === 'cases' ||
+    normalizedSub === 'case' ||
+    normalizedSub.includes('cas-images')
+  ) {
+    suffix = 'cas-images';
+  } else if (
+    normalizedSub === 'cas-question-images' ||
+    normalizedSub === 'cases/questions' ||
+    normalizedSub === 'case-question' ||
+    normalizedSub.includes('cas-question')
+  ) {
+    suffix = 'cas-question-images';
+  } else if (normalizedSub) {
+    // sous-dossier custom : on sanitise chaque segment
+    const customParts = String(subFolder || '')
+      .split('/')
+      .map((seg) => sanitizeCloudinaryFolderSegment(seg, ''))
+      .filter(Boolean);
+    if (customParts.length > 0) suffix = customParts.join('/');
+  }
+
+  const videoFolder = buildCloudinaryVideoFolder({ specialty, videoTitle, videoSlug, baseFolder: base });
+  // Si aucun hint vidéo n'a été fourni, videoFolder vaut "orl-platform/videos"
+  // Dans ce cas on append directement le suffix s'il existe
+  if (suffix) return `${videoFolder}/${suffix}`;
+  return videoFolder;
 };
 
 export const resolveOrganizedCloudinaryFolder = ({
@@ -420,15 +549,19 @@ export const resolveOrganizedCloudinaryFolder = ({
     let inferredSub = String(subFolder || '').trim();
     if (!inferredSub && folder) {
       const legacy = String(folder).toLowerCase();
-      if (legacy.includes('case-question')) inferredSub = 'cases/questions';
-      else if (legacy.includes('case-images') || legacy.includes('cases')) inferredSub = 'cases';
-      else if (legacy.includes('diagrams')) inferredSub = 'diagrams';
+      // Mapping legacy → nouvelle nomenclature
+      if (legacy.includes('cas-question') || legacy.includes('case-question')) inferredSub = 'cas-question-images';
+      else if (legacy.includes('cas-images') || legacy.includes('case-images')) inferredSub = 'cas-images';
+      else if (legacy.includes('cases/questions')) inferredSub = 'cas-question-images';
+      else if (legacy.includes('cases') || legacy.includes('case')) inferredSub = 'cas-images';
+      else if (legacy.includes('diagram')) inferredSub = 'diagrams';
       else if (legacy.includes('support-chat')) inferredSub = 'support-chat';
-      else if (legacy.includes('avatars')) inferredSub = 'avatars';
+      else if (legacy.includes('avatar')) inferredSub = 'avatars';
     }
-    // Pour les vidéos on garde le dossier racine de la vidéo sans sous-dossier supplémentaire
-    // (la vidéo + ses parts vivent dans orl-platform/<spec>/<videoSlug>)
-    // Les callers qui veulent un sous-dossier pour les images précisent subFolder explicitement.
+
+    // Pour les vidéos on garde le dossier racine de la vidéo sans suffixe
+    // Les callers qui veulent un sous-dossier précisent subFolder explicitement.
+    // Traduction des anciennes valeurs 'cases' → 'cas-images', etc. est déjà faite ci-dessus.
     return buildCloudinaryOrganizedFolder({
       specialty,
       videoTitle,

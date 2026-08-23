@@ -2337,12 +2337,12 @@ router.post('/clinicalCases/import', authOptional, async (req, res) => {
       const caseFolder = buildCloudinaryOrganizedFolder({
         specialty: videoInfo.subspecialty,
         videoTitle: videoInfo.title,
-        subFolder: 'cases',
+        subFolder: 'cas-images',
       });
       const caseQuestionFolder = buildCloudinaryOrganizedFolder({
         specialty: videoInfo.subspecialty,
         videoTitle: videoInfo.title,
-        subFolder: 'cases/questions',
+        subFolder: 'cas-question-images',
       });
       const images = await uploadImportedDriveImages({
         links: clinicalCase.imageLinks,

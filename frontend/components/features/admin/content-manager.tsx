@@ -126,7 +126,11 @@ const BACKEND_UPLOAD_LIMIT = 1024 * 1024 * 1024; // 1GB
 const UPLOAD_FOLDER = 'orl-platform';
 
 // ─────────────────────────────────────────────────────────────
-// Dossiers Cloudinary organisés : orl-platform/<specialite>/<videoSlug>[/<subFolder>]
+// Dossiers Cloudinary organisés — nouvelle structure
+//   videos   : orl-platform/videos/<speciality>/<nom-video>
+//   cas      : orl-platform/videos/<speciality>/<nom-video>/cas-images
+//   questions: orl-platform/videos/<speciality>/<nom-video>/cas-question-images
+//   diagrams : orl-platform/diagrams/<speciality>/<nom-video>
 // Helper local pour construire le folder à partir des infos vidéo
 // ─────────────────────────────────────────────────────────────
 const buildVideoCloudinaryFolder = (options: {
@@ -2088,15 +2092,15 @@ export function AdminContentManager() {
       const uploadedAssets: CloudinaryCleanupAsset[] = [];
       const failedFiles: string[] = [];
 
-      // Dossier organisé : orl-platform/<specialite>/<videoSlug>/cases
+      // Dossier organisé : orl-platform/videos/<specialite>/<video>/cas-images
       const videoInfo = getVideoFolderInfo(videos, caseData.videoId);
       const caseFolder = videoInfo
         ? buildVideoCloudinaryFolder({
             specialty: videoInfo.specialty,
             videoTitle: videoInfo.videoTitle,
-            subFolder: 'cases',
+            subFolder: 'cas-images',
           })
-        : buildVideoCloudinaryFolder({ subFolder: 'cases' });
+        : buildVideoCloudinaryFolder({ subFolder: 'cas-images' });
 
       for (const [index, file] of files.entries()) {
         try {
@@ -2105,7 +2109,7 @@ export function AdminContentManager() {
             folder: caseFolder,
             specialty: videoInfo?.specialty,
             videoTitle: videoInfo?.videoTitle,
-            subFolder: 'cases',
+            subFolder: 'cas-images',
             onProgress: (percentage) => {
               setUploadProgress(Math.round(((index + percentage / 100) / files.length) * 100));
             },
@@ -2334,15 +2338,15 @@ export function AdminContentManager() {
         ? buildVideoCloudinaryFolder({
             specialty: videoInfo.specialty,
             videoTitle: videoInfo.videoTitle,
-            subFolder: 'cases/questions',
+            subFolder: 'cas-question-images',
           })
-        : buildVideoCloudinaryFolder({ subFolder: 'cases/questions' });
+        : buildVideoCloudinaryFolder({ subFolder: 'cas-question-images' });
       const response = await uploadCloudinaryAsset(file, {
         resourceType: 'image',
         folder: questionFolder,
         specialty: videoInfo?.specialty,
         videoTitle: videoInfo?.videoTitle,
-        subFolder: 'cases/questions',
+        subFolder: 'cas-question-images',
       });
 
       const uploadedAsset = dedupeCleanupAssets([
@@ -3267,7 +3271,7 @@ export function AdminContentManager() {
                           videoTitle: String(videoData.title || '').trim() || videoUploadFileName || 'nom-video',
                         })}
                       </code>
-                      <span className="ml-2 text-slate-500">— Structure : orl-platform / spécialité / nom-vidéo</span>
+                      <span className="ml-2 text-slate-500">— Structure : orl-platform/videos/spécialité/nom-vidéo</span>
                     </div>
 
                     {videoUploadPhase !== 'idle' && (

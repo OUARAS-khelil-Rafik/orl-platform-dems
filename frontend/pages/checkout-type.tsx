@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { useAuth } from '@/components/providers/auth-provider';
-import { db, collection, addDoc, doc, updateDoc } from '@/lib/data/local-data';
+import { db, collection, addDoc, doc, updateDoc, createChargilyCheckout } from '@/lib/data/local-data';
 import { motion } from 'motion/react';
 import { ShieldCheck, Upload, CheckCircle2, AlertCircle, CreditCard, Camera } from 'lucide-react';
 import Image from 'next/image';
@@ -36,7 +36,42 @@ export default function CheckoutPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
-    if (!receiptUrl && paymentMethod === 'ccp') {
+
+    // BaridiMob / EDAHABIA via Chargily Pay → redirection paiement en ligne
+    if (paymentMethod === 'baridimob') {
+      setIsSubmitting(true);
+      try {
+        const result = await createChargilyCheckout({
+          amount,
+          currency: 'dzd',
+          type: isSubscription ? 'subscription' : 'pack',
+          targetId: isSubscription ? 'vip_plus' : (type || 'pack'),
+          plan: isSubscription ? 'monthly' : undefined,
+          locale: 'fr',
+          description: isSubscription
+            ? `Abonnement VIP Plus - ${amount} DZD`
+            : `Pack ${type} - ${amount} DZD`,
+        });
+
+        if (!result?.checkoutUrl) throw new Error('URL Chargily manquante');
+
+        window.location.href = result.checkoutUrl;
+        return;
+      } catch (error) {
+        console.error('Chargily error:', error);
+        const msg = error instanceof Error ? error.message : 'Erreur Chargily Pay';
+        if (msg.toLowerCase().includes('chargily') && msg.toLowerCase().includes('non configur')) {
+          alert("Paiement Chargily Pay non configuré côté serveur. Veuillez configurer CHARGILY_SECRET_KEY ou utilisez le virement CCP.");
+        } else {
+          alert(msg);
+        }
+        setIsSubmitting(false);
+        return;
+      }
+    }
+
+    // Virement CCP → flux manuel (reste inchangé, avec reçu)
+    if (!receiptUrl) {
       alert('Veuillez fournir un lien vers votre reçu (ex: Google Drive, Imgur) ou utiliser le chat de support.');
       return;
     }
@@ -50,7 +85,7 @@ export default function CheckoutPage() {
         status: 'pending',
         type: isSubscription ? 'subscription' : 'pack',
         targetId: isSubscription ? 'vip_plus' : type,
-        receiptUrl: receiptUrl || 'Paiement BaridiMob (en attente de validation API)',
+        receiptUrl,
         createdAt: new Date().toISOString()
       });
 
@@ -176,7 +211,8 @@ export default function CheckoutPage() {
                 {paymentMethod === 'baridimob' && (
                   <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="space-y-6 overflow-hidden">
                     <div className="bg-yellow-50 p-6 rounded-xl border border-yellow-200 text-center">
-                      <p className="text-yellow-800 font-medium mb-4">Vous allez être redirigé vers l'interface sécurisée Chargily Pay pour effectuer votre paiement BaridiMob.</p>
+                      <p className="text-yellow-800 font-medium mb-2">Paiement instantané EDAHABIA / CIB via Chargily Pay</p>
+                      <p className="text-yellow-700 text-sm mb-4">Vous allez être redirigé vers l&apos;interface sécurisée Chargily Pay (carte EDAHABIA, CIB). Votre accès sera activé automatiquement après paiement.</p>
                       <Image src="https://picsum.photos/seed/chargily/200/50" alt="Chargily Pay" width={200} height={50} className="mx-auto mix-blend-multiply opacity-50" />
                     </div>
                   </motion.div>
@@ -190,10 +226,15 @@ export default function CheckoutPage() {
                   >
                     {isSubmitting ? (
                       <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    ) : paymentMethod === 'baridimob' ? (
+                      <>
+                        <ShieldCheck className="h-5 w-5" />
+                        Payer {amount} DZD via Chargily Pay
+                      </>
                     ) : (
                       <>
                         <ShieldCheck className="h-5 w-5" />
-                        Confirmer et Payer {amount} DZD
+                        Envoyer la preuve CCP — {amount} DZD
                       </>
                     )}
                   </button>

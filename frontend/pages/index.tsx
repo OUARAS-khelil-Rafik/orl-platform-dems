@@ -1823,11 +1823,13 @@ export default function HomePage() {
           continue;
         }
         const attachmentKind = getSupportChatAttachmentKind(file);
+        const userDisplay = String(user?.displayName || user?.email?.split('@')[0] || user?.uid || 'user').trim();
         const attachmentUpload = await uploadCloudinaryAsset(file, {
           resourceType: attachmentKind === 'pdf' ? 'raw' : 'image',
-          folder: 'orl-platform/support-chat',
           fileName: file.name,
           purpose: 'support-chat',
+          userName: userDisplay,
+          userId: user?.uid,
         });
         const attachment = buildSupportChatAttachment(file, attachmentUpload.secureUrl, attachmentUpload.publicId);
         if (attachment) {

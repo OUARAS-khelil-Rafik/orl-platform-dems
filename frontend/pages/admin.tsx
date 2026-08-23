@@ -1938,11 +1938,18 @@ export default function AdminDashboard() {
           continue;
         }
         const attachmentKind = getSupportChatAttachmentKind(file);
+        // L'admin répond au nom de l'utilisateur du chat → on range dans le dossier de l'utilisateur cible
+        const targetChat = supportChats.find((entry) => entry.id === selectedSupportChatId);
+        const targetUser = users.find((u) => u.id === targetChat?.userId);
+        const targetDisplay = String(
+          targetUser?.displayName || targetUser?.email?.split('@')[0] || targetChat?.userId || profile?.displayName || 'user',
+        ).trim();
         const response = await uploadCloudinaryAsset(file, {
           resourceType: attachmentKind === 'pdf' ? 'raw' : 'image',
-          folder: 'orl-platform/support-chat',
           fileName: file.name,
           purpose: 'support-chat',
+          userName: targetDisplay,
+          userId: targetChat?.userId || targetUser?.id,
         });
         const attachment = buildSupportChatAttachment(file, response.secureUrl, response.publicId);
         if (attachment) {

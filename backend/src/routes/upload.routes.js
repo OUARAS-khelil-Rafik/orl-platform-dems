@@ -10,7 +10,8 @@ import { unlink } from 'node:fs/promises';
 import mongoose from 'mongoose';
 import { authRequired } from '../middleware/auth.js';
 import {
-  buildCloudinaryOrganizedFolder,
+  buildCloudinaryAvatarFolder,
+  buildCloudinarySupportChatFolder,
   cloudinaryAssetExists,
   cloudinaryAssetsExistByPrefix,
   destroyCloudinaryAsset,
@@ -18,7 +19,6 @@ import {
   inferCloudinaryResourceTypeFromUrl,
   resolveOrganizedCloudinaryFolder,
   sanitizeCloudinaryFolderPath,
-  sanitizeCloudinaryFolderSegment,
   uploadBufferToCloudinary,
   uploadFileToCloudinary,
   uploadLargeVideoToCloudinary,
@@ -96,6 +96,7 @@ const STANDARD_VIDEO_UPLOAD_THRESHOLD = toBoundedInt({
 }) * MB;
 const MAX_RETRY_DELAY_MS = 8000;
 const AVATAR_FOLDER_SEGMENT = '/orl-platform/avatars/';
+const SUPPORT_CHAT_FOLDER_SEGMENT = '/orl-platform/support-chat/';
 const VIDEO_PART_SUFFIX = '-part-';
 
 const formatPartNumber = (partNumber) => {
@@ -119,6 +120,16 @@ const isAvatarCloudinaryAsset = (entry) => {
     publicId.includes('orl-platform/avatars/')
     || secureUrl.includes(AVATAR_FOLDER_SEGMENT)
     || secureUrl.includes('/avatars/')
+  );
+};
+
+const isSupportChatCloudinaryAsset = (entry) => {
+  const publicId = String(entry?.publicId || '').trim().toLowerCase();
+  const secureUrl = String(entry?.secureUrl || '').trim().toLowerCase();
+  return (
+    publicId.includes('orl-platform/support-chat/')
+    || secureUrl.includes(SUPPORT_CHAT_FOLDER_SEGMENT)
+    || secureUrl.includes('/support-chat/')
   );
 };
 
@@ -225,6 +236,24 @@ const verifyAssetUsageInMongo = async ({ publicId, secureUrl }) => {
     );
     if (diagramMatch) {
       usedBy.push('diagrams');
+    }
+
+    // Support chat attachments (stockés dans supportChatMessages)
+    try {
+      const supportMatch = await db.collection('supportChatMessages').findOne(
+        { 'attachments.url': secureUrl },
+        { projection: { _id: 1 } },
+      );
+      if (supportMatch) usedBy.push('supportChatMessages');
+      else {
+        const supportMatch2 = await db.collection('supportChatMessages').findOne(
+          { 'attachments.secureUrl': secureUrl },
+          { projection: { _id: 1 } },
+        );
+        if (supportMatch2) usedBy.push('supportChatMessages');
+      }
+    } catch {
+      // collection may not exist yet — ignore
     }
   }
 
@@ -786,7 +815,12 @@ router.post('/cloudinary', authRequired, withSingleFile(cloudinaryUpload), async
           : 'image';
     const purpose = String(req.query.purpose || '').trim().toLowerCase();
 
-    // --- Dossiers organisés Cloudinary : orl-platform/<specialite>/<videoSlug>[/<subFolder>] ---
+    // --- Dossiers organisés Cloudinary — nouvelle structure ---
+    // Vidéos          : orl-platform/videos/<speciality>/<nom-video>/
+    // Cas images      : orl-platform/videos/<speciality>/<nom-video>/cas-images/
+    // Q cas images    : orl-platform/videos/<speciality>/<nom-video>/cas-question-images/
+    // Schémas         : orl-platform/diagrams/<speciality>/<nom-video>/
+    // Support chat    : orl-platform/support-chat/<name-user>/
     const rawFolderParam = String(req.query.folder || UPLOAD_FOLDER).trim();
     const requestedSpecialty = String(req.query.specialty || req.query.subspecialty || '').trim();
     const requestedVideoTitle = String(req.query.videoTitle || req.query.video_title || req.query.title || '').trim();
@@ -795,8 +829,18 @@ router.post('/cloudinary', authRequired, withSingleFile(cloudinaryUpload), async
 
     let folder;
     if (purpose === 'support-chat') {
-      // Les pièces jointes du chat restent dans leur dossier dédié (non classé par vidéo)
-      folder = sanitizeCloudinaryFolderPath(rawFolderParam, UPLOAD_FOLDER);
+      // orl-platform/support-chat/<name-user>/
+      const hintedUserName = String(
+        req.query.userName || req.query.user_name || req.query.supportUserName || req.query.nameUser || '',
+      ).trim();
+      const resolvedUserName =
+        hintedUserName ||
+        String(req.authUser?.displayName || req.authUser?.email?.split('@')[0] || req.authUser?.uid || 'user').trim();
+      const resolvedUserId = String(req.authUser?.uid || '').trim();
+      folder = buildCloudinarySupportChatFolder({
+        userName: resolvedUserName,
+        userId: resolvedUserId,
+      });
     } else if (requestedSpecialty || requestedVideoTitle || requestedVideoSlug || requestedSubFolder) {
       folder = resolveOrganizedCloudinaryFolder({
         folder: rawFolderParam,
@@ -1157,7 +1201,8 @@ router.post('/cleanup', authRequired, async (req, res) => {
           continue;
         }
 
-        const cleanupCloudinaryOptions = isAvatarCloudinaryAsset(asset)
+        const isUserOwnedAsset = isAvatarCloudinaryAsset(asset) || isSupportChatCloudinaryAsset(asset);
+        const cleanupCloudinaryOptions = isUserOwnedAsset
           ? {
             preferUserConfig: false,
             allowGlobalFallback: true,
@@ -1226,9 +1271,16 @@ router.post('/avatar', authRequired, withSingleFile(avatarUpload), async (req, r
       `avatar-${req.authUser.uid}`,
     );
 
+    // orl-platform/avatars/<name-user>/
+    const avatarUserName = String(
+      req.authUser?.displayName || req.authUser?.email?.split('@')[0] || req.authUser?.uid || 'user',
+    ).trim();
+    const avatarUserId = String(req.authUser?.uid || '').trim();
+    const avatarFolder = buildCloudinaryAvatarFolder({ userName: avatarUserName, userId: avatarUserId });
+
     const result = await uploadBufferToCloudinary({
       buffer: req.file.buffer,
-      folder: 'orl-platform/avatars',
+      folder: avatarFolder,
       resourceType: 'image',
       filename: avatarBaseName,
       authUser: req.authUser,

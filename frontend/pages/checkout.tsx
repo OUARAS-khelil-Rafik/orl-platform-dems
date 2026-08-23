@@ -7,7 +7,7 @@ import { motion } from 'motion/react';
 import { Trash2, CreditCard, ShieldCheck, Loader2, ShoppingCart, PlayCircle, Lock, ReceiptText, Clock3, ShoppingBag } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { db, collection, addDoc, getDocs, query, where, getDoc, doc } from '@/lib/data/local-data';
+import { db, collection, getDocs, query, where, getDoc, doc, createChargilyCheckout } from '@/lib/data/local-data';
 import { IMAGE_FALLBACK_SRC, VIDEO_FALLBACK_SRC, applyImageFallback } from '@/lib/utils/media-fallback';
 
 type PaymentStatus = 'approved' | 'pending' | 'rejected';
@@ -567,39 +567,40 @@ export default function CheckoutPage() {
 
     if (items.length === 0) return;
 
+    if (!total || total <= 0) {
+      alert("Panier invalide (montant 0).");
+      return;
+    }
+
     setIsProcessing(true);
 
     try {
-      // Simulate payment processing
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      const createdAt = new Date().toISOString();
-      const payload = {
-        userId: user.uid,
+      // Créer un checkout Chargily Pay (EDAHABIA / CIB) côté backend
+      const result = await createChargilyCheckout({
         amount: total,
-        items: items.map(i => ({ id: i.id, type: i.type, title: i.title, price: i.price })),
-        status: 'pending',
+        currency: 'dzd',
         type: 'cart',
-        method: 'virement',
-        createdAt,
-      };
+        locale: 'fr',
+        description: `Panier ORL DEMS - ${items.length} article(s) - ${total} DZD`,
+        items: items.map((i) => ({ id: String(i.id), type: String(i.type), title: String(i.title || ''), price: Number(i.price || 0) })),
+      });
 
-      // Record payment in history as pending
-      const paymentRef = await addDoc(collection(db, 'payments'), payload);
+      if (!result?.checkoutUrl) {
+        throw new Error("URL de paiement manquante (Chargily).");
+      }
 
-      setPayments((prev) => [
-        {
-          id: String((paymentRef as { id?: string } | null)?.id || `${Date.now()}`),
-          ...payload,
-        },
-        ...prev,
-      ]);
-
-      clearCart();
-      alert("Demande de paiement envoyée !");
+      // Le panier sera vidé après paiement réussi (webhook). On peut aussi le vider localement
+      // pour éviter double paiement, mais on le garde jusqu'au retour success.
+      window.location.href = result.checkoutUrl;
     } catch (error) {
       console.error('Checkout error:', error);
-      alert("Une erreur est survenue lors du paiement.");
-    } finally {
+      const message = error instanceof Error ? error.message : "Une erreur est survenue lors du paiement.";
+      // Fallback informatif si Chargily non configuré
+      if (message.toLowerCase().includes('chargily') && message.toLowerCase().includes('non configur')) {
+        alert("Paiement en ligne indisponible pour le moment (Chargily non configuré). Contactez l'administrateur.");
+      } else {
+        alert(message);
+      }
       setIsProcessing(false);
     }
   };
@@ -701,28 +702,31 @@ export default function CheckoutPage() {
                   </Link>
                 </div>
               ) : (
-                <button
-                  onClick={handleCheckout}
-                  disabled={isProcessing || items.length === 0}
-                  className="w-full flex items-center justify-center gap-2 bg-medical-600 text-white px-6 py-4 rounded-xl font-bold text-lg hover:bg-medical-700 transition-colors disabled:opacity-70"
-                >
-                  {isProcessing ? (
-                    <>
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                      Traitement...
-                    </>
-                  ) : (
-                    <>
-                      <CreditCard className="w-5 h-5" />
-                      Payer {total} DZD
-                    </>
-                  )}
-                </button>
+                <>
+                  <button
+                    onClick={handleCheckout}
+                    disabled={isProcessing || items.length === 0}
+                    className="w-full flex items-center justify-center gap-2 bg-medical-600 text-white px-6 py-4 rounded-xl font-bold text-lg hover:bg-medical-700 transition-colors disabled:opacity-70"
+                  >
+                    {isProcessing ? (
+                      <>
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                        Redirection vers Chargily Pay...
+                      </>
+                    ) : (
+                      <>
+                        <CreditCard className="w-5 h-5" />
+                        Payer {total} DZD via Chargily Pay
+                      </>
+                    )}
+                  </button>
+                  <p className="mt-2 text-[11px] text-center text-slate-500">Paiement sécurisé EDAHABIA / CIB via Chargily Pay</p>
+                </>
               )}
 
               <div className="mt-6 flex items-center justify-center gap-2 text-sm text-slate-500">
                 <ShieldCheck className="w-4 h-4 text-emerald-500" />
-                <span>Paiement 100% sécurisé</span>
+                <span>Paiement 100% sécurisé — EDAHABIA / CIB</span>
               </div>
             </div>
           </div>

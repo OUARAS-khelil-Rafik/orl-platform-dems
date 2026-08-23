@@ -6,7 +6,7 @@ import { motion } from 'motion/react';
 import { CreditCard, ShieldCheck, Loader2, Star, Check } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { db, collection, addDoc, doc, updateDoc } from '@/lib/data/local-data';
+import { createChargilyCheckout } from '@/lib/data/local-data';
 
 export default function SubscriptionCheckoutPage() {
   const { user, profile } = useAuth();
@@ -25,31 +25,29 @@ export default function SubscriptionCheckoutPage() {
     setIsProcessing(true);
 
     try {
-      // Simulate payment processing
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      // Record payment in history as pending
-      await addDoc(collection(db, 'payments'), {
-        userId: user.uid,
+      const result = await createChargilyCheckout({
         amount: price,
+        currency: 'dzd',
         type: 'subscription',
-        plan: plan,
-        status: 'pending',
-        method: 'virement',
-        createdAt: new Date().toISOString()
+        targetId: 'vip_plus',
+        plan,
+        locale: 'fr',
+        description: `Abonnement VIP Plus ${plan === 'yearly' ? 'annuel' : 'mensuel'} - ${price} DZD`,
       });
 
-      await updateDoc(doc(db, 'users', user.uid), {
-        role: 'vip_plus',
-        subscriptionApprovalStatus: 'pending',
-      });
+      if (!result?.checkoutUrl) {
+        throw new Error("URL de paiement Chargily manquante.");
+      }
 
-      alert("Demande d'abonnement envoyée ! Un administrateur va vérifier et activer votre compte sous peu.");
-      router.push('/dashboard');
+      window.location.href = result.checkoutUrl;
     } catch (error) {
       console.error('Checkout error:', error);
-      alert("Une erreur est survenue lors du paiement.");
-    } finally {
+      const msg = error instanceof Error ? error.message : "Une erreur est survenue lors du paiement.";
+      if (msg.toLowerCase().includes('chargily') && msg.toLowerCase().includes('non configur')) {
+        alert("Paiement en ligne indisponible (Chargily non configuré). Contactez l'administrateur.");
+      } else {
+        alert(msg);
+      }
       setIsProcessing(false);
     }
   };
@@ -176,28 +174,31 @@ export default function SubscriptionCheckoutPage() {
                   </Link>
                 </div>
               ) : (
-                <button
-                  onClick={handleCheckout}
-                  disabled={isProcessing}
-                  className="w-full flex items-center justify-center gap-2 bg-accent-600 text-white px-6 py-4 rounded-xl font-bold text-lg hover:bg-accent-700 transition-colors disabled:opacity-70 shadow-lg shadow-accent-600/30"
-                >
-                  {isProcessing ? (
-                    <>
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                      Traitement...
-                    </>
-                  ) : (
-                    <>
-                      <CreditCard className="w-5 h-5" />
-                      Payer {price} DZD
-                    </>
-                  )}
-                </button>
+                <>
+                  <button
+                    onClick={handleCheckout}
+                    disabled={isProcessing}
+                    className="w-full flex items-center justify-center gap-2 bg-accent-600 text-white px-6 py-4 rounded-xl font-bold text-lg hover:bg-accent-700 transition-colors disabled:opacity-70 shadow-lg shadow-accent-600/30"
+                  >
+                    {isProcessing ? (
+                      <>
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                        Redirection vers Chargily Pay...
+                      </>
+                    ) : (
+                      <>
+                        <CreditCard className="w-5 h-5" />
+                        Payer {price} DZD via Chargily Pay
+                      </>
+                    )}
+                  </button>
+                  <p className="mt-2 text-[11px] text-center text-slate-500">Paiement sécurisé EDAHABIA / CIB via Chargily Pay</p>
+                </>
               )}
 
               <div className="mt-6 flex items-center justify-center gap-2 text-sm text-slate-500">
                 <ShieldCheck className="w-4 h-4 text-emerald-500" />
-                <span>Paiement 100% sécurisé</span>
+                <span>Paiement 100% sécurisé — EDAHABIA / CIB</span>
               </div>
             </div>
           </div>

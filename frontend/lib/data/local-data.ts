@@ -1250,7 +1250,13 @@ export const deleteAuthAccountByUid = async (uid: string) => {
 };
 
 // ─────────────────────────────────────────────────────────────
-// Helpers organisation Cloudinary : orl-platform/<specialite>/<videoSlug>[/<subFolder>]
+// Helpers organisation Cloudinary — nouvelle structure
+//   Vidéos          : orl-platform/videos/<speciality>/<nom-video>/
+//   Cas cliniques   : orl-platform/videos/<speciality>/<nom-video>/cas-images/
+//   Questions cas   : orl-platform/videos/<speciality>/<nom-video>/cas-question-images/
+//   Avatars         : orl-platform/avatars/<name-user>/
+//   Support chat    : orl-platform/support-chat/<name-user>/
+//   Schémas         : orl-platform/diagrams/<speciality>/<nom-video>/
 // ─────────────────────────────────────────────────────────────
 const sanitizeCloudinaryFolderSegment = (value: string, fallback = ''): string => {
   const raw = String(value || '').trim();
@@ -1275,6 +1281,89 @@ const sanitizeCloudinaryFolderPath = (folder: string, fallback = 'orl-platform')
   return parts.length > 0 ? parts.join('/') : fallback;
 };
 
+const resolveSpecialtySlug = (specialty?: string) => sanitizeCloudinaryFolderSegment(specialty || '', '');
+const resolveVideoSlug = (videoSlug?: string, videoTitle?: string) =>
+  sanitizeCloudinaryFolderSegment(videoSlug || '', '') ||
+  sanitizeCloudinaryFolderSegment(videoTitle || '', '');
+
+const resolveUserSlug = (userName?: string, userId?: string, fallback = 'user') => {
+  const fromName = sanitizeCloudinaryFolderSegment(userName || '', '');
+  if (fromName) return fromName;
+  const fromId = sanitizeCloudinaryFolderSegment(userId || '', '');
+  if (fromId) return fromId;
+  return fallback;
+};
+
+export const buildCloudinaryVideoFolder = (options: {
+  specialty?: string;
+  videoTitle?: string;
+  videoSlug?: string;
+  baseFolder?: string;
+}): string => {
+  const base = sanitizeCloudinaryFolderSegment(options.baseFolder || 'orl-platform', 'orl-platform');
+  const specialtySlug = resolveSpecialtySlug(options.specialty);
+  const videoSlugResolved = resolveVideoSlug(options.videoSlug, options.videoTitle);
+  const segments = [base, 'videos'];
+  if (specialtySlug) segments.push(specialtySlug);
+  if (videoSlugResolved) segments.push(videoSlugResolved);
+  return segments.join('/');
+};
+
+export const buildCloudinaryCaseImagesFolder = (options: {
+  specialty?: string;
+  videoTitle?: string;
+  videoSlug?: string;
+  baseFolder?: string;
+}): string => {
+  const videoFolder = buildCloudinaryVideoFolder(options as any);
+  return `${videoFolder}/cas-images`;
+};
+
+export const buildCloudinaryCaseQuestionImagesFolder = (options: {
+  specialty?: string;
+  videoTitle?: string;
+  videoSlug?: string;
+  baseFolder?: string;
+}): string => {
+  const videoFolder = buildCloudinaryVideoFolder(options as any);
+  return `${videoFolder}/cas-question-images`;
+};
+
+export const buildCloudinaryDiagramFolder = (options: {
+  specialty?: string;
+  videoTitle?: string;
+  videoSlug?: string;
+  baseFolder?: string;
+}): string => {
+  const base = sanitizeCloudinaryFolderSegment(options.baseFolder || 'orl-platform', 'orl-platform');
+  const specialtySlug = resolveSpecialtySlug(options.specialty);
+  const videoSlugResolved = resolveVideoSlug(options.videoSlug, options.videoTitle);
+  const segments = [base, 'diagrams'];
+  if (specialtySlug) segments.push(specialtySlug);
+  if (videoSlugResolved) segments.push(videoSlugResolved);
+  return segments.join('/');
+};
+
+export const buildCloudinaryAvatarFolder = (options: {
+  userName?: string;
+  userId?: string;
+  baseFolder?: string;
+}): string => {
+  const base = sanitizeCloudinaryFolderSegment(options.baseFolder || 'orl-platform', 'orl-platform');
+  const userSlug = resolveUserSlug(options.userName, options.userId, 'user');
+  return `${base}/avatars/${userSlug}`;
+};
+
+export const buildCloudinarySupportChatFolder = (options: {
+  userName?: string;
+  userId?: string;
+  baseFolder?: string;
+}): string => {
+  const base = sanitizeCloudinaryFolderSegment(options.baseFolder || 'orl-platform', 'orl-platform');
+  const userSlug = resolveUserSlug(options.userName, options.userId, 'user');
+  return `${base}/support-chat/${userSlug}`;
+};
+
 export const buildCloudinaryOrganizedFolder = (options: {
   specialty?: string;
   videoTitle?: string;
@@ -1282,20 +1371,55 @@ export const buildCloudinaryOrganizedFolder = (options: {
   subFolder?: string;
   baseFolder?: string;
 }): string => {
+  const normalizedSub = String(options.subFolder || '').trim().toLowerCase();
   const base = sanitizeCloudinaryFolderSegment(options.baseFolder || 'orl-platform', 'orl-platform');
-  const specialtySlug = sanitizeCloudinaryFolderSegment(options.specialty || '', '');
-  const videoSlug =
-    sanitizeCloudinaryFolderSegment(options.videoSlug || '', '') ||
-    sanitizeCloudinaryFolderSegment(options.videoTitle || '', '');
-  const subParts = String(options.subFolder || '')
-    .split('/')
-    .map((seg) => sanitizeCloudinaryFolderSegment(seg, ''))
-    .filter(Boolean);
-  const segments = [base];
-  if (specialtySlug) segments.push(specialtySlug);
-  if (videoSlug) segments.push(videoSlug);
-  if (subParts.length > 0) segments.push(...subParts);
-  return segments.join('/');
+
+  if (normalizedSub === 'diagrams' || normalizedSub === 'diagram' || normalizedSub.includes('diagram')) {
+    return buildCloudinaryDiagramFolder({
+      specialty: options.specialty,
+      videoTitle: options.videoTitle,
+      videoSlug: options.videoSlug,
+      baseFolder: base,
+    });
+  }
+  if (normalizedSub === 'avatars' || normalizedSub.includes('avatar')) {
+    return `${base}/avatars`;
+  }
+  if (normalizedSub === 'support-chat' || normalizedSub.includes('support')) {
+    return `${base}/support-chat`;
+  }
+
+  let suffix = '';
+  if (
+    normalizedSub === 'cas-images' ||
+    normalizedSub === 'cases' ||
+    normalizedSub === 'case' ||
+    normalizedSub.includes('cas-images')
+  ) {
+    suffix = 'cas-images';
+  } else if (
+    normalizedSub === 'cas-question-images' ||
+    normalizedSub === 'cases/questions' ||
+    normalizedSub === 'case-question' ||
+    normalizedSub.includes('cas-question')
+  ) {
+    suffix = 'cas-question-images';
+  } else if (normalizedSub) {
+    const customParts = String(options.subFolder || '')
+      .split('/')
+      .map((seg) => sanitizeCloudinaryFolderSegment(seg, ''))
+      .filter(Boolean);
+    if (customParts.length > 0) suffix = customParts.join('/');
+  }
+
+  const videoFolder = buildCloudinaryVideoFolder({
+    specialty: options.specialty,
+    videoTitle: options.videoTitle,
+    videoSlug: options.videoSlug,
+    baseFolder: base,
+  });
+  if (suffix) return `${videoFolder}/${suffix}`;
+  return videoFolder;
 };
 
 export const resolveCloudinaryFolder = (options: {
@@ -1328,6 +1452,8 @@ export const uploadCloudinaryAsset = async (
     videoTitle?: string;
     videoSlug?: string;
     subFolder?: string;
+    userName?: string;
+    userId?: string;
     onProgress?: (percentage: number) => void;
   } = {},
 ): Promise<{
@@ -1345,22 +1471,31 @@ export const uploadCloudinaryAsset = async (
     ? options.resourceType
     : 'image';
 
-  // Si specialty / videoTitle fournis, on construit le dossier organisé
-  const hasOrganizedHints = Boolean(
-    String(options.specialty || '').trim() ||
-      String(options.videoTitle || '').trim() ||
-      String(options.videoSlug || '').trim() ||
-      String(options.subFolder || '').trim(),
-  );
-  const folder = hasOrganizedHints
-    ? buildCloudinaryOrganizedFolder({
-        specialty: options.specialty,
-        videoTitle: options.videoTitle,
-        videoSlug: options.videoSlug,
-        subFolder: options.subFolder,
-        baseFolder: 'orl-platform',
-      })
-    : sanitizeCloudinaryFolderPath(options.folder || 'orl-platform', 'orl-platform');
+  // Construction du dossier selon nouvelle arborescence
+  let folder: string;
+  if (options.purpose === 'support-chat') {
+    // orl-platform/support-chat/<name-user>/
+    folder = buildCloudinarySupportChatFolder({
+      userName: options.userName,
+      userId: options.userId,
+    });
+  } else {
+    const hasOrganizedHints = Boolean(
+      String(options.specialty || '').trim() ||
+        String(options.videoTitle || '').trim() ||
+        String(options.videoSlug || '').trim() ||
+        String(options.subFolder || '').trim(),
+    );
+    folder = hasOrganizedHints
+      ? buildCloudinaryOrganizedFolder({
+          specialty: options.specialty,
+          videoTitle: options.videoTitle,
+          videoSlug: options.videoSlug,
+          subFolder: options.subFolder,
+          baseFolder: 'orl-platform',
+        })
+      : sanitizeCloudinaryFolderPath(options.folder || 'orl-platform', 'orl-platform');
+  }
 
   const params = new URLSearchParams({
     resourceType,
@@ -1372,6 +1507,8 @@ export const uploadCloudinaryAsset = async (
   if (options.videoTitle) params.set('videoTitle', String(options.videoTitle));
   if (options.videoSlug) params.set('videoSlug', String(options.videoSlug));
   if (options.subFolder) params.set('subFolder', String(options.subFolder));
+  if (options.userName) params.set('userName', String(options.userName));
+  if (options.userId) params.set('userId', String(options.userId));
 
   const explicitFileName = String(options.fileName || '').trim();
   if (explicitFileName) {
@@ -1578,4 +1715,52 @@ export const deleteCloudinaryAsset = async (
   } catch {
     return false;
   }
+};
+
+// ─────────────────────────────────────────────────────────────
+// Chargily Pay – paiement en ligne (EDAHABIA / CIB)
+// Backend: POST /api/payments/create-checkout → { checkoutUrl, checkoutId }
+//         GET  /api/payments/verify/:checkoutId
+// ─────────────────────────────────────────────────────────────
+export interface ChargilyCreateCheckoutPayload {
+  amount: number;
+  currency?: 'dzd';
+  type: 'cart' | 'pack' | 'video' | 'subscription';
+  targetId?: string;
+  plan?: 'monthly' | 'yearly' | string;
+  locale?: 'ar' | 'en' | 'fr';
+  paymentMethod?: 'edahabia' | 'cib' | string;
+  description?: string;
+  items?: Array<{ id: string; type: string; title?: string; price?: number }>;
+}
+
+export interface ChargilyCreateCheckoutResponse {
+  checkoutUrl: string;
+  checkoutId: string;
+  paymentId: string;
+  amount: number;
+  currency: string;
+}
+
+export const createChargilyCheckout = async (
+  payload: ChargilyCreateCheckoutPayload,
+): Promise<ChargilyCreateCheckoutResponse> => {
+  return apiRequest<ChargilyCreateCheckoutResponse>(
+    '/payments/create-checkout',
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    },
+    true,
+  );
+};
+
+export const verifyChargilyCheckout = async (
+  checkoutId: string,
+): Promise<{ payment?: Record<string, unknown>; checkout?: Record<string, unknown>; status?: string; chargilyStatus?: string }> => {
+  return apiRequest(
+    `/payments/verify/${encodeURIComponent(checkoutId)}`,
+    { method: 'GET' },
+    true,
+  );
 };
