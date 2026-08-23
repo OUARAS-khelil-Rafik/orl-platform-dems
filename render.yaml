@@ -1,0 +1,73 @@
+services:
+  - type: web
+    name: orl-platform-backend
+    # Docker runtime is RECOMMENDED because src/routes/upload.routes.js:344 needs ffmpeg/ffprobe for >100MB video split.
+    # Native `node` runtime has no ffmpeg; large uploads will return 500.
+    runtime: docker
+    rootDir: .
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    # If you prefer native Node (no ffmpeg, only <100MB videos work), use:
+    #   runtime: node
+    #   rootDir: backend
+    #   buildCommand: npm install
+    #   startCommand: npm start
+    plan: starter # free also works; starter avoids sleep + gives more RAM for ffmpeg
+    region: frankfurt # or oregon / singapore — pick closest to your users/MongoDB Atlas region
+    branch: main
+    healthCheckPath: /api/health
+    autoDeploy: true
+    # Render injects PORT=10000 automatically for Docker; Dockerfile CMD uses $PORT
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: MONGODB_URI
+        sync: false
+      - key: MONGODB_DB_NAME
+        value: orl-platform-dems
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_EXPIRES_IN
+        value: 7d
+      - key: CORS_ORIGINS
+        sync: false # set to https://<your-frontend>.vercel.app
+      - key: FRONTEND_URL
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_REDIRECT_URI
+        sync: false # https://<your-backend>.onrender.com/api/auth/google/callback
+      - key: GOOGLE_AUTH_SUCCESS_REDIRECT
+        sync: false
+      - key: GOOGLE_AUTH_FAILURE_REDIRECT
+        sync: false
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: INITIAL_ADMIN_ACCOUNTS
+        sync: false
+      - key: SMTP_HOST
+        value: smtp.gmail.com
+      - key: SMTP_PORT
+        value: 465
+      - key: SMTP_SECURE
+        value: true
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_FROM_NAME
+        value: DEMS ENT
+      - key: SMTP_FROM_EMAIL
+        sync: false
+      - key: PASSWORD_RESET_TOKEN_TTL_MINUTES
+        value: 30
+      - key: PASSWORD_RESET_EXPOSE_LINK
+        value: false

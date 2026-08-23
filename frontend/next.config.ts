@@ -41,7 +41,9 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  output: 'standalone',
+  // `standalone` is for Docker/self-hosted. Vercel ignores it but we disable on Vercel
+  // to avoid extra tracing overhead. Keep standalone locally if you use Docker.
+  ...(process.env.VERCEL ? {} : { output: 'standalone' as const }),
   transpilePackages: ['motion'],
   turbopack: {},
   async redirects() {

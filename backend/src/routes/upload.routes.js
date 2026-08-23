@@ -27,7 +27,10 @@ import { User } from '../models/User.js';
 
 const router = express.Router();
 const cloudinaryUpload = multer({
-  storage: multer.diskStorage({}),
+  // On Vercel only /tmp is writable; explicitly use tmpdir() for serverless compatibility
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, os.tmpdir()),
+  }),
   limits: { fileSize: 1024 * 1024 * 1024 },
 });
 
