@@ -507,6 +507,137 @@ const normalizeImportedClinicalCaseRows = (rows) => {
   };
 };
 
+const parseDiagramAnnotationsToMarkers = (value) => {
+  const raw = String(value || '').trim();
+  if (!raw) {
+    return [];
+  }
+
+  const rawLines = raw.split(/\r?\n/).map((entry) => String(entry || '').trim()).filter(Boolean);
+  let lines = rawLines;
+
+  if (rawLines.length <= 1) {
+    const markerPattern = /N\s*0*(\d+)\s*[:\-]\s*(.+?)(?=\s*N\s*\d+\s*[:\-]|$)/gi;
+    const matches = [...raw.matchAll(markerPattern)];
+    if (matches.length > 1) {
+      const markersFromPattern = matches
+        .map((match) => {
+          const number = Number.parseInt(match[1], 10);
+          const label = String(match[2] || '').trim().replace(/^[;,\s]+|[;,\s]+$/g, '');
+          if (!label) {
+            return null;
+          }
+          return {
+            number: Number.isFinite(number) && number > 0 ? number : 0,
+            x: 50,
+            y: 50,
+            label,
+            description: '',
+          };
+        })
+        .filter(Boolean)
+        .sort((left, right) => left.number - right.number)
+        .map((marker, index) => ({ ...marker, number: index + 1 }));
+
+      if (markersFromPattern.length > 0) {
+        return markersFromPattern;
+      }
+    }
+
+    if (raw.includes(';')) {
+      lines = raw.split(';').map((entry) => String(entry || '').trim()).filter(Boolean);
+    } else if (rawLines.length === 1 && rawLines[0].includes('N') && rawLines[0].split(/N\s*\d+\s*[:\-]/i).length > 2) {
+      lines = rawLines;
+    }
+  }
+
+  const markers = [];
+  for (const line of lines) {
+    if (!line) {
+      continue;
+    }
+
+    const colonIndex = line.indexOf(':');
+    const dashIndex = line.indexOf('-');
+    const separatorIndex = colonIndex !== -1 ? colonIndex : dashIndex !== -1 ? dashIndex : -1;
+
+    if (separatorIndex !== -1) {
+      const left = line.slice(0, separatorIndex).trim();
+      const label = line.slice(separatorIndex + 1).trim();
+      if (!label) {
+        continue;
+      }
+
+      const numberMatch = left.match(/(\d+)/);
+      const parsedNumber = numberMatch ? Number.parseInt(numberMatch[1], 10) : markers.length + 1;
+      markers.push({
+        number: Number.isFinite(parsedNumber) && parsedNumber > 0 ? parsedNumber : markers.length + 1,
+        x: 50,
+        y: 50,
+        label,
+        description: '',
+      });
+    } else {
+      markers.push({
+        number: markers.length + 1,
+        x: 50,
+        y: 50,
+        label: line,
+        description: '',
+      });
+    }
+  }
+
+  markers.sort((left, right) => left.number - right.number);
+  return markers.map((marker, index) => ({ ...marker, number: index + 1 }));
+};
+
+const normalizeImportedDiagramRows = (rows) => {
+  const diagrams = [];
+  const invalidRows = [];
+
+  rows.forEach((row, index) => {
+    const rowIndex = index + 1;
+    if (!isPlainObject(row)) {
+      invalidRows.push({ rowIndex, message: 'Ligne invalide.' });
+      return;
+    }
+
+    const videoTitle = String(row.videoTitle || '').trim();
+    const diagramNumber = String(row.diagramNumber || '').trim();
+    const title = String(row.title || '').trim();
+    const reference = String(row.reference || '').trim();
+    const imageLinks = String(row.imageLinks || row.imageUrl || '').trim();
+    const annotations = String(row.annotations || '').trim();
+
+    if (!videoTitle) {
+      invalidRows.push({ rowIndex, message: 'Nom vidéo manquant.' });
+      return;
+    }
+
+    if (!diagramNumber && !title) {
+      invalidRows.push({ rowIndex, videoTitle, message: 'Numéro ou titre du schéma manquant.' });
+      return;
+    }
+
+    const finalTitle = title || `Schéma ${diagramNumber} — ${videoTitle}`;
+
+    diagrams.push({
+      videoTitle,
+      diagramNumber,
+      title: finalTitle,
+      reference,
+      imageLinks,
+      annotations,
+    });
+  });
+
+  return {
+    diagrams,
+    invalidRows,
+  };
+};
+
 const extractDriveFileId = (url) => {
   const value = String(url || '').trim();
   const patterns = [
@@ -943,6 +1074,9 @@ const uploadImportedDriveImages = async ({
       : [extractDriveFileId(link)].filter(Boolean);
 
     if (fileIds.length === 0) {
+      if (Array.isArray(failures)) {
+        failures.push({ link, reason: 'Lien Drive invalide ou ID introuvable.' });
+      }
       continue;
     }
 
@@ -950,6 +1084,9 @@ const uploadImportedDriveImages = async ({
       try {
         const buffer = await downloadDriveImageBuffer(fileId);
         if (!buffer) {
+          if (Array.isArray(failures)) {
+            failures.push({ link, fileId, reason: 'Impossible de télécharger l image Drive (fichier non public ou introuvable).' });
+          }
           continue;
         }
 
@@ -969,7 +1106,10 @@ const uploadImportedDriveImages = async ({
         if (result?.secure_url) {
           urls.push(result.secure_url);
         }
-      } catch {
+      } catch (error) {
+        if (Array.isArray(failures)) {
+          failures.push({ link, fileId, reason: String(error?.message || 'Echec upload Cloudinary.') });
+        }
         continue;
       }
     }
@@ -1225,13 +1365,45 @@ const sanitizeClinicalCasePayload = (payload) => {
 };
 
 const sanitizeDiagramPayload = (payload) => {
-  return {
+  const next = {
     ...payload,
     videoId: trimStringIfNeeded(payload?.videoId),
     title: trimStringIfNeeded(payload?.title),
     imageUrl: trimStringIfNeeded(payload?.imageUrl),
     reference: trimStringIfNeeded(payload?.reference),
   };
+
+  if (Array.isArray(payload?.markers)) {
+    const markers = [];
+    const seenNumbers = new Set();
+
+    for (const entry of payload.markers) {
+      if (!isPlainObject(entry)) {
+        continue;
+      }
+
+      const label = String(entry.label || '').trim();
+      if (!label) {
+        continue;
+      }
+
+      const number = Number(entry.number);
+      const safeNumber = Number.isFinite(number) && number > 0 ? Math.floor(number) : markers.length + 1;
+
+      markers.push({
+        number: safeNumber,
+        x: Number.isFinite(Number(entry.x)) ? Number(entry.x) : 50,
+        y: Number.isFinite(Number(entry.y)) ? Number(entry.y) : 50,
+        label,
+        description: String(entry.description || '').trim(),
+      });
+    }
+
+    markers.sort((left, right) => left.number - right.number);
+    next.markers = markers.map((marker, index) => ({ ...marker, number: index + 1 }));
+  }
+
+  return next;
 };
 
 const sanitizeCollectionPayload = (collection, payload) => {
@@ -2200,6 +2372,161 @@ router.post('/clinicalCases/import', authOptional, async (req, res) => {
   } catch (error) {
     console.error('[clinicalCases-import]', error);
     return res.status(500).json({ message: 'Unable to import clinical case rows.' });
+  }
+});
+
+router.post('/diagrams/import', authOptional, async (req, res) => {
+  try {
+    const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
+    if (rows.length === 0) {
+      return res.status(400).json({ message: 'Aucune ligne de schéma à importer.' });
+    }
+
+    const now = new Date().toISOString();
+    const normalized = normalizeImportedDiagramRows(rows);
+
+    if (normalized.diagrams.length === 0) {
+      return res.status(400).json({
+        message: 'Aucun schéma valide à importer.',
+        imported: 0,
+        skippedDuplicates: 0,
+        createdVideos: 0,
+        uploadedImages: 0,
+        invalidRows: normalized.invalidRows,
+        duplicateRows: [],
+        createdVideoTitles: [],
+        imageFailures: [],
+      });
+    }
+
+    const db = mongoose.connection.db;
+    const videoTitleKeys = new Set(normalized.diagrams.map((entry) => normalizeComparableText(entry.videoTitle)));
+    const existingVideos = await findCollectionDocsOrEmpty({
+      db,
+      collection: 'videos',
+      filter: {},
+    });
+    const videoByTitleKey = new Map();
+
+    for (const video of existingVideos) {
+      const key = normalizeComparableText(video?.title);
+      if (key && videoTitleKeys.has(key) && !videoByTitleKey.has(key)) {
+        videoByTitleKey.set(key, String(video._id));
+      }
+    }
+
+    const createdVideoTitles = [];
+    for (const diagram of normalized.diagrams) {
+      const titleKey = normalizeComparableText(diagram.videoTitle);
+      if (!titleKey || videoByTitleKey.has(titleKey)) {
+        continue;
+      }
+
+      const result = await db
+        .collection('videos')
+        .insertOne(createPlaceholderVideoPayload(diagram.videoTitle, now));
+
+      videoByTitleKey.set(titleKey, String(result.insertedId));
+      createdVideoTitles.push(diagram.videoTitle);
+    }
+
+    const videoIds = Array.from(new Set([...videoByTitleKey.values()]));
+    const existingDiagrams = videoIds.length > 0
+      ? await findCollectionDocsOrEmpty({
+          db,
+          collection: 'diagrams',
+          filter: { videoId: { $in: videoIds } },
+        })
+      : [];
+    const existingDiagramKeys = new Set(
+      existingDiagrams
+        .map((entry) => {
+          const videoId = String(entry?.videoId || '').trim();
+          const titleKey = normalizeComparableText(entry?.title);
+          return videoId && titleKey ? `${videoId}|${titleKey}` : '';
+        })
+        .filter(Boolean),
+    );
+
+    const batchDiagramKeys = new Set();
+    const skippedDuplicates = [];
+    const diagramsToPrepare = [];
+
+    for (const diagram of normalized.diagrams) {
+      const videoId = videoByTitleKey.get(normalizeComparableText(diagram.videoTitle)) || '';
+      const titleKey = normalizeComparableText(diagram.title);
+      const duplicateKey = videoId && titleKey ? `${videoId}|${titleKey}` : '';
+
+      if (!videoId || !titleKey) {
+        normalized.invalidRows.push({
+          videoTitle: diagram.videoTitle,
+          message: 'Lien vidéo/titre invalide après normalisation.',
+        });
+        continue;
+      }
+
+      if (existingDiagramKeys.has(duplicateKey) || batchDiagramKeys.has(duplicateKey)) {
+        skippedDuplicates.push({
+          videoTitle: diagram.videoTitle,
+          title: diagram.title,
+          diagramNumber: diagram.diagramNumber,
+        });
+        continue;
+      }
+
+      batchDiagramKeys.add(duplicateKey);
+      diagramsToPrepare.push({
+        ...diagram,
+        videoId,
+      });
+    }
+
+    const imageFailures = [];
+    const diagramsToInsert = [];
+    let uploadedImages = 0;
+
+    for (const diagram of diagramsToPrepare) {
+      const diagramKey = toSafeCloudinaryName(`${diagram.videoTitle}-${diagram.diagramNumber || diagram.title}`, 'diagram-import');
+      const imageUrls = await uploadImportedDriveImages({
+        links: splitImportedLinks(diagram.imageLinks),
+        folder: 'orl-platform/diagrams',
+        filenamePrefix: `diagram-${diagramKey || Date.now()}`,
+        authUser: req.authUser,
+        failures: imageFailures,
+      });
+      uploadedImages += imageUrls.length;
+      const imageUrl = imageUrls[0] || '';
+      const markers = parseDiagramAnnotationsToMarkers(diagram.annotations);
+
+      diagramsToInsert.push(sanitizeDiagramPayload({
+        videoId: diagram.videoId,
+        title: diagram.title,
+        imageUrl,
+        reference: diagram.reference,
+        markers,
+        diagramNumber: diagram.diagramNumber,
+        createdAt: now,
+        updatedAt: now,
+      }));
+    }
+
+    if (diagramsToInsert.length > 0) {
+      await db.collection('diagrams').insertMany(diagramsToInsert, { ordered: false });
+    }
+
+    return res.status(201).json({
+      imported: diagramsToInsert.length,
+      skippedDuplicates: skippedDuplicates.length,
+      createdVideos: createdVideoTitles.length,
+      uploadedImages,
+      invalidRows: normalized.invalidRows,
+      duplicateRows: skippedDuplicates,
+      createdVideoTitles,
+      imageFailures,
+    });
+  } catch (error) {
+    console.error('[diagrams-import]', error);
+    return res.status(500).json({ message: 'Unable to import diagram rows.' });
   }
 });
 

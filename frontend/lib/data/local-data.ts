@@ -216,6 +216,38 @@ export interface ClinicalCaseImportResponse {
   }>;
 }
 
+export interface DiagramImportRowPayload {
+  videoTitle: string;
+  diagramNumber?: string;
+  title?: string;
+  reference?: string;
+  imageLinks?: string;
+  annotations?: string;
+}
+
+export interface DiagramImportResponse {
+  imported: number;
+  skippedDuplicates: number;
+  createdVideos: number;
+  uploadedImages: number;
+  invalidRows: Array<{
+    rowIndex?: number;
+    videoTitle?: string;
+    message: string;
+  }>;
+  duplicateRows: Array<{
+    videoTitle: string;
+    title: string;
+    diagramNumber?: string;
+  }>;
+  createdVideoTitles: string[];
+  imageFailures: Array<{
+    link?: string;
+    fileId?: string;
+    reason: string;
+  }>;
+}
+
 const resolveApiBaseUrl = () => {
   const fromEnv = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '');
   if (fromEnv) {
@@ -772,6 +804,32 @@ export const importClinicalCasesFromRows = async (
 
   emitDataChange({
     collection: 'clinicalCases',
+    operation: 'add',
+  });
+  if (response.createdVideos > 0) {
+    emitDataChange({
+      collection: 'videos',
+      operation: 'add',
+    });
+  }
+
+  return response;
+};
+
+export const importDiagramsFromRows = async (
+  rows: DiagramImportRowPayload[],
+): Promise<DiagramImportResponse> => {
+  const response = await apiRequest<DiagramImportResponse>(
+    '/data/diagrams/import',
+    {
+      method: 'POST',
+      body: JSON.stringify({ rows }),
+    },
+    false,
+  );
+
+  emitDataChange({
+    collection: 'diagrams',
     operation: 'add',
   });
   if (response.createdVideos > 0) {

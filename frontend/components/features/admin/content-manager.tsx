@@ -15,12 +15,14 @@ import {
   importQcmsFromRows,
   importOpenQuestionsFromRows,
   importClinicalCasesFromRows,
+  importDiagramsFromRows,
   uploadCloudinaryAsset,
   cleanupCloudinaryAssets,
   cleanupCloudinaryAssetsOnPageExit,
   type CloudinaryCleanupAsset,
   type CloudinaryResourceType,
   type ClinicalCaseImportRowPayload,
+  type DiagramImportRowPayload,
   type OpenQuestionImportRowPayload,
   type QcmImportRowPayload,
 } from '@/lib/data/local-data';
@@ -739,6 +741,30 @@ const parseClinicalCaseImportFile = async (file: File): Promise<ClinicalCaseImpo
     .filter((entry): entry is ClinicalCaseImportRowPayload => Boolean(entry));
 };
 
+const mapImportedDiagramObject = (row: Record<string, SpreadsheetCell>): DiagramImportRowPayload | null => {
+  const payload: DiagramImportRowPayload = {
+    videoTitle: normalizeImportValue(getImportFieldValue(row, ['NOM VIDEO', 'NOM VIDÉO', 'VIDEO', 'VIDÉO', 'videoTitle'])),
+    diagramNumber: normalizeImportValue(getImportFieldValue(row, ['N SCHEMA', 'N° SCHEMA', 'NUMERO SCHEMA', 'NUMÉRO SCHEMA', 'N SCHÉMA', 'N° SCHÉMA', 'N', 'diagramNumber'])),
+    title: normalizeImportValue(getImportFieldValue(row, ['TITRE SCHEMA', 'TITRE SCHÉMA', 'TITRE', 'SCHEMA', 'SCHÉMA', 'title'])),
+    reference: normalizeImportValue(getImportFieldValue(row, ['REFERENCE', 'RÉFÉRENCE', 'REFERENCES', 'RÉFÉRENCES', 'reference'])),
+    imageLinks: normalizeImportValue(getImportFieldValue(row, ['LIEN DE SCHEMA (IMAGE)', 'LIEN DE SCHÉMA (IMAGE)', 'LIEN DE SCHEMA', 'LIEN DE SCHÉMA', 'LIEN SCHEMA', 'LIEN SCHÉMA', 'LIEN IMAGE', 'LIEN IMAGES', 'IMAGE', 'IMAGES', 'imageLinks', 'imageUrl'])),
+    annotations: normalizeImportValue(getImportFieldValue(row, ['ANNOTATIONS', 'ANNOTATION', 'LEGENDE', 'LÉGENDE', 'LEGENDES', 'LÉGENDES', 'MARQUEURS', 'annotations'])),
+  };
+
+  if (!payload.videoTitle && !payload.diagramNumber && !payload.title && !payload.imageLinks && !payload.annotations) {
+    return null;
+  }
+
+  return payload;
+};
+
+const parseDiagramImportFile = async (file: File): Promise<DiagramImportRowPayload[]> => {
+  const objects = await parseImportObjectsFromFile(file);
+  return objects
+    .map(mapImportedDiagramObject)
+    .filter((entry): entry is DiagramImportRowPayload => Boolean(entry));
+};
+
 export function AdminContentManager() {
   const [activeTab, setActiveTab] = useState<'video' | 'qcm' | 'case' | 'openQuestion' | 'diagram'>('video');
   const [videoViewMode, setVideoViewMode] = useState<'editor' | 'byVideo'>('editor');
@@ -772,6 +798,9 @@ export function AdminContentManager() {
   const [isImportingCases, setIsImportingCases] = useState(false);
   const [caseImportSummary, setCaseImportSummary] = useState('');
   const caseImportInputRef = useRef<HTMLInputElement>(null);
+  const [isImportingDiagrams, setIsImportingDiagrams] = useState(false);
+  const [diagramImportSummary, setDiagramImportSummary] = useState('');
+  const diagramImportInputRef = useRef<HTMLInputElement>(null);
   const adminCloudinaryConfigCacheRef = useRef<{
     value: boolean;
     checkedAt: number;
@@ -1853,6 +1882,80 @@ export function AdminContentManager() {
       setErrorMessage(getErrorMessage(error, "Impossible d'importer ce fichier de cas cliniques."));
     } finally {
       setIsImportingCases(false);
+      input.value = '';
+    }
+  };
+
+  const handleDiagramImportFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    const input = event.target;
+    if (!file) {
+      return;
+    }
+
+    setIsImportingDiagrams(true);
+    setErrorMessage('');
+    setSuccessMessage('');
+    setDiagramImportSummary('');
+
+    try {
+      const rows = await parseDiagramImportFile(file);
+      if (rows.length === 0) {
+        setErrorMessage('Aucune ligne de schéma exploitable trouvée dans ce fichier.');
+        return;
+      }
+
+      const result = await importDiagramsFromRows(rows);
+      await fetchData();
+
+      const invalidCount = Array.isArray(result.invalidRows) ? result.invalidRows.length : 0;
+      const imageFailureCount = Array.isArray(result.imageFailures) ? result.imageFailures.length : 0;
+      const createdVideosText = result.createdVideos > 0
+        ? ` ${result.createdVideos} vidéo(s) placeholder créée(s).`
+        : '';
+      const skippedText = result.skippedDuplicates > 0
+        ? ` ${result.skippedDuplicates} doublon(s) ignoré(s).`
+        : '';
+      const imageText = result.uploadedImages > 0
+        ? ` ${result.uploadedImages} image(s) Drive uploadée(s).`
+        : '';
+      const imageFailureText = imageFailureCount > 0
+        ? ` ${imageFailureCount} image(s) non récupérée(s).`
+        : '';
+      const invalidText = invalidCount > 0
+        ? ` ${invalidCount} ligne(s) ignorée(s).`
+        : '';
+
+      setSuccessMessage(
+        `Import schémas terminé: ${result.imported} schéma(s) ajouté(s).${createdVideosText}${skippedText}${imageText}${imageFailureText}${invalidText}`,
+      );
+      setDiagramImportSummary(
+        [
+          result.createdVideoTitles.length > 0
+            ? `Vidéos préparées: ${result.createdVideoTitles.slice(0, 5).join(', ')}${result.createdVideoTitles.length > 5 ? '…' : ''}`
+            : '',
+          result.duplicateRows.length > 0
+            ? `Doublons ignorés: ${result.duplicateRows.slice(0, 3).map((row) => row.diagramNumber ? `Schéma ${row.diagramNumber}` : row.title).join(', ')}${result.duplicateRows.length > 3 ? '…' : ''}`
+            : '',
+          imageFailureCount > 0
+            ? `Images non récupérées: ${result.imageFailures.slice(0, 3).map((entry) => entry.reason).join(', ')}${imageFailureCount > 3 ? '…' : ''}`
+            : '',
+          invalidCount > 0
+            ? `Lignes ignorées: ${result.invalidRows.slice(0, 3).map((row) => row.rowIndex ? `ligne ${row.rowIndex} (${row.message})` : row.message).join(', ')}${invalidCount > 3 ? '…' : ''}`
+            : '',
+        ].filter(Boolean).join(' · '),
+      );
+      logAdminAction('create', 'diagrams-import', {
+        imported: result.imported,
+        skippedDuplicates: result.skippedDuplicates,
+        createdVideos: result.createdVideos,
+        uploadedImages: result.uploadedImages,
+      });
+    } catch (error) {
+      console.error('Diagram import error:', error);
+      setErrorMessage(getErrorMessage(error, "Impossible d'importer ce fichier de schémas."));
+    } finally {
+      setIsImportingDiagrams(false);
       input.value = '';
     }
   };
@@ -4504,6 +4607,40 @@ export function AdminContentManager() {
 
         {activeTab === 'diagram' && (
           <div className={editorGridClass}>
+            <section className={`${sectionCardClass} order-0`}>
+              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div className="space-y-1">
+                  <h3 className="text-lg font-bold text-slate-900">Import schémas en masse</h3>
+                  <p className={sectionHintClass}>
+                    Chargez un fichier Excel, CSV ou JSON avec les colonnes NOM VIDEO, N SCHEMA, TITRE SCHEMA, REFERENCE, LIEN DE SCHEMA (IMAGE) et ANNOTATIONS.
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-3">
+                  <input
+                    ref={diagramImportInputRef}
+                    type="file"
+                    accept=".xlsx,.xls,.csv,.json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,application/json"
+                    onChange={handleDiagramImportFile}
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => diagramImportInputRef.current?.click()}
+                    disabled={isImportingDiagrams}
+                    className="inline-flex items-center gap-2 rounded-xl bg-accent-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-accent-700 disabled:cursor-not-allowed disabled:opacity-70"
+                  >
+                    {isImportingDiagrams ? <Loader2 className="h-5 w-5 animate-spin" /> : <Upload className="h-5 w-5" />}
+                    {isImportingDiagrams ? 'Import en cours…' : 'Uploader un fichier'}
+                  </button>
+                </div>
+              </div>
+              {diagramImportSummary && (
+                <div className="rounded-xl border border-medical-200 bg-medical-50 px-4 py-3 text-xs text-medical-800">
+                  {diagramImportSummary}
+                </div>
+              )}
+            </section>
+
             <form onSubmit={handleDiagramSubmit} className={formPanelClass}>
               <div className="flex justify-between items-center">
                 <div>
