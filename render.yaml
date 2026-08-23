@@ -3,15 +3,12 @@ services:
     name: orl-platform-backend
     # Docker runtime is RECOMMENDED because src/routes/upload.routes.js:344 needs ffmpeg/ffprobe for >100MB video split.
     # Native `node` runtime has no ffmpeg; large uploads will return 500.
+    # FIX for "lstat /opt/render/project/src/backend/backend: no such file" (you have Root Directory=backend in Dashboard):
+    #   This config uses rootDir: backend + dockerContext: . so the path is /src/backend (correct), not /src/backend/backend.
     runtime: docker
-    rootDir: .
-    dockerfilePath: ./backend/Dockerfile
-    dockerContext: ./backend
-    # If you prefer native Node (no ffmpeg, only <100MB videos work), use:
-    #   runtime: node
-    #   rootDir: backend
-    #   buildCommand: npm install
-    #   startCommand: npm start
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
     plan: starter # free also works; starter avoids sleep + gives more RAM for ffmpeg
     region: frankfurt # or oregon / singapore — pick closest to your users/MongoDB Atlas region
     branch: main
