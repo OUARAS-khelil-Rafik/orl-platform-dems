@@ -2002,6 +2002,18 @@ export default function VideoPage() {
                                     <ChevronLeft className="w-3.5 h-3.5" />
                                     Précédent
                                   </button>
+                                  <div className="cas-question-progress" aria-label={`Progression: schéma ${index + 1} sur ${diagrams.length}`}>
+                                    {diagrams.map((diagram, diagramIndex) => (
+                                      <button
+                                        key={diagram.id}
+                                        type="button"
+                                        onClick={() => setActiveDiagramIndex(diagramIndex)}
+                                        className={`cas-progress-dot ${diagramIndex === index ? 'cas-progress-dot--active' : ''} ${diagramAnswersVisible[diagram.id] ? 'cas-progress-dot--complete' : ''}`}
+                                        aria-label={`Aller au schéma ${diagramIndex + 1}`}
+                                        aria-current={diagramIndex === index ? 'step' : undefined}
+                                      />
+                                    ))}
+                                  </div>
                                   <button
                                     type="button"
                                     onClick={() => setActiveDiagramIndex((prev) => Math.min(prev + 1, diagrams.length - 1))}
