@@ -38,6 +38,13 @@ export default function SeamlessPlayer({
   initialTime = 0,
   onProgress,
 }: SeamlessPlayerProps) {
+  const partsKey = useMemo(() => {
+    if (!Array.isArray(parts) || parts.length === 0) return '';
+    return parts
+      .map((part) => `${String(part?.secureUrl || '').trim()}|${Math.max(0, Number(part?.duration || 0))}`)
+      .join('||');
+  }, [parts]);
+
   const sources: Array<{ secureUrl: string; duration: number }> = useMemo(() => {
     const normalizedParts = Array.isArray(parts)
       ? parts
@@ -58,7 +65,7 @@ export default function SeamlessPlayer({
         duration: Math.max(0, Number(totalDuration || 0)),
       },
     ].filter((part) => part.secureUrl);
-  }, [parts, totalDuration, url]);
+  }, [partsKey, totalDuration, url]);
 
   const offsets = useMemo(() => {
     const arr: number[] = [0];
@@ -74,6 +81,8 @@ export default function SeamlessPlayer({
     return Math.max(sum, fallbackTotalDuration, 1);
   }, [offsets, fallbackTotalDuration]);
 
+  const sourcesKey = useMemo(() => sources.map((s) => `${s.secureUrl}|${s.duration}`).join('||'), [sources]);
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const nextVideoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -81,6 +90,7 @@ export default function SeamlessPlayer({
   const hideControlsTimer = useRef<NodeJS.Timeout | null>(null);
   const initialSeekPendingRef = useRef(Math.max(0, initialTime));
   const hasAppliedInitialSeekRef = useRef(false);
+  const prevSourcesKeyRef = useRef(sourcesKey);
 
   const [partIndex, setPartIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -152,10 +162,18 @@ export default function SeamlessPlayer({
     initialSeekPendingRef.current = nextInitial;
   }, [initialTime]);
 
-  // Reset initial-seek guard when sources change (e.g., new video)
+  // Reset initial-seek guard uniquement quand le contenu des sources change réellement (nouvelle vidéo)
+  // Évite les resets intempestifs causés par la recréation de tableau lors du polling temps réel.
   useEffect(() => {
-    hasAppliedInitialSeekRef.current = false;
-  }, [sources]);
+    if (prevSourcesKeyRef.current !== sourcesKey) {
+      prevSourcesKeyRef.current = sourcesKey;
+      hasAppliedInitialSeekRef.current = false;
+      // Nouvelle vidéo : revenir à la première partie puis laisser l'effet de reprise seeker au bon timecode
+      setPartIndex(0);
+      setCurrentTime(0);
+      setBuffered(0);
+    }
+  }, [sourcesKey]);
 
   useEffect(() => {
     const nextIdx = partIndex + 1;

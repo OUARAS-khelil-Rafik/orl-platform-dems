@@ -227,11 +227,17 @@ export default function VideoPage() {
       const docSnap = await getDoc(docRef);
       if (docSnap.exists()) {
         const videoData = { id: docSnap.id, ...docSnap.data() } as VideoModel;
-        setVideo(videoData);
+        // Éviter de réécraser le state si les données n'ont pas changé : prévient le reset du player lors du polling temps réel
+        setVideo((prev) => {
+          if (prev && JSON.stringify(prev) === JSON.stringify(videoData)) {
+            return prev;
+          }
+          return videoData;
+        });
         
         // Check access
         const access = canAccessVideo(videoData, profile);
-        setHasAccess(access);
+        setHasAccess((prev) => (prev === access ? prev : access));
       }
     } catch (error) {
       console.error('Error fetching video:', error);
@@ -247,11 +253,13 @@ export default function VideoPage() {
   }, [authLoading, fetchVideo]);
 
   // Temps réel vidéo + contenu pédagogique + accès
+  // Désactiver le polling fallback (intervalMs: 0) : on s'appuie uniquement sur les événements temps réel (SSE / BroadcastChannel).
+  // Évite le reset intempestif du player qui "revient au début" à chaque poll de 4s.
   useRealtimeRefresh(['videos', 'users', 'payments', 'qcms', 'clinicalCases', 'openQuestions', 'diagrams'], () => {
     void fetchVideo();
     // force reload tabs
     setLoadedTabs({ cas: false, open: false, qcm: false, schemas: false });
-  }, { intervalMs: 4000 });
+  }, { intervalMs: 0 });
 
   useEffect(() => {
     setLoadedTabs({ cas: false, open: false, qcm: false, schemas: false });
