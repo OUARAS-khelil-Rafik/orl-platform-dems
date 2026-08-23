@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import { db, collection, query, where, getDocs, doc, updateDoc, arrayUnion, arrayRemove } from '@/lib/data/local-data';
+import { useRealtimeRefresh } from '@/lib/hooks/useRealtimeRefresh';
 import { motion } from 'motion/react';
 import { PlayCircle, Lock, Clock3, Search, SlidersHorizontal, ListChecks, Stethoscope, MessageSquare, Network, Heart, BookmarkCheck } from 'lucide-react';
 import Link from 'next/link';
@@ -352,53 +353,59 @@ export default function SpecialtyPage() {
     fetchVideoPaymentStatuses();
   }, [user]);
 
-  useEffect(() => {
-    const fetchVideos = async () => {
-      if (!router.isReady || !slug) return;
-      try {
-        const q = query(collection(db, 'videos'), where('subspecialty', '==', slug));
-        const querySnapshot = await getDocs(q);
-        const fetchedVideos = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Video));
-        setVideos(fetchedVideos);
-      } catch (error) {
-        console.error('Error fetching videos:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchVideos();
+  const fetchVideos = useCallback(async () => {
+    if (!router.isReady || !slug) return;
+    try {
+      const q = query(collection(db, 'videos'), where('subspecialty', '==', slug));
+      const querySnapshot = await getDocs(q);
+      const fetchedVideos = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Video));
+      setVideos(fetchedVideos);
+    } catch (error) {
+      console.error('Error fetching videos:', error);
+    } finally {
+      setLoading(false);
+    }
   }, [slug, router.isReady]);
 
-  useEffect(() => {
+  const fetchCounts = useCallback(async () => {
     if (!videos || videos.length === 0) return;
+    const map: Record<string, { qcm: number; cases: number; open: number; diagrams: number }> = {};
+    await Promise.all(videos.map(async (v) => {
+      try {
+        const [qcmSnap, caseSnap, openSnap, diagramSnap] = await Promise.all([
+          getDocs(query(collection(db, 'qcms'), where('videoId', '==', v.id))),
+          getDocs(query(collection(db, 'clinicalCases'), where('videoId', '==', v.id))),
+          getDocs(query(collection(db, 'openQuestions'), where('videoId', '==', v.id))),
+          getDocs(query(collection(db, 'diagrams'), where('videoId', '==', v.id))),
+        ]);
 
-    const fetchCounts = async () => {
-      const map: Record<string, { qcm: number; cases: number; open: number; diagrams: number }> = {};
-      await Promise.all(videos.map(async (v) => {
-        try {
-          const [qcmSnap, caseSnap, openSnap, diagramSnap] = await Promise.all([
-            getDocs(query(collection(db, 'qcms'), where('videoId', '==', v.id))),
-            getDocs(query(collection(db, 'clinicalCases'), where('videoId', '==', v.id))),
-            getDocs(query(collection(db, 'openQuestions'), where('videoId', '==', v.id))),
-            getDocs(query(collection(db, 'diagrams'), where('videoId', '==', v.id))),
-          ]);
+        map[v.id] = {
+          qcm: Array.isArray(qcmSnap.docs) ? qcmSnap.docs.length : 0,
+          cases: Array.isArray(caseSnap.docs) ? caseSnap.docs.length : 0,
+          open: Array.isArray(openSnap.docs) ? openSnap.docs.length : 0,
+          diagrams: Array.isArray(diagramSnap.docs) ? diagramSnap.docs.length : 0,
+        };
+      } catch (e) {
+        map[v.id] = { qcm: 0, cases: 0, open: 0, diagrams: 0 };
+      }
+    }));
 
-          map[v.id] = {
-            qcm: Array.isArray(qcmSnap.docs) ? qcmSnap.docs.length : 0,
-            cases: Array.isArray(caseSnap.docs) ? caseSnap.docs.length : 0,
-            open: Array.isArray(openSnap.docs) ? openSnap.docs.length : 0,
-            diagrams: Array.isArray(diagramSnap.docs) ? diagramSnap.docs.length : 0,
-          };
-        } catch (e) {
-          map[v.id] = { qcm: 0, cases: 0, open: 0, diagrams: 0 };
-        }
-      }));
-
-      setContentCounts(map);
-    };
-
-    fetchCounts();
+    setContentCounts(map);
   }, [videos]);
+
+  useEffect(() => {
+    void fetchVideos();
+  }, [fetchVideos]);
+
+  useEffect(() => {
+    void fetchCounts();
+  }, [fetchCounts]);
+
+  // Temps réel : recharge vidéos + compteurs à chaque modif backend
+  useRealtimeRefresh(['videos', 'qcms', 'clinicalCases', 'openQuestions', 'diagrams', 'users', 'payments'], () => {
+    void fetchVideos();
+    void fetchCounts();
+  }, { intervalMs: 4000 });
 
   useEffect(() => {
     if (typeof window === 'undefined') {

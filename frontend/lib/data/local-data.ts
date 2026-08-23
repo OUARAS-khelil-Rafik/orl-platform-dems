@@ -377,7 +377,7 @@ const notifyAuthListeners = (user: LocalAuthUser | null) => {
   authListeners.forEach((listener) => listener(user));
 };
 
-const emitDataChange = (event: Omit<DataChangeEvent, 'timestamp'>) => {
+export const emitDataChange = (event: Omit<DataChangeEvent, 'timestamp'>) => {
   if (!isBrowser()) {
     return;
   }
@@ -393,6 +393,146 @@ const emitDataChange = (event: Omit<DataChangeEvent, 'timestamp'>) => {
     const channel = new BroadcastChannel(DATA_CHANGE_CHANNEL_NAME);
     channel.postMessage(payload);
     channel.close();
+  }
+};
+
+// ─────────────────────────────────────────────────────────────
+// Temps réel : polling des versions backend + SSE fallback
+// ─────────────────────────────────────────────────────────────
+export type RealtimeVersions = Record<string, { count: number; updatedAt: number } & Record<string, unknown>> & { _hash?: string; _ts?: number };
+
+let realtimePollingActive = false;
+let realtimePollingTimer: ReturnType<typeof setInterval> | null = null;
+let realtimeEventSource: EventSource | null = null;
+let lastRealtimeVersions: RealtimeVersions | null = null;
+let realtimePollingIntervalMs = 3000;
+
+export const fetchRealtimeVersions = async (): Promise<RealtimeVersions | null> => {
+  try {
+    const data = await apiRequest<RealtimeVersions>('/realtime/versions', { method: 'GET' }, false);
+    return data;
+  } catch {
+    return null;
+  }
+};
+
+const diffAndEmitRealtimeVersions = (prev: RealtimeVersions | null, next: RealtimeVersions | null) => {
+  if (!next) return;
+  if (!prev) {
+    lastRealtimeVersions = next;
+    return;
+  }
+  if (prev._hash && next._hash && prev._hash === next._hash) {
+    return;
+  }
+  // Compare each collection
+  const collections = new Set([...Object.keys(prev), ...Object.keys(next)]);
+  collections.delete('_hash');
+  collections.delete('_ts');
+  for (const col of collections) {
+    const a = (prev as Record<string, unknown>)[col] as { count?: number; updatedAt?: number } | undefined;
+    const b = (next as Record<string, unknown>)[col] as { count?: number; updatedAt?: number } | undefined;
+    const aStr = JSON.stringify(a || {});
+    const bStr = JSON.stringify(b || {});
+    if (aStr !== bStr) {
+      // Determine operation: count changed -> add/delete, timestamp changed -> update
+      const op: DataChangeOperation = (a?.count ?? 0) !== (b?.count ?? 0) ? ((b?.count ?? 0) > (a?.count ?? 0) ? 'add' : 'delete') : 'update';
+      emitDataChange({ collection: col, operation: op });
+    }
+  }
+  lastRealtimeVersions = next;
+};
+
+export const startRealtimeSync = (options: { intervalMs?: number; useSSE?: boolean } = {}) => {
+  if (!isBrowser() || realtimePollingActive) return () => {};
+
+  realtimePollingActive = true;
+  realtimePollingIntervalMs = Math.max(2000, options.intervalMs || 3000);
+  const useSSE = options.useSSE !== false;
+
+  let sseConnected = false;
+
+  // Try SSE first if supported
+  if (useSSE && typeof window !== 'undefined' && typeof window.EventSource !== 'undefined') {
+    try {
+      const base = resolveApiBaseUrl();
+      const url = `${base}/realtime/stream`;
+      const es = new window.EventSource(url);
+      realtimeEventSource = es;
+
+      es.onmessage = (event) => {
+        try {
+          const versions = JSON.parse(event.data) as RealtimeVersions;
+          diffAndEmitRealtimeVersions(lastRealtimeVersions, versions);
+          if (!sseConnected) sseConnected = true;
+        } catch {}
+      };
+      es.onerror = () => {
+        // SSE error -> fallback to polling, close SSE after 2 errors quickly
+        // Keep polling as backup anyway
+        sseConnected = false;
+      };
+    } catch {
+      // ignore
+    }
+  }
+
+  const poll = async () => {
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+      // Pause when tab hidden to save resources, but still check occasionally
+      return;
+    }
+    // If SSE is connected and working, skip polling to reduce load (poll every 2 intervals as heartbeat)
+    if (sseConnected && Math.random() > 0.33) {
+      return;
+    }
+    const versions = await fetchRealtimeVersions();
+    diffAndEmitRealtimeVersions(lastRealtimeVersions, versions);
+  };
+
+  // Initial fetch to prime lastRealtimeVersions
+  void (async () => {
+    const v = await fetchRealtimeVersions();
+    lastRealtimeVersions = v;
+  })();
+
+  realtimePollingTimer = setInterval(poll, realtimePollingIntervalMs);
+
+  const handleVisibilityChange = () => {
+    if (document.visibilityState === 'visible') {
+      void poll();
+    }
+  };
+  const handleFocus = () => {
+    void poll();
+  };
+  window.addEventListener('visibilitychange', handleVisibilityChange);
+  window.addEventListener('focus', handleFocus);
+
+  return () => {
+    realtimePollingActive = false;
+    if (realtimePollingTimer) {
+      clearInterval(realtimePollingTimer);
+      realtimePollingTimer = null;
+    }
+    if (realtimeEventSource) {
+      try { realtimeEventSource.close(); } catch {}
+      realtimeEventSource = null;
+    }
+    window.removeEventListener('visibilitychange', handleVisibilityChange);
+    window.removeEventListener('focus', handleFocus);
+  };
+};
+
+export const stopRealtimeSync = () => {
+  realtimePollingActive = false;
+  if (realtimePollingTimer) {
+    clearInterval(realtimePollingTimer);
+    realtimePollingTimer = null;
+  }
+  if (realtimeEventSource) {
+    try { realtimeEventSource.close(); } catch {}
+    realtimeEventSource = null;
   }
 };
 

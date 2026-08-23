@@ -14,6 +14,7 @@ import {
   getDoc,
   onAuthStateChanged,
   setDoc,
+  subscribeToDataChanges,
   updateDoc,
   signInWithEmail,
   signOut as localSignOut,
@@ -337,6 +338,61 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       void updateAuthDisplayName(user.uid, profile.displayName);
     }
   }, [profile, user]);
+
+  // ─────────────────────────────────────────────────────────────
+  // TEMPS RÉEL : recharge automatique du profil utilisateur
+  // - Sur événement RealtimeProvider (collection 'users')
+  // - Polling 5s + focus/visibility + BroadcastChannel
+  // ─────────────────────────────────────────────────────────────
+  const refreshProfile = useCallback(async () => {
+    if (!user?.uid) return;
+    try {
+      const fresh = await getDoc<UserProfile>(doc(db, 'users', user.uid));
+      if (!fresh.exists()) return;
+      const normalized = normalizeProfile(fresh.data() as UserProfile, user);
+      // Éviter re-render inutile
+      const prevKey = JSON.stringify(profile);
+      const nextKey = JSON.stringify(normalized);
+      if (prevKey !== nextKey) {
+        setProfile(normalized);
+      }
+    } catch (error) {
+      console.error('[auth] realtime refreshProfile error:', error);
+    }
+  }, [user, profile]);
+
+  useEffect(() => {
+    if (!user?.uid) return;
+
+    // Écoute les changements backend (polling + SSE via RealtimeProvider -> emitDataChange)
+    const unsubscribe = subscribeToDataChanges((event) => {
+      if (event.collection === 'users' || event.collection === 'payments' || event.collection === 'notifications') {
+        // payments/notifications peuvent impliquer une mise à jour du role / purchasedVideos
+        void refreshProfile();
+      }
+    });
+
+    // Polling de secours toutes les 5s (respecte visibilité)
+    const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      void refreshProfile();
+    }, 5000);
+
+    // Revalidation au focus / retour onglet
+    const handleFocus = () => void refreshProfile();
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') void refreshProfile();
+    };
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      unsubscribe();
+      clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [user?.uid, refreshProfile]);
 
   useEffect(() => {
     if (!user?.uid || !profile?.role) {

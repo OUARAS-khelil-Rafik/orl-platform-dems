@@ -63,6 +63,7 @@ import {
   isSupportChatAttachmentFile,
   type SupportChatAttachment,
 } from '@/lib/utils/support-chat-attachments';
+import { useRealtimeRefresh } from '@/lib/hooks/useRealtimeRefresh';
 
 type AdminUser = {
   id: string;
@@ -290,112 +291,121 @@ export default function AdminDashboard() {
     return () => window.clearInterval(timer);
   }, []);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      if (profile?.role !== 'admin') return;
-      
-      try {
-        const [
-          paymentsSnap,
-          allPaymentsSnap,
-          usersSnap,
-          videosSnap,
-          qcmsSnap,
-          openQuestionsSnap,
-          diagramsSnap,
-          clinicalCasesSnap,
-          pedagogicalFeedbackSnap,
-          clinicalCaseFeedbackSnap,
-          supportChatsSnap,
-        ] = await Promise.all([
-          getDocs(query(collection(db, 'payments'), where('status', '==', 'pending'))),
-          getDocs(collection(db, 'payments')),
-          getDocs(collection(db, 'users')),
-          getDocs(collection(db, 'videos')),
-          getDocs(collection(db, 'qcms')),
-          getDocs(collection(db, 'openQuestions')),
-          getDocs(collection(db, 'diagrams')),
-          getDocs(collection(db, 'clinicalCases')),
-          getDocs(collection(db, 'pedagogicalFeedback')),
-          getDocs(collection(db, 'clinicalCaseFeedback')),
-          getDocs(collection(db, 'supportChats')),
-        ]);
+  const fetchData = useCallback(async () => {
+    if (profile?.role !== 'admin') return;
+    
+    try {
+      const [
+        paymentsSnap,
+        allPaymentsSnap,
+        usersSnap,
+        videosSnap,
+        qcmsSnap,
+        openQuestionsSnap,
+        diagramsSnap,
+        clinicalCasesSnap,
+        pedagogicalFeedbackSnap,
+        clinicalCaseFeedbackSnap,
+        supportChatsSnap,
+      ] = await Promise.all([
+        getDocs(query(collection(db, 'payments'), where('status', '==', 'pending'))),
+        getDocs(collection(db, 'payments')),
+        getDocs(collection(db, 'users')),
+        getDocs(collection(db, 'videos')),
+        getDocs(collection(db, 'qcms')),
+        getDocs(collection(db, 'openQuestions')),
+        getDocs(collection(db, 'diagrams')),
+        getDocs(collection(db, 'clinicalCases')),
+        getDocs(collection(db, 'pedagogicalFeedback')),
+        getDocs(collection(db, 'clinicalCaseFeedback')),
+        getDocs(collection(db, 'supportChats')),
+      ]);
 
-        setPayments(paymentsSnap.docs.map(d => ({ id: d.id, ...d.data() } as AdminPayment)));
-        setAllPayments(allPaymentsSnap.docs.map(d => ({ id: d.id, ...d.data() } as AdminPayment)));
+      setPayments(paymentsSnap.docs.map(d => ({ id: d.id, ...d.data() } as AdminPayment)));
+      setAllPayments(allPaymentsSnap.docs.map(d => ({ id: d.id, ...d.data() } as AdminPayment)));
 
-        const nextUsers = usersSnap.docs.map(d => ({ id: d.id, ...d.data() } as AdminUser));
-        setUsers(nextUsers);
-        setVideos(videosSnap.docs.map((d) => ({ ...(d.data() as AdminVideo), id: d.id })));
-        setQcms(qcmsSnap.docs.map((d) => ({ ...(d.data() as AdminQcm), id: d.id })));
-        setOpenQuestions(openQuestionsSnap.docs.map((d) => ({ ...(d.data() as AdminOpenQuestion), id: d.id })));
-        setDiagrams(diagramsSnap.docs.map((d) => ({ ...(d.data() as AdminDiagram), id: d.id })));
-        setClinicalCases(clinicalCasesSnap.docs.map((d) => ({ ...(d.data() as AdminClinicalCase), id: d.id })));
+      const nextUsers = usersSnap.docs.map(d => ({ id: d.id, ...d.data() } as AdminUser));
+      setUsers(nextUsers);
+      setVideos(videosSnap.docs.map((d) => ({ ...(d.data() as AdminVideo), id: d.id })));
+      setQcms(qcmsSnap.docs.map((d) => ({ ...(d.data() as AdminQcm), id: d.id })));
+      setOpenQuestions(openQuestionsSnap.docs.map((d) => ({ ...(d.data() as AdminOpenQuestion), id: d.id })));
+      setDiagrams(diagramsSnap.docs.map((d) => ({ ...(d.data() as AdminDiagram), id: d.id })));
+      setClinicalCases(clinicalCasesSnap.docs.map((d) => ({ ...(d.data() as AdminClinicalCase), id: d.id })));
 
-        const pedagogicalEntries = pedagogicalFeedbackSnap.docs.map((d) => {
-          const data = d.data() as Record<string, any>;
-          return {
-            id: d.id,
-            source: 'pedagogical' as const,
-            isRead: Boolean(data.isRead),
-            createdAt: String(data.createdAt || ''),
-            userId: data.userId ?? null,
-            userEmail: data.userEmail ?? null,
-            videoId: data.videoId ?? null,
-            caseId: data.caseId ?? null,
-            itemType: data.itemType ?? null,
-            itemId: data.itemId ?? null,
-            message: String(data.message || ''),
-          };
-        });
+      const pedagogicalEntries = pedagogicalFeedbackSnap.docs.map((d) => {
+        const data = d.data() as Record<string, any>;
+        return {
+          id: d.id,
+          source: 'pedagogical' as const,
+          isRead: Boolean(data.isRead),
+          createdAt: String(data.createdAt || ''),
+          userId: data.userId ?? null,
+          userEmail: data.userEmail ?? null,
+          videoId: data.videoId ?? null,
+          caseId: data.caseId ?? null,
+          itemType: data.itemType ?? null,
+          itemId: data.itemId ?? null,
+          message: String(data.message || ''),
+        };
+      });
 
-        const clinicalEntries = clinicalCaseFeedbackSnap.docs.map((d) => {
-          const data = d.data() as Record<string, any>;
-          return {
-            id: d.id,
-            source: 'clinicalCase' as const,
-            isRead: Boolean(data.isRead),
-            createdAt: String(data.createdAt || ''),
-            userId: data.userId ?? null,
-            userEmail: data.userEmail ?? null,
-            videoId: data.videoId ?? null,
-            caseId: data.caseId ?? null,
-            itemType: 'clinicalCase' as const,
-            itemId: data.caseId ?? null,
-            message: String(data.message || ''),
-          };
-        });
+      const clinicalEntries = clinicalCaseFeedbackSnap.docs.map((d) => {
+        const data = d.data() as Record<string, any>;
+        return {
+          id: d.id,
+          source: 'clinicalCase' as const,
+          isRead: Boolean(data.isRead),
+          createdAt: String(data.createdAt || ''),
+          userId: data.userId ?? null,
+          userEmail: data.userEmail ?? null,
+          videoId: data.videoId ?? null,
+          caseId: data.caseId ?? null,
+          itemType: 'clinicalCase' as const,
+          itemId: data.caseId ?? null,
+          message: String(data.message || ''),
+        };
+      });
 
-        const nextDiscussions = [...pedagogicalEntries, ...clinicalEntries].sort((a, b) => {
-          const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-          const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      const nextDiscussions = [...pedagogicalEntries, ...clinicalEntries].sort((a, b) => {
+        const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return bTime - aTime;
+      });
+      setDiscussions(nextDiscussions);
+
+      const nextSupportChats = supportChatsSnap.docs
+        .map((entry) => {
+          const data = entry.data() as SupportChatEntry;
+          const isWelcome = data.isWelcomeChat === true || (data.isWelcomeChat !== false && data.lastSender === 'bot');
+          return { ...data, id: entry.id, isWelcomeChat: isWelcome };
+        })
+        .sort((a, b) => {
+          const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+          const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
           return bTime - aTime;
         });
-        setDiscussions(nextDiscussions);
+      setSupportChats(nextSupportChats);
+      const firstRealChat = nextSupportChats.find((chat) => !chat.isWelcomeChat);
+      setSelectedSupportChatId((current) => current || firstRealChat?.id || '');
+    } catch (error) {
+      console.error('Error fetching admin data:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [profile?.role]);
 
-        const nextSupportChats = supportChatsSnap.docs
-          .map((entry) => {
-            const data = entry.data() as SupportChatEntry;
-            const isWelcome = data.isWelcomeChat === true || (data.isWelcomeChat !== false && data.lastSender === 'bot');
-            return { ...data, id: entry.id, isWelcomeChat: isWelcome };
-          })
-          .sort((a, b) => {
-            const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
-            const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
-            return bTime - aTime;
-          });
-        setSupportChats(nextSupportChats);
-        const firstRealChat = nextSupportChats.find((chat) => !chat.isWelcomeChat);
-        setSelectedSupportChatId((current) => current || firstRealChat?.id || '');
-      } catch (error) {
-        console.error('Error fetching admin data:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
+  useEffect(() => {
+    if (!authLoading) void fetchData();
+  }, [authLoading, fetchData]);
 
-    if (!authLoading) fetchData();
-  }, [profile, authLoading]);
+  // Temps réel admin : toute modif backend recharge automatiquement (polling + SSE)
+  useRealtimeRefresh(
+    ['users', 'payments', 'videos', 'qcms', 'openQuestions', 'diagrams', 'clinicalCases', 'pedagogicalFeedback', 'clinicalCaseFeedback', 'supportChats', 'supportChatMessages', 'notifications'],
+    () => {
+      if (profile?.role === 'admin') void fetchData();
+    },
+    { intervalMs: 4000 }
+  );
 
   const loadSupportMessagesForChat = useCallback(async (chatId: string) => {
     if (!chatId) {

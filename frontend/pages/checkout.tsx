@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useCart } from '@/components/providers/cart-provider';
 import { useAuth } from '@/components/providers/auth-provider';
 import { motion } from 'motion/react';
+import { useRealtimeRefresh } from '@/lib/hooks/useRealtimeRefresh';
 import { Trash2, CreditCard, ShieldCheck, Loader2, ShoppingCart, PlayCircle, Lock, ReceiptText, Clock3, ShoppingBag } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -505,59 +506,64 @@ export default function CheckoutPage() {
     };
   }, []);
 
-  useEffect(() => {
-    const fetchPayments = async () => {
-      if (!user) {
-        setPayments([]);
-        setIsPurchasesLoading(false);
-        return;
-      }
+  const fetchPayments = useCallback(async () => {
+    if (!user) {
+      setPayments([]);
+      setIsPurchasesLoading(false);
+      return;
+    }
 
-      try {
-        setIsPurchasesLoading(true);
-        const snap = await getDocs(query(collection(db, 'payments'), where('userId', '==', user.uid)));
-        setPayments(snap.docs.map((entry) => ({ id: entry.id, ...entry.data() } as PaymentRecord)));
-      } catch (error) {
-        console.error('Error fetching payments:', error);
-        setPayments([]);
-      } finally {
-        setIsPurchasesLoading(false);
-      }
-    };
-
-    fetchPayments();
+    try {
+      setIsPurchasesLoading(true);
+      const snap = await getDocs(query(collection(db, 'payments'), where('userId', '==', user.uid)));
+      setPayments(snap.docs.map((entry) => ({ id: entry.id, ...entry.data() } as PaymentRecord)));
+    } catch (error) {
+      console.error('Error fetching payments:', error);
+      setPayments([]);
+    } finally {
+      setIsPurchasesLoading(false);
+    }
   }, [user]);
 
+  const loadPurchasedVideoData = useCallback(async () => {
+    if (!user || effectivePurchasedVideoIds.length === 0) {
+      setPurchasedVideosById({});
+      return;
+    }
+
+    try {
+      const entries = await Promise.all(
+        effectivePurchasedVideoIds.map(async (videoId) => {
+          const snap = await getDoc(doc(db, 'videos', videoId));
+          if (!snap.exists()) return [videoId, null] as const;
+          return [videoId, (snap.data() as PurchasedVideoData) || null] as const;
+        }),
+      );
+
+      const nextMap = entries.reduce<Record<string, PurchasedVideoData>>((acc, [videoId, data]) => {
+        if (data) acc[videoId] = data;
+        return acc;
+      }, {});
+
+      setPurchasedVideosById(nextMap);
+    } catch (error) {
+      console.error('Error loading purchased video data:', error);
+      setPurchasedVideosById({});
+    }
+  }, [user, effectivePurchasedVideoIds]);
+
   useEffect(() => {
-    const loadPurchasedVideoData = async () => {
-      if (!user || effectivePurchasedVideoIds.length === 0) {
-        setPurchasedVideosById({});
-        return;
-      }
+    void fetchPayments();
+  }, [fetchPayments]);
 
-      try {
-        const entries = await Promise.all(
-          effectivePurchasedVideoIds.map(async (videoId) => {
-            const snap = await getDoc(doc(db, 'videos', videoId));
-            if (!snap.exists()) return [videoId, null] as const;
-            return [videoId, (snap.data() as PurchasedVideoData) || null] as const;
-          }),
-        );
+  useEffect(() => {
+    void loadPurchasedVideoData();
+  }, [loadPurchasedVideoData]);
 
-        const nextMap = entries.reduce<Record<string, PurchasedVideoData>>((acc, [videoId, data]) => {
-          if (data) acc[videoId] = data;
-          return acc;
-        }, {});
-
-        setPurchasedVideosById(nextMap);
-      } catch (error) {
-        console.error('Error loading purchased video data:', error);
-        setPurchasedVideosById({});
-      }
-    };
-
-    loadPurchasedVideoData();
-  }, [effectivePurchasedVideoIds, user]);
+  useRealtimeRefresh(['payments', 'users', 'videos'], () => {
+    void fetchPayments();
+    void loadPurchasedVideoData();
+  }, { intervalMs: 4000 });
 
   const handleCheckout = async () => {
     if (!user || !profile) {

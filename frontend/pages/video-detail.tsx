@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import { db, doc, getDoc, collection, query, where, getDocs, addDoc } from '@/lib/data/local-data';
+import { useRealtimeRefresh } from '@/lib/hooks/useRealtimeRefresh';
 import { useAuth } from '@/components/providers/auth-provider';
 import { useCart } from '@/components/providers/cart-provider';
 import SeamlessPlayer from '@/components/features/video/seamless-player';
@@ -219,31 +220,38 @@ export default function VideoPage() {
     }
   }, [router.isReady, router.query.tab]);
 
-  useEffect(() => {
-    const fetchVideo = async () => {
-      if (!router.isReady || !id) return;
-      try {
-        const docRef = doc(db, 'videos', id);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          const videoData = { id: docSnap.id, ...docSnap.data() } as VideoModel;
-          setVideo(videoData);
-          
-          // Check access
-          const access = canAccessVideo(videoData, profile);
-          setHasAccess(access);
-        }
-      } catch (error) {
-        console.error('Error fetching video:', error);
-      } finally {
-        setLoading(false);
+  const fetchVideo = useCallback(async () => {
+    if (!router.isReady || !id) return;
+    try {
+      const docRef = doc(db, 'videos', id);
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        const videoData = { id: docSnap.id, ...docSnap.data() } as VideoModel;
+        setVideo(videoData);
+        
+        // Check access
+        const access = canAccessVideo(videoData, profile);
+        setHasAccess(access);
       }
-    };
-    
-    if (!authLoading) {
-      fetchVideo();
+    } catch (error) {
+      console.error('Error fetching video:', error);
+    } finally {
+      setLoading(false);
     }
-  }, [id, profile, authLoading, router.isReady]);
+  }, [id, profile, router.isReady]);
+
+  useEffect(() => {
+    if (!authLoading) {
+      void fetchVideo();
+    }
+  }, [authLoading, fetchVideo]);
+
+  // Temps réel vidéo + contenu pédagogique + accès
+  useRealtimeRefresh(['videos', 'users', 'payments', 'qcms', 'clinicalCases', 'openQuestions', 'diagrams'], () => {
+    void fetchVideo();
+    // force reload tabs
+    setLoadedTabs({ cas: false, open: false, qcm: false, schemas: false });
+  }, { intervalMs: 4000 });
 
   useEffect(() => {
     setLoadedTabs({ cas: false, open: false, qcm: false, schemas: false });

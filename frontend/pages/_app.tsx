@@ -5,6 +5,7 @@ import { motion, useScroll, useSpring } from 'motion/react';
 import '@/styles/globals.css';
 import { AuthProvider } from '@/components/providers/auth-provider';
 import { CartProvider } from '@/components/providers/cart-provider';
+import { RealtimeProvider } from '@/components/providers/realtime-provider';
 import { Navbar } from '@/components/layout/navbar';
 import { Footer } from '@/components/layout/footer';
 import { ContentProtection } from '@/components/security/content-protection';
@@ -47,15 +48,17 @@ export default function App({ Component, pageProps }: AppProps) {
         <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
       </Head>
       <AuthProvider>
-        <CartProvider>
-          <ContentProtection />
-          <GlobalScrollProgress />
-          <Navbar />
-          <main className="flex-1 flex flex-col">
-            <Component {...pageProps} />
-          </main>
-          <Footer />
-        </CartProvider>
+        <RealtimeProvider>
+          <CartProvider>
+            <ContentProtection />
+            <GlobalScrollProgress />
+            <Navbar />
+            <main className="flex-1 flex flex-col">
+              <Component {...pageProps} />
+            </main>
+            <Footer />
+          </CartProvider>
+        </RealtimeProvider>
       </AuthProvider>
     </div>
   );

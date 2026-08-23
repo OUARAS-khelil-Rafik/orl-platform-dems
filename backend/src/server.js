@@ -10,6 +10,7 @@ import authRoutes from './routes/auth.routes.js';
 import dataRoutes from './routes/data.routes.js';
 import uploadRoutes from './routes/upload.routes.js';
 import paymentRoutes from './routes/payment.routes.js';
+import realtimeRoutes from './routes/realtime.routes.js';
 
 const app = express();
 
@@ -89,6 +90,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/data', dataRoutes);
 app.use('/api/uploads', uploadRoutes);
 app.use('/api/payments', paymentRoutes);
+app.use('/api/realtime', realtimeRoutes);
 
 app.use((err, _req, res, _next) => {
   console.error(err);

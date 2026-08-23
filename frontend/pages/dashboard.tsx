@@ -5,6 +5,7 @@ import { useRouter } from 'next/router';
 import Image from 'next/image';
 import Link from 'next/link';
 import { motion } from 'motion/react';
+import { useRealtimeRefresh } from '@/lib/hooks/useRealtimeRefresh';
 import {
   User,
   Star,
@@ -458,6 +459,29 @@ export default function UserDashboard() {
       window.clearInterval(timer);
     };
   }, [user, activeSupportChatId, loadSupportMessagesByChatId]);
+
+  // Temps réel global (via RealtimeProvider) pour support + profil
+  useRealtimeRefresh(['supportChats', 'supportChatMessages', 'users', 'notifications'], () => {
+    if (!user) return;
+    void (async () => {
+      try {
+        const chatsSnap = await getDocs(query(collection(db, 'supportChats'), where('userId', '==', user.uid)));
+        const nextChats = chatsSnap.docs
+          .map((entry) => {
+            const data = entry.data() as SupportChat;
+            const isWelcome = data.isWelcomeChat === true || (data.isWelcomeChat !== false && data.lastSender === 'bot');
+            return { ...data, id: entry.id, isWelcomeChat: isWelcome };
+          })
+          .sort((a, b) => {
+            const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+            const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+            return bTime - aTime;
+          });
+        setSupportChats(nextChats);
+        if (activeSupportChatId) await loadSupportMessagesByChatId(activeSupportChatId);
+      } catch {}
+    })();
+  }, { intervalMs: 6000 });
 
   const buildChatbotIntroByProblemType = (problemType: SupportChat['problemType']) => {
     if (problemType === 'billing') {

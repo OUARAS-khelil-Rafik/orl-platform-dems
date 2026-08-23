@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { motion } from 'motion/react';
@@ -9,6 +9,7 @@ import Image from 'next/image';
 import { useAuth } from '@/components/providers/auth-provider';
 import { collection, db, doc, getDoc, getDocs, query, where } from '@/lib/data/local-data';
 import { VIDEO_FALLBACK_SRC, applyImageFallback } from '@/lib/utils/media-fallback';
+import { useRealtimeRefresh } from '@/lib/hooks/useRealtimeRefresh';
 
 type PaymentStatus = 'approved' | 'pending' | 'rejected';
 
@@ -299,61 +300,67 @@ export default function PurchasesPage() {
     }
   }, [authLoading, user, router]);
 
-  useEffect(() => {
-    const fetchHistory = async () => {
-      if (!user) {
-        setPayments([]);
-        setLoading(false);
-        return;
-      }
-
-      try {
-        const q = query(collection(db, 'payments'), where('userId', '==', user.uid));
-        const snap = await getDocs(q);
-        setPayments(snap.docs.map((entry) => ({ id: entry.id, ...entry.data() } as PaymentRecord)));
-      } catch (error) {
-        console.error('Error fetching payments:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    if (!authLoading) {
-      fetchHistory();
+  const fetchHistory = useCallback(async () => {
+    if (!user) {
+      setPayments([]);
+      setLoading(false);
+      return;
     }
-  }, [authLoading, user]);
+
+    try {
+      const q = query(collection(db, 'payments'), where('userId', '==', user.uid));
+      const snap = await getDocs(q);
+      setPayments(snap.docs.map((entry) => ({ id: entry.id, ...entry.data() } as PaymentRecord)));
+    } catch (error) {
+      console.error('Error fetching payments:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [user]);
+
+  const loadPurchasedVideoData = useCallback(async () => {
+    if (effectivePurchasedVideoIds.length === 0) {
+      setPurchasedVideosById({});
+      return;
+    }
+
+    try {
+      const entries = await Promise.all(
+        effectivePurchasedVideoIds.map(async (videoId) => {
+          const snap = await getDoc(doc(db, 'videos', videoId));
+          if (!snap.exists()) return [videoId, null] as const;
+
+          const data = snap.data() as PurchasedVideoData;
+          return [videoId, data || null] as const;
+        }),
+      );
+
+      const nextMap = entries.reduce<Record<string, PurchasedVideoData>>((acc, [videoId, data]) => {
+        if (data) acc[videoId] = data;
+        return acc;
+      }, {});
+
+      setPurchasedVideosById(nextMap);
+    } catch (error) {
+      console.error('Error loading purchased video data:', error);
+    }
+  }, [effectivePurchasedVideoIds]);
 
   useEffect(() => {
-    const loadPurchasedVideoData = async () => {
-      if (effectivePurchasedVideoIds.length === 0) {
-        setPurchasedVideosById({});
-        return;
-      }
+    if (!authLoading) {
+      void fetchHistory();
+    }
+  }, [authLoading, fetchHistory]);
 
-      try {
-        const entries = await Promise.all(
-          effectivePurchasedVideoIds.map(async (videoId) => {
-            const snap = await getDoc(doc(db, 'videos', videoId));
-            if (!snap.exists()) return [videoId, null] as const;
+  useEffect(() => {
+    void loadPurchasedVideoData();
+  }, [loadPurchasedVideoData]);
 
-            const data = snap.data() as PurchasedVideoData;
-            return [videoId, data || null] as const;
-          }),
-        );
-
-        const nextMap = entries.reduce<Record<string, PurchasedVideoData>>((acc, [videoId, data]) => {
-          if (data) acc[videoId] = data;
-          return acc;
-        }, {});
-
-        setPurchasedVideosById(nextMap);
-      } catch (error) {
-        console.error('Error loading purchased video data:', error);
-      }
-    };
-
-    loadPurchasedVideoData();
-  }, [effectivePurchasedVideoIds]);
+  // ── Temps réel : toute modif backend (admin, paiement, Chargily) recharge auto ──
+  useRealtimeRefresh(['payments', 'users', 'videos'], () => {
+    void fetchHistory();
+    void loadPurchasedVideoData();
+  }, { intervalMs: 4000 });
 
   const formatVideoDuration = (video: PurchasedVideoData): string => {
     const formatAsHourMinute = (totalMinutes: number) => {

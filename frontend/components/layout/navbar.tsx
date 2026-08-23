@@ -681,11 +681,23 @@ export function Navbar() {
 
     const timer = window.setInterval(() => {
       void fetchNotifications({ showLoading: false });
-    }, 60000);
+    }, 5000);
+
+    // Revalidation au focus / retour onglet (temps réel perçu)
+    const handleFocus = () => void fetchNotifications({ showLoading: false });
+    const handleVisibility = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        void fetchNotifications({ showLoading: false });
+      }
+    };
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('visibilitychange', handleVisibility);
 
     return () => {
       unsubscribe();
       window.clearInterval(timer);
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('visibilitychange', handleVisibility);
     };
   }, [user, profile, fetchNotifications]);
 
