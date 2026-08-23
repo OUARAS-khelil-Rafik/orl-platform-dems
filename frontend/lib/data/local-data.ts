@@ -1249,6 +1249,74 @@ export const deleteAuthAccountByUid = async (uid: string) => {
   return Boolean(response.deleted);
 };
 
+// ─────────────────────────────────────────────────────────────
+// Helpers organisation Cloudinary : orl-platform/<specialite>/<videoSlug>[/<subFolder>]
+// ─────────────────────────────────────────────────────────────
+const sanitizeCloudinaryFolderSegment = (value: string, fallback = ''): string => {
+  const raw = String(value || '').trim();
+  if (!raw) return fallback;
+  const normalized = raw
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .toLowerCase();
+  const truncated = normalized.slice(0, 80).replace(/-+$/g, '');
+  return truncated || fallback;
+};
+
+const sanitizeCloudinaryFolderPath = (folder: string, fallback = 'orl-platform'): string => {
+  const raw = String(folder || '').trim();
+  if (!raw) return fallback;
+  const parts = raw
+    .split('/')
+    .map((seg) => sanitizeCloudinaryFolderSegment(seg, ''))
+    .filter(Boolean);
+  return parts.length > 0 ? parts.join('/') : fallback;
+};
+
+export const buildCloudinaryOrganizedFolder = (options: {
+  specialty?: string;
+  videoTitle?: string;
+  videoSlug?: string;
+  subFolder?: string;
+  baseFolder?: string;
+}): string => {
+  const base = sanitizeCloudinaryFolderSegment(options.baseFolder || 'orl-platform', 'orl-platform');
+  const specialtySlug = sanitizeCloudinaryFolderSegment(options.specialty || '', '');
+  const videoSlug =
+    sanitizeCloudinaryFolderSegment(options.videoSlug || '', '') ||
+    sanitizeCloudinaryFolderSegment(options.videoTitle || '', '');
+  const subParts = String(options.subFolder || '')
+    .split('/')
+    .map((seg) => sanitizeCloudinaryFolderSegment(seg, ''))
+    .filter(Boolean);
+  const segments = [base];
+  if (specialtySlug) segments.push(specialtySlug);
+  if (videoSlug) segments.push(videoSlug);
+  if (subParts.length > 0) segments.push(...subParts);
+  return segments.join('/');
+};
+
+export const resolveCloudinaryFolder = (options: {
+  folder?: string;
+  specialty?: string;
+  videoTitle?: string;
+  videoSlug?: string;
+  subFolder?: string;
+}): string => {
+  const hasHints = Boolean(
+    String(options.specialty || '').trim() ||
+      String(options.videoTitle || '').trim() ||
+      String(options.videoSlug || '').trim() ||
+      String(options.subFolder || '').trim(),
+  );
+  if (hasHints) {
+    return buildCloudinaryOrganizedFolder(options);
+  }
+  return sanitizeCloudinaryFolderPath(options.folder || 'orl-platform', 'orl-platform');
+};
+
 export const uploadCloudinaryAsset = async (
   file: File,
   options: {
@@ -1256,6 +1324,10 @@ export const uploadCloudinaryAsset = async (
     folder?: string;
     fileName?: string;
     purpose?: 'support-chat';
+    specialty?: string;
+    videoTitle?: string;
+    videoSlug?: string;
+    subFolder?: string;
     onProgress?: (percentage: number) => void;
   } = {},
 ): Promise<{
@@ -1272,12 +1344,34 @@ export const uploadCloudinaryAsset = async (
   const resourceType = options.resourceType === 'video' || options.resourceType === 'raw'
     ? options.resourceType
     : 'image';
-  const folder = options.folder || 'orl-platform';
+
+  // Si specialty / videoTitle fournis, on construit le dossier organisé
+  const hasOrganizedHints = Boolean(
+    String(options.specialty || '').trim() ||
+      String(options.videoTitle || '').trim() ||
+      String(options.videoSlug || '').trim() ||
+      String(options.subFolder || '').trim(),
+  );
+  const folder = hasOrganizedHints
+    ? buildCloudinaryOrganizedFolder({
+        specialty: options.specialty,
+        videoTitle: options.videoTitle,
+        videoSlug: options.videoSlug,
+        subFolder: options.subFolder,
+        baseFolder: 'orl-platform',
+      })
+    : sanitizeCloudinaryFolderPath(options.folder || 'orl-platform', 'orl-platform');
 
   const params = new URLSearchParams({
     resourceType,
     folder,
   });
+
+  // Transmet aussi les hints au backend pour double-vérification / reconstruction serveur
+  if (options.specialty) params.set('specialty', String(options.specialty));
+  if (options.videoTitle) params.set('videoTitle', String(options.videoTitle));
+  if (options.videoSlug) params.set('videoSlug', String(options.videoSlug));
+  if (options.subFolder) params.set('subFolder', String(options.subFolder));
 
   const explicitFileName = String(options.fileName || '').trim();
   if (explicitFileName) {

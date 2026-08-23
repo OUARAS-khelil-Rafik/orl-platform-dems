@@ -4,7 +4,11 @@ import mongoose from 'mongoose';
 import { authOptional, authRequired, adminRequired } from '../middleware/auth.js';
 import { User } from '../models/User.js';
 import { isCloudinarySettingsDoc, normalizeCollectionName } from '../utils/collection-name.js';
-import { uploadBufferToCloudinary } from '../config/cloudinary.js';
+import {
+  buildCloudinaryOrganizedFolder,
+  sanitizeCloudinaryFolderSegment,
+  uploadBufferToCloudinary,
+} from '../config/cloudinary.js';
 
 const router = express.Router();
 
@@ -2231,11 +2235,18 @@ router.post('/clinicalCases/import', authOptional, async (req, res) => {
       filter: {},
     });
     const videoByTitleKey = new Map();
+    const videoInfoByTitleKey = new Map();
 
     for (const video of existingVideos) {
       const key = normalizeComparableText(video?.title);
       if (key && videoTitleKeys.has(key) && !videoByTitleKey.has(key)) {
-        videoByTitleKey.set(key, String(video._id));
+        const vid = String(video._id);
+        videoByTitleKey.set(key, vid);
+        videoInfoByTitleKey.set(key, {
+          id: vid,
+          title: String(video?.title || ''),
+          subspecialty: String(video?.subspecialty || ''),
+        });
       }
     }
 
@@ -2250,8 +2261,19 @@ router.post('/clinicalCases/import', authOptional, async (req, res) => {
         .collection('videos')
         .insertOne(createPlaceholderVideoPayload(clinicalCase.videoTitle, now));
 
-      videoByTitleKey.set(titleKey, String(result.insertedId));
+      const newId = String(result.insertedId);
+      videoByTitleKey.set(titleKey, newId);
+      videoInfoByTitleKey.set(titleKey, {
+        id: newId,
+        title: clinicalCase.videoTitle,
+        subspecialty: '',
+      });
       createdVideoTitles.push(clinicalCase.videoTitle);
+    }
+
+    const videoInfoById = new Map();
+    for (const info of videoInfoByTitleKey.values()) {
+      videoInfoById.set(info.id, info);
     }
 
     const videoIds = Array.from(new Set([...videoByTitleKey.values()]));
@@ -2311,9 +2333,20 @@ router.post('/clinicalCases/import', authOptional, async (req, res) => {
 
     for (const clinicalCase of casesToPrepare) {
       const caseKey = toSafeCloudinaryName(`${clinicalCase.videoTitle}-${clinicalCase.caseNumber || clinicalCase.title}`, 'case-import');
+      const videoInfo = videoInfoById.get(clinicalCase.videoId) || { title: clinicalCase.videoTitle, subspecialty: '' };
+      const caseFolder = buildCloudinaryOrganizedFolder({
+        specialty: videoInfo.subspecialty,
+        videoTitle: videoInfo.title,
+        subFolder: 'cases',
+      });
+      const caseQuestionFolder = buildCloudinaryOrganizedFolder({
+        specialty: videoInfo.subspecialty,
+        videoTitle: videoInfo.title,
+        subFolder: 'cases/questions',
+      });
       const images = await uploadImportedDriveImages({
         links: clinicalCase.imageLinks,
-        folder: 'orl-platform/case-images',
+        folder: caseFolder,
         filenamePrefix: `case-${caseKey || Date.now()}`,
         authUser: req.authUser,
         failures: imageFailures,
@@ -2325,7 +2358,7 @@ router.post('/clinicalCases/import', authOptional, async (req, res) => {
         const question = clinicalCase.questions[index];
         const questionImages = await uploadImportedDriveImages({
           links: question.images,
-          folder: 'orl-platform/case-question-images',
+          folder: caseQuestionFolder,
           filenamePrefix: `case-question-${caseKey}-${index + 1}`,
           authUser: req.authUser,
           failures: imageFailures,
@@ -2407,11 +2440,18 @@ router.post('/diagrams/import', authOptional, async (req, res) => {
       filter: {},
     });
     const videoByTitleKey = new Map();
+    const videoInfoByTitleKey = new Map();
 
     for (const video of existingVideos) {
       const key = normalizeComparableText(video?.title);
       if (key && videoTitleKeys.has(key) && !videoByTitleKey.has(key)) {
-        videoByTitleKey.set(key, String(video._id));
+        const vid = String(video._id);
+        videoByTitleKey.set(key, vid);
+        videoInfoByTitleKey.set(key, {
+          id: vid,
+          title: String(video?.title || ''),
+          subspecialty: String(video?.subspecialty || ''),
+        });
       }
     }
 
@@ -2426,8 +2466,19 @@ router.post('/diagrams/import', authOptional, async (req, res) => {
         .collection('videos')
         .insertOne(createPlaceholderVideoPayload(diagram.videoTitle, now));
 
-      videoByTitleKey.set(titleKey, String(result.insertedId));
+      const newId = String(result.insertedId);
+      videoByTitleKey.set(titleKey, newId);
+      videoInfoByTitleKey.set(titleKey, {
+        id: newId,
+        title: diagram.videoTitle,
+        subspecialty: '',
+      });
       createdVideoTitles.push(diagram.videoTitle);
+    }
+
+    const videoInfoById = new Map();
+    for (const info of videoInfoByTitleKey.values()) {
+      videoInfoById.set(info.id, info);
     }
 
     const videoIds = Array.from(new Set([...videoByTitleKey.values()]));
@@ -2487,9 +2538,15 @@ router.post('/diagrams/import', authOptional, async (req, res) => {
 
     for (const diagram of diagramsToPrepare) {
       const diagramKey = toSafeCloudinaryName(`${diagram.videoTitle}-${diagram.diagramNumber || diagram.title}`, 'diagram-import');
+      const videoInfo = videoInfoById.get(diagram.videoId) || { title: diagram.videoTitle, subspecialty: '' };
+      const diagramFolder = buildCloudinaryOrganizedFolder({
+        specialty: videoInfo.subspecialty,
+        videoTitle: videoInfo.title,
+        subFolder: 'diagrams',
+      });
       const imageUrls = await uploadImportedDriveImages({
         links: splitImportedLinks(diagram.imageLinks),
-        folder: 'orl-platform/diagrams',
+        folder: diagramFolder,
         filenamePrefix: `diagram-${diagramKey || Date.now()}`,
         authUser: req.authUser,
         failures: imageFailures,

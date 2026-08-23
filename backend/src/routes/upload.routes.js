@@ -10,11 +10,15 @@ import { unlink } from 'node:fs/promises';
 import mongoose from 'mongoose';
 import { authRequired } from '../middleware/auth.js';
 import {
+  buildCloudinaryOrganizedFolder,
   cloudinaryAssetExists,
   cloudinaryAssetsExistByPrefix,
   destroyCloudinaryAsset,
   extractCloudinaryPublicId,
   inferCloudinaryResourceTypeFromUrl,
+  resolveOrganizedCloudinaryFolder,
+  sanitizeCloudinaryFolderPath,
+  sanitizeCloudinaryFolderSegment,
   uploadBufferToCloudinary,
   uploadFileToCloudinary,
   uploadLargeVideoToCloudinary,
@@ -777,10 +781,32 @@ router.post('/cloudinary', authRequired, withSingleFile(cloudinaryUpload), async
         : requestedResourceType === 'raw'
           ? 'raw'
           : 'image';
-    const folder = (req.query.folder ? String(req.query.folder) : UPLOAD_FOLDER)
-      .trim()
-      .replace(/^\/+|\/+$/g, '') || UPLOAD_FOLDER;
     const purpose = String(req.query.purpose || '').trim().toLowerCase();
+
+    // --- Dossiers organisés Cloudinary : orl-platform/<specialite>/<videoSlug>[/<subFolder>] ---
+    const rawFolderParam = String(req.query.folder || UPLOAD_FOLDER).trim();
+    const requestedSpecialty = String(req.query.specialty || req.query.subspecialty || '').trim();
+    const requestedVideoTitle = String(req.query.videoTitle || req.query.video_title || req.query.title || '').trim();
+    const requestedVideoSlug = String(req.query.videoSlug || '').trim();
+    const requestedSubFolder = String(req.query.subFolder || '').trim();
+
+    let folder;
+    if (purpose === 'support-chat') {
+      // Les pièces jointes du chat restent dans leur dossier dédié (non classé par vidéo)
+      folder = sanitizeCloudinaryFolderPath(rawFolderParam, UPLOAD_FOLDER);
+    } else if (requestedSpecialty || requestedVideoTitle || requestedVideoSlug || requestedSubFolder) {
+      folder = resolveOrganizedCloudinaryFolder({
+        folder: rawFolderParam,
+        specialty: requestedSpecialty,
+        videoTitle: requestedVideoTitle,
+        videoSlug: requestedVideoSlug,
+        subFolder: requestedSubFolder,
+        resourceType,
+        fallbackBase: UPLOAD_FOLDER,
+      });
+    } else {
+      folder = sanitizeCloudinaryFolderPath(rawFolderParam, UPLOAD_FOLDER);
+    }
     const requestedUploadNameRaw = Array.isArray(req.query.fileName)
       ? String(req.query.fileName[0] || '')
       : String(req.query.fileName || '');

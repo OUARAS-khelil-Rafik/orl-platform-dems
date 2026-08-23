@@ -344,6 +344,103 @@ export const extractCloudinaryPublicId = (secureUrl) => {
   }
 };
 
+// ─────────────────────────────────────────────────────────────
+// Organisation des dossiers Cloudinary par spécialité / vidéo
+// Structure cible : orl-platform/<specialite>/<videoSlug>[/<subFolder>]
+// ex: orl-platform/otologie/anatomie-oreille-moyenne/videos
+//     orl-platform/rhinologie/sinusite-aigue/cases
+//     orl-platform/laryngologie/dysphonie/diagrams
+// ─────────────────────────────────────────────────────────────
+export const sanitizeCloudinaryFolderSegment = (value, fallback = '') => {
+  const raw = String(value || '').trim();
+  if (!raw) return fallback;
+  const normalized = raw
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .toLowerCase();
+  // Limite à 80 caractères pour éviter des chemins trop longs
+  const truncated = normalized.slice(0, 80).replace(/-+$/g, '');
+  return truncated || fallback;
+};
+
+export const sanitizeCloudinaryFolderPath = (folder, fallback = 'orl-platform') => {
+  const raw = String(folder || '').trim();
+  if (!raw) return fallback;
+  const parts = raw
+    .split('/')
+    .map((seg) => sanitizeCloudinaryFolderSegment(seg, ''))
+    .filter(Boolean);
+  return parts.length > 0 ? parts.join('/') : fallback;
+};
+
+export const buildCloudinaryOrganizedFolder = ({
+  specialty,
+  videoTitle,
+  videoSlug,
+  subFolder = '',
+  baseFolder = 'orl-platform',
+} = {}) => {
+  const base = sanitizeCloudinaryFolderSegment(baseFolder, 'orl-platform');
+  const specialtySlug = sanitizeCloudinaryFolderSegment(specialty, '');
+  const resolvedVideoSlug =
+    sanitizeCloudinaryFolderSegment(videoSlug, '') ||
+    sanitizeCloudinaryFolderSegment(videoTitle, '');
+  const subParts = String(subFolder || '')
+    .split('/')
+    .map((seg) => sanitizeCloudinaryFolderSegment(seg, ''))
+    .filter(Boolean);
+
+  const segments = [base];
+  if (specialtySlug) segments.push(specialtySlug);
+  if (resolvedVideoSlug) segments.push(resolvedVideoSlug);
+  if (subParts.length > 0) segments.push(...subParts);
+
+  return segments.join('/');
+};
+
+export const resolveOrganizedCloudinaryFolder = ({
+  folder,
+  specialty,
+  videoTitle,
+  videoSlug,
+  subFolder,
+  resourceType,
+  fallbackBase = 'orl-platform',
+} = {}) => {
+  const hasOrganizedHints = Boolean(
+    String(specialty || '').trim() ||
+      String(videoTitle || '').trim() ||
+      String(videoSlug || '').trim() ||
+      String(subFolder || '').trim(),
+  );
+
+  if (hasOrganizedHints) {
+    let inferredSub = String(subFolder || '').trim();
+    if (!inferredSub && folder) {
+      const legacy = String(folder).toLowerCase();
+      if (legacy.includes('case-question')) inferredSub = 'cases/questions';
+      else if (legacy.includes('case-images') || legacy.includes('cases')) inferredSub = 'cases';
+      else if (legacy.includes('diagrams')) inferredSub = 'diagrams';
+      else if (legacy.includes('support-chat')) inferredSub = 'support-chat';
+      else if (legacy.includes('avatars')) inferredSub = 'avatars';
+    }
+    // Pour les vidéos on garde le dossier racine de la vidéo sans sous-dossier supplémentaire
+    // (la vidéo + ses parts vivent dans orl-platform/<spec>/<videoSlug>)
+    // Les callers qui veulent un sous-dossier pour les images précisent subFolder explicitement.
+    return buildCloudinaryOrganizedFolder({
+      specialty,
+      videoTitle,
+      videoSlug,
+      subFolder: inferredSub,
+      baseFolder: fallbackBase,
+    });
+  }
+
+  return sanitizeCloudinaryFolderPath(folder, fallbackBase);
+};
+
 export const destroyCloudinaryAsset = async ({
   publicId,
   resourceType = 'image',
