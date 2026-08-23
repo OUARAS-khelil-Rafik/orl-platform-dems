@@ -349,8 +349,8 @@ export const extractCloudinaryPublicId = (secureUrl) => {
 //   Vidéos          : orl-platform/videos/<speciality>/<nom-video>/
 //   Cas cliniques   : orl-platform/videos/<speciality>/<nom-video>/cas-images/
 //   Questions cas   : orl-platform/videos/<speciality>/<nom-video>/cas-question-images/
-//   Avatars         : orl-platform/avatars/<name-user>/
-//   Support chat    : orl-platform/support-chat/<name-user>/
+//   Avatars         : orl-platform/avatars/<name-user>/   — <name-user> = nom complet plateforme (User.displayName), PAS cloudinary
+//   Support chat    : orl-platform/support-chat/<name-user>/ — <name-user> = nom complet plateforme (User.displayName), PAS cloudinary
 //   Schémas/Diagrams: orl-platform/diagrams/<speciality>/<nom-video>/
 // ─────────────────────────────────────────────────────────────
 export const sanitizeCloudinaryFolderSegment = (value, fallback = '') => {

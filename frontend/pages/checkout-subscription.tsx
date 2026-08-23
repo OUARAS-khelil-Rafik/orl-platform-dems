@@ -1,20 +1,60 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useAuth } from '@/components/providers/auth-provider';
 import { motion } from 'motion/react';
-import { CreditCard, ShieldCheck, Loader2, Star, Check } from 'lucide-react';
+import { CreditCard, ShieldCheck, Loader2, Star, Check, Upload, FileText, X, Copy, CheckCircle2 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { createChargilyCheckout } from '@/lib/data/local-data';
+import { db, collection, addDoc, doc, updateDoc, uploadCloudinaryAsset, buildPaymentReceiptFolder } from '@/lib/data/local-data';
 
 export default function SubscriptionCheckoutPage() {
   const { user, profile } = useAuth();
   const router = useRouter();
   const [isProcessing, setIsProcessing] = useState(false);
   const [plan, setPlan] = useState<'monthly' | 'yearly'>('monthly');
+  const [paymentMethod, setPaymentMethod] = useState<'ccp' | 'baridimob'>('baridimob');
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [showSuccess, setShowSuccess] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const price = plan === 'monthly' ? 15000 : 150000;
+
+  const handleReceiptFileChange = (file: File | null) => {
+    if (!file) {
+      setReceiptFile(null);
+      setReceiptPreview(null);
+      return;
+    }
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg', 'application/pdf'];
+    const maxSize = 10 * 1024 * 1024;
+    if (!allowedTypes.includes(file.type) && !file.type.startsWith('image/')) {
+      alert('Format non supporté. Veuillez joindre une image (JPG, PNG, WEBP) ou un PDF.');
+      return;
+    }
+    if (file.size > maxSize) {
+      alert('Fichier trop volumineux (max 10MB).');
+      return;
+    }
+    setReceiptFile(file);
+    if (file.type.startsWith('image/')) {
+      const url = URL.createObjectURL(file);
+      setReceiptPreview(url);
+    } else {
+      setReceiptPreview(null);
+    }
+  };
+
+  const copyToClipboard = async (text: string, field: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedField(field);
+      setTimeout(() => setCopiedField(null), 2000);
+    } catch {}
+  };
 
   const handleCheckout = async () => {
     if (!user || !profile) {
@@ -22,39 +62,64 @@ export default function SubscriptionCheckoutPage() {
       return;
     }
 
+    if (!receiptFile) {
+      alert("Veuillez joindre votre reçu de paiement (PDF ou image).");
+      return;
+    }
+
     setIsProcessing(true);
+    setUploadProgress(0);
 
     try {
-      const result = await createChargilyCheckout({
-        amount: price,
-        currency: 'dzd',
-        type: 'subscription',
-        targetId: 'vip_plus',
-        plan,
-        locale: 'fr',
-        description: `Abonnement VIP Plus ${plan === 'yearly' ? 'annuel' : 'mensuel'} - ${price} DZD`,
+      const folder = buildPaymentReceiptFolder(profile.displayName, profile.email, user.uid);
+      const resourceType = receiptFile.type === 'application/pdf' ? 'raw' as const : 'image' as const;
+      const uploaded = await uploadCloudinaryAsset(receiptFile, {
+        folder,
+        resourceType,
+        fileName: `recu-${Date.now()}`,
+        onProgress: setUploadProgress,
       });
 
-      if (!result?.checkoutUrl) {
-        throw new Error("URL de paiement Chargily manquante.");
-      }
+      await addDoc(collection(db, 'payments'), {
+        userId: user.uid,
+        userEmail: profile.email,
+        userDisplayName: profile.displayName,
+        amount: price,
+        type: 'subscription',
+        targetId: 'vip_plus',
+        plan: plan,
+        status: 'pending',
+        method: paymentMethod,
+        receiptUrl: uploaded.secureUrl,
+        receiptPublicId: uploaded.publicId,
+        receiptResourceType: uploaded.resourceType,
+        receiptFolder: folder,
+        createdAt: new Date().toISOString()
+      });
 
-      window.location.href = result.checkoutUrl;
+      await updateDoc(doc(db, 'users', user.uid), {
+        subscriptionApprovalStatus: 'pending',
+      });
+
+      if (receiptPreview) {
+        try { URL.revokeObjectURL(receiptPreview); } catch {}
+      }
+      setReceiptFile(null);
+      setReceiptPreview(null);
+      setUploadProgress(0);
+      setShowSuccess(true);
     } catch (error) {
       console.error('Checkout error:', error);
       const msg = error instanceof Error ? error.message : "Une erreur est survenue lors du paiement.";
-      if (msg.toLowerCase().includes('chargily') && msg.toLowerCase().includes('non configur')) {
-        alert("Paiement en ligne indisponible (Chargily non configuré). Contactez l'administrateur.");
-      } else {
-        alert(msg);
-      }
+      alert(msg);
+    } finally {
       setIsProcessing(false);
     }
   };
 
   return (
     <div className="flex-1 bg-slate-50 py-12">
-      <div className="container mx-auto px-4 max-w-4xl">
+      <div className="container mx-auto px-4 max-w-5xl">
         <div className="text-center mb-12">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-accent-100 text-accent-600 mb-6">
             <Star className="w-8 h-8 fill-current" />
@@ -146,10 +211,112 @@ export default function SubscriptionCheckoutPage() {
             </div>
           </div>
 
-          {/* Checkout Summary */}
+          {/* Checkout */}
           <div>
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 sticky top-24">
-              <h2 className="text-xl font-bold text-slate-900 mb-6">Résumé de la commande</h2>
+              <h2 className="text-xl font-bold text-slate-900 mb-6">Paiement</h2>
+
+              {/* Méthode */}
+              <div className="mb-6">
+                <p className="text-sm font-semibold text-slate-700 mb-3">Méthode de paiement</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button type="button" onClick={()=>setPaymentMethod('baridimob')} className={`p-3 rounded-xl border-2 text-left transition-all ${paymentMethod==='baridimob'?'border-accent-500 bg-accent-50':'border-slate-200 hover:border-slate-300'}`}>
+                    <span className="block text-sm font-bold text-slate-900">BaridiMob</span>
+                    <span className="block text-xs text-slate-500">RIP</span>
+                  </button>
+                  <button type="button" onClick={()=>setPaymentMethod('ccp')} className={`p-3 rounded-xl border-2 text-left transition-all ${paymentMethod==='ccp'?'border-accent-500 bg-accent-50':'border-slate-200 hover:border-slate-300'}`}>
+                    <span className="block text-sm font-bold text-slate-900">CCP</span>
+                    <span className="block text-xs text-slate-500">Poste</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Infos selon méthode */}
+              {paymentMethod==='baridimob' ? (
+                <div className="mb-6 bg-amber-50 border border-amber-200 rounded-xl p-4">
+                  <p className="text-sm font-bold text-amber-900 mb-3 flex items-center gap-2"><CreditCard className="w-4 h-4"/> BaridiMob</p>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-amber-100">
+                      <span className="text-slate-500 text-xs">RIP</span>
+                      <span className="font-mono font-bold text-slate-900 text-sm flex items-center gap-2">
+                        00799999002821592660
+                        <button type="button" onClick={()=>copyToClipboard('00799999002821592660','rip')} className="p-1 hover:bg-slate-100 rounded">
+                          {copiedField==='rip' ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600"/> : <Copy className="w-3.5 h-3.5 text-slate-400"/>}
+                        </button>
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-amber-100">
+                      <span className="text-slate-500 text-xs">Montant</span>
+                      <span className="font-bold text-amber-700">{price} DA</span>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="mb-6 bg-slate-50 border border-slate-200 rounded-xl p-4">
+                  <p className="text-sm font-bold text-slate-900 mb-3 flex items-center gap-2"><FileText className="w-4 h-4"/> CCP</p>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border">
+                      <span className="text-slate-500 text-xs">Nom</span>
+                      <span className="font-bold text-slate-900 text-xs flex items-center gap-2">
+                        OUARAS Khelil Rafik
+                        <button type="button" onClick={()=>copyToClipboard('OUARAS Khelil Rafik','ccp-nom')} className="p-1 hover:bg-slate-100 rounded">
+                          {copiedField==='ccp-nom' ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600"/> : <Copy className="w-3.5 h-3.5 text-slate-400"/>}
+                        </button>
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border">
+                      <span className="text-slate-500 text-xs">N° Compte</span>
+                      <span className="font-mono font-bold text-slate-900 text-sm flex items-center gap-2">
+                        0028215926
+                        <button type="button" onClick={()=>copyToClipboard('0028215926','ccp-compte')} className="p-1 hover:bg-slate-100 rounded">
+                          {copiedField==='ccp-compte' ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600"/> : <Copy className="w-3.5 h-3.5 text-slate-400"/>}
+                        </button>
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border">
+                      <span className="text-slate-500 text-xs">Clé</span>
+                      <span className="font-mono font-bold text-slate-900 flex items-center gap-2">
+                        60
+                        <button type="button" onClick={()=>copyToClipboard('60','ccp-cle')} className="p-1 hover:bg-slate-100 rounded">
+                          {copiedField==='ccp-cle' ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600"/> : <Copy className="w-3.5 h-3.5 text-slate-400"/>}
+                        </button>
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border">
+                      <span className="text-slate-500 text-xs">Montant</span>
+                      <span className="font-bold text-medical-700">{price} DA</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Upload reçu */}
+              <div className="mb-6">
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Reçu de paiement <span className="text-red-500">*</span> <span className="font-normal text-xs text-slate-500">(PDF ou image, max 10MB)</span></label>
+                <input ref={fileInputRef} type="file" accept="image/*,application/pdf" className="hidden" onChange={(e)=> handleReceiptFileChange(e.target.files?.[0]||null)} />
+                {!receiptFile ? (
+                  <button type="button" onClick={()=> fileInputRef.current?.click()} className="w-full border-2 border-dashed border-slate-300 rounded-xl p-6 flex flex-col items-center justify-center gap-2 hover:border-accent-300 hover:bg-accent-50/50 transition-colors">
+                    <Upload className="w-8 h-8 text-slate-400"/>
+                    <span className="text-sm font-medium text-slate-700">Cliquez pour joindre votre reçu</span>
+                    <span className="text-xs text-slate-500">JPG, PNG, WEBP ou PDF</span>
+                  </button>
+                ) : (
+                  <div className="border border-slate-200 rounded-xl p-3 bg-white">
+                    <div className="flex items-start gap-3">
+                      <div className="w-12 h-12 rounded-lg bg-slate-100 flex items-center justify-center shrink-0 overflow-hidden">
+                        {receiptPreview ? <img src={receiptPreview} alt="Aperçu reçu" className="w-full h-full object-cover"/> : <FileText className="w-6 h-6 text-slate-500"/>}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-slate-900 truncate">{receiptFile.name}</p>
+                        <p className="text-xs text-slate-500">{(receiptFile.size/1024/1024).toFixed(2)} MB • {receiptFile.type || 'fichier'}</p>
+                        {isProcessing && <div className="mt-2 w-full bg-slate-200 rounded-full h-1.5"><div className="bg-accent-600 h-1.5 rounded-full transition-all" style={{width:`${uploadProgress}%`}}/></div>}
+                      </div>
+                      {!isProcessing && <button type="button" onClick={()=> handleReceiptFileChange(null)} className="p-2 hover:bg-slate-100 rounded-lg"><X className="w-4 h-4 text-slate-500"/></button>}
+                    </div>
+                    {!isProcessing && <button type="button" onClick={()=> fileInputRef.current?.click()} className="mt-3 w-full text-xs font-medium text-accent-600 hover:text-accent-700 border border-accent-200 rounded-lg py-2">Changer de fichier</button>}
+                  </div>
+                )}
+              </div>
               
               <div className="space-y-4 mb-6">
                 <div className="flex justify-between text-slate-600">
@@ -174,35 +341,47 @@ export default function SubscriptionCheckoutPage() {
                   </Link>
                 </div>
               ) : (
-                <>
-                  <button
-                    onClick={handleCheckout}
-                    disabled={isProcessing}
-                    className="w-full flex items-center justify-center gap-2 bg-accent-600 text-white px-6 py-4 rounded-xl font-bold text-lg hover:bg-accent-700 transition-colors disabled:opacity-70 shadow-lg shadow-accent-600/30"
-                  >
-                    {isProcessing ? (
-                      <>
-                        <Loader2 className="w-5 h-5 animate-spin" />
-                        Redirection vers Chargily Pay...
-                      </>
-                    ) : (
-                      <>
-                        <CreditCard className="w-5 h-5" />
-                        Payer {price} DZD via Chargily Pay
-                      </>
-                    )}
-                  </button>
-                  <p className="mt-2 text-[11px] text-center text-slate-500">Paiement sécurisé EDAHABIA / CIB via Chargily Pay</p>
-                </>
+                <button
+                  onClick={handleCheckout}
+                  disabled={isProcessing || !receiptFile}
+                  className="w-full flex items-center justify-center gap-2 bg-accent-600 text-white px-6 py-4 rounded-xl font-bold text-lg hover:bg-accent-700 transition-colors disabled:opacity-50 shadow-lg shadow-accent-600/30"
+                >
+                  {isProcessing ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      {uploadProgress>0 && uploadProgress<100 ? `Upload ${uploadProgress}%` : 'Envoi en cours...'}
+                    </>
+                  ) : (
+                    <>
+                      <ShieldCheck className="w-5 h-5" />
+                      Envoyer — {price} DZD
+                    </>
+                  )}
+                </button>
               )}
 
-              <div className="mt-6 flex items-center justify-center gap-2 text-sm text-slate-500">
+              <div className="mt-4 flex items-center justify-center gap-2 text-sm text-slate-500">
                 <ShieldCheck className="w-4 h-4 text-emerald-500" />
-                <span>Paiement 100% sécurisé — EDAHABIA / CIB</span>
+                <span>Validation manuelle par l'admin (24h)</span>
               </div>
+              <p className="mt-2 text-[11px] text-center text-slate-400">Reçu stocké : orl-platform/recu-paiement/{String(profile?.displayName||profile?.email?.split('@')[0]||'user').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9_-]+/g,'-').toLowerCase().slice(0,20)}/</p>
             </div>
           </div>
         </div>
+
+        {showSuccess && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white rounded-3xl p-8 max-w-md w-full text-center shadow-xl border border-slate-200">
+              <div className="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                <CheckCircle2 className="h-10 w-10" />
+              </div>
+              <h2 className="text-2xl font-bold text-slate-900 mb-3">Demande envoyée !</h2>
+              <p className="text-slate-600 mb-2">Votre reçu a été enregistré dans <span className="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded">orl-platform/recu-paiement</span>.</p>
+              <p className="text-slate-500 text-sm mb-6">Un administrateur va vérifier et activer votre abonnement sous 24h.</p>
+              <button onClick={()=> {setShowSuccess(false); router.push('/dashboard');}} className="w-full py-3 rounded-xl font-semibold text-white" style={{background:'var(--app-accent)'}}>Aller au tableau de bord</button>
+            </motion.div>
+          </div>
+        )}
       </div>
     </div>
   );

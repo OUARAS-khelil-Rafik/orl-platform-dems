@@ -34,12 +34,4 @@ export const env = {
     apiKey: process.env.CLOUDINARY_API_KEY || '',
     apiSecret: process.env.CLOUDINARY_API_SECRET || '',
   },
-  chargily: {
-    secretKey: process.env.CHARGILY_SECRET_KEY || '',
-    // 'test' uses https://pay.chargily.net/test/api/v2, 'live' uses https://pay.chargily.net/api/v2
-    mode: String(process.env.CHARGILY_MODE || 'test').toLowerCase() === 'live' ? 'live' : 'test',
-    webhookSecret: process.env.CHARGILY_WEBHOOK_SECRET || process.env.CHARGILY_SECRET_KEY || '',
-    frontendUrl: String(process.env.FRONTEND_URL || '').replace(/\/$/, '') || 'http://localhost:3000',
-    backendUrl: String(process.env.BACKEND_URL || '').replace(/\/$/, '') || '',
-  },
 };

@@ -1,12 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import { useAuth } from '@/components/providers/auth-provider';
-import { db, collection, addDoc, doc, updateDoc, createChargilyCheckout } from '@/lib/data/local-data';
+import { db, collection, addDoc, doc, updateDoc, uploadCloudinaryAsset, buildPaymentReceiptFolder } from '@/lib/data/local-data';
 import { motion } from 'motion/react';
-import { ShieldCheck, Upload, CheckCircle2, AlertCircle, CreditCard, Camera } from 'lucide-react';
-import Image from 'next/image';
+import { ShieldCheck, CheckCircle2, AlertCircle, CreditCard, Upload, FileText, X, Copy, Loader2 } from 'lucide-react';
 
 export default function CheckoutPage() {
   const router = useRouter();
@@ -14,10 +13,14 @@ export default function CheckoutPage() {
   const type = typeof typeParam === 'string' ? typeParam : '';
   const { user, profile, loading: authLoading } = useAuth();
 
-  const [paymentMethod, setPaymentMethod] = useState<'ccp' | 'baridimob'>('ccp');
-  const [receiptUrl, setReceiptUrl] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<'ccp' | 'baridimob'>('baridimob');
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!router.isReady) {
@@ -30,76 +33,92 @@ export default function CheckoutPage() {
   }, [user, authLoading, router, router.isReady]);
 
   const isSubscription = type === 'subscription';
-  const amount = isSubscription ? 15000 : 5000; // Example prices
+  const amount = isSubscription ? 15000 : 5000;
   const title = isSubscription ? 'Abonnement VIP Plus (1 Mois)' : `Pack Spécialité : ${type.charAt(0).toUpperCase() + type.slice(1)}`;
+
+  const handleReceiptFileChange = (file: File | null) => {
+    if (!file) {
+      setReceiptFile(null);
+      setReceiptPreview(null);
+      return;
+    }
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg', 'application/pdf'];
+    const maxSize = 10 * 1024 * 1024;
+    if (!allowedTypes.includes(file.type) && !file.type.startsWith('image/')) {
+      alert('Format non supporté. Veuillez joindre une image (JPG, PNG, WEBP) ou un PDF.');
+      return;
+    }
+    if (file.size > maxSize) {
+      alert('Fichier trop volumineux (max 10MB).');
+      return;
+    }
+    setReceiptFile(file);
+    if (file.type.startsWith('image/')) {
+      const url = URL.createObjectURL(file);
+      setReceiptPreview(url);
+    } else {
+      setReceiptPreview(null);
+    }
+  };
+
+  const copyToClipboard = async (text: string, field: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedField(field);
+      setTimeout(() => setCopiedField(null), 2000);
+    } catch {}
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
-
-    // BaridiMob / EDAHABIA via Chargily Pay → redirection paiement en ligne
-    if (paymentMethod === 'baridimob') {
-      setIsSubmitting(true);
-      try {
-        const result = await createChargilyCheckout({
-          amount,
-          currency: 'dzd',
-          type: isSubscription ? 'subscription' : 'pack',
-          targetId: isSubscription ? 'vip_plus' : (type || 'pack'),
-          plan: isSubscription ? 'monthly' : undefined,
-          locale: 'fr',
-          description: isSubscription
-            ? `Abonnement VIP Plus - ${amount} DZD`
-            : `Pack ${type} - ${amount} DZD`,
-        });
-
-        if (!result?.checkoutUrl) throw new Error('URL Chargily manquante');
-
-        window.location.href = result.checkoutUrl;
-        return;
-      } catch (error) {
-        console.error('Chargily error:', error);
-        const msg = error instanceof Error ? error.message : 'Erreur Chargily Pay';
-        if (msg.toLowerCase().includes('chargily') && msg.toLowerCase().includes('non configur')) {
-          alert("Paiement Chargily Pay non configuré côté serveur. Veuillez configurer CHARGILY_SECRET_KEY ou utilisez le virement CCP.");
-        } else {
-          alert(msg);
-        }
-        setIsSubmitting(false);
-        return;
-      }
-    }
-
-    // Virement CCP → flux manuel (reste inchangé, avec reçu)
-    if (!receiptUrl) {
-      alert('Veuillez fournir un lien vers votre reçu (ex: Google Drive, Imgur) ou utiliser le chat de support.');
+    if (!user || !profile) return;
+    if (!receiptFile) {
+      alert('Veuillez joindre votre reçu de paiement (PDF ou image).');
       return;
     }
 
     setIsSubmitting(true);
+    setUploadProgress(0);
     try {
+      const folder = buildPaymentReceiptFolder(profile.displayName, profile.email, user.uid);
+      const resourceType = receiptFile.type === 'application/pdf' ? 'raw' as const : 'image' as const;
+      const uploaded = await uploadCloudinaryAsset(receiptFile, {
+        folder,
+        resourceType,
+        fileName: `recu-${Date.now()}`,
+        onProgress: setUploadProgress,
+      });
+
       await addDoc(collection(db, 'payments'), {
         userId: user.uid,
+        userEmail: profile.email,
+        userDisplayName: profile.displayName,
         amount,
         method: paymentMethod,
         status: 'pending',
         type: isSubscription ? 'subscription' : 'pack',
         targetId: isSubscription ? 'vip_plus' : type,
-        receiptUrl,
+        receiptUrl: uploaded.secureUrl,
+        receiptPublicId: uploaded.publicId,
+        receiptResourceType: uploaded.resourceType,
+        receiptFolder: folder,
         createdAt: new Date().toISOString()
       });
 
       if (isSubscription) {
         await updateDoc(doc(db, 'users', user.uid), {
-          role: 'vip_plus',
           subscriptionApprovalStatus: 'pending',
         });
       }
 
+      if (receiptPreview) {
+        try { URL.revokeObjectURL(receiptPreview); } catch {}
+      }
       setSuccess(true);
     } catch (error) {
       console.error('Error submitting payment:', error);
-      alert('Une erreur est survenue.');
+      const msg = error instanceof Error ? error.message : 'Une erreur est survenue.';
+      alert(msg);
     } finally {
       setIsSubmitting(false);
     }
@@ -116,9 +135,10 @@ export default function CheckoutPage() {
             <CheckCircle2 className="h-10 w-10" />
           </div>
           <h2 className="text-2xl font-bold text-slate-900 mb-4">Demande Envoyée !</h2>
-          <p className="text-slate-600 mb-8 leading-relaxed">
-            Votre demande de paiement a été enregistrée avec succès. Notre équipe va vérifier votre reçu et activer votre accès dans les plus brefs délais (généralement sous 24h).
+          <p className="text-slate-600 mb-2 leading-relaxed">
+            Votre reçu a été enregistré dans <span className="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded">orl-platform/recu-paiement</span> et est en attente de validation.
           </p>
+          <p className="text-slate-500 text-sm mb-8">Notre équipe va vérifier votre paiement et activer votre accès dans les plus brefs délais (généralement sous 24h).</p>
           <button
             onClick={() => router.push('/dashboard')}
             className="w-full py-4 rounded-xl font-medium transition-colors"
@@ -136,7 +156,7 @@ export default function CheckoutPage() {
       <div className="container mx-auto px-4 max-w-5xl">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-slate-900 mb-2">Finaliser votre commande</h1>
-          <p className="text-slate-600">Sélectionnez votre méthode de paiement pour débloquer votre accès.</p>
+          <p className="text-slate-600">Sélectionnez votre méthode de paiement puis joignez votre reçu.</p>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -179,62 +199,109 @@ export default function CheckoutPage() {
               </div>
 
               <form onSubmit={handleSubmit}>
+                {/* Infos CCP */}
                 {paymentMethod === 'ccp' && (
                   <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="space-y-6 overflow-hidden">
                     <div className="bg-slate-50 p-6 rounded-xl border border-slate-200">
                       <h3 className="font-bold text-slate-900 mb-4">Informations CCP</h3>
-                      <div className="space-y-2 text-sm text-slate-700">
-                        <p><span className="font-medium text-slate-500 w-24 inline-block">Nom:</span> DEMS ENT E-Learning</p>
-                        <p><span className="font-medium text-slate-500 w-24 inline-block">Compte:</span> 0000 123456 78</p>
-                        <p><span className="font-medium text-slate-500 w-24 inline-block">Clé:</span> 99</p>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border">
+                          <span className="font-medium text-slate-500 w-24 inline-block">Nom:</span>
+                          <span className="font-bold text-slate-900 flex items-center gap-2 text-xs">OUARAS Khelil Rafik
+                            <button type="button" onClick={()=>copyToClipboard('OUARAS Khelil Rafik','ccp-nom')} className="p-1 hover:bg-slate-100 rounded">
+                              {copiedField==='ccp-nom' ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600"/> : <Copy className="w-3.5 h-3.5 text-slate-400"/>}
+                            </button>
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border">
+                          <span className="font-medium text-slate-500 w-24 inline-block">Compte:</span>
+                          <span className="font-mono font-bold text-slate-900 flex items-center gap-2">0028215926
+                            <button type="button" onClick={()=>copyToClipboard('0028215926','ccp-compte')} className="p-1 hover:bg-slate-100 rounded">
+                              {copiedField==='ccp-compte' ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600"/> : <Copy className="w-3.5 h-3.5 text-slate-400"/>}
+                            </button>
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border">
+                          <span className="font-medium text-slate-500 w-24 inline-block">Clé:</span>
+                          <span className="font-mono font-bold text-slate-900 flex items-center gap-2">60
+                            <button type="button" onClick={()=>copyToClipboard('60','ccp-cle')} className="p-1 hover:bg-slate-100 rounded">
+                              {copiedField==='ccp-cle' ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600"/> : <Copy className="w-3.5 h-3.5 text-slate-400"/>}
+                            </button>
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border">
+                          <span className="font-medium text-slate-500 w-24 inline-block">Montant:</span>
+                          <span className="font-bold text-medical-700">{amount} DA</span>
+                        </div>
                       </div>
-                    </div>
-                    
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-2">Lien vers le reçu de paiement</label>
-                      <input
-                        type="url"
-                        required
-                        value={receiptUrl}
-                        onChange={(e) => setReceiptUrl(e.target.value)}
-                        placeholder="https://imgur.com/..."
-                        className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-medical-500 focus:border-medical-500 outline-none transition-all"
-                      />
-                      <p className="text-xs text-slate-500 mt-2 flex items-center gap-1">
-                        <AlertCircle className="h-3 w-3" />
-                        Uploadez la photo de votre reçu sur un service d'hébergement d'images et collez le lien ici.
-                      </p>
                     </div>
                   </motion.div>
                 )}
 
                 {paymentMethod === 'baridimob' && (
                   <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="space-y-6 overflow-hidden">
-                    <div className="bg-yellow-50 p-6 rounded-xl border border-yellow-200 text-center">
-                      <p className="text-yellow-800 font-medium mb-2">Paiement instantané EDAHABIA / CIB via Chargily Pay</p>
-                      <p className="text-yellow-700 text-sm mb-4">Vous allez être redirigé vers l&apos;interface sécurisée Chargily Pay (carte EDAHABIA, CIB). Votre accès sera activé automatiquement après paiement.</p>
-                      <Image src="https://picsum.photos/seed/chargily/200/50" alt="Chargily Pay" width={200} height={50} className="mx-auto mix-blend-multiply opacity-50" />
+                    <div className="bg-amber-50 p-6 rounded-xl border border-amber-200">
+                      <h3 className="font-bold text-amber-900 mb-4 flex items-center gap-2"><CreditCard className="w-5 h-5"/> Informations BaridiMob</h3>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-amber-100">
+                          <span className="font-medium text-slate-500 w-24 inline-block">RIP:</span>
+                          <span className="font-mono font-bold text-slate-900 flex items-center gap-2 text-xs sm:text-sm">00799999002821592660
+                            <button type="button" onClick={()=>copyToClipboard('00799999002821592660','rip')} className="p-1 hover:bg-slate-100 rounded">
+                              {copiedField==='rip' ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600"/> : <Copy className="w-3.5 h-3.5 text-slate-400"/>}
+                            </button>
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-amber-100">
+                          <span className="font-medium text-slate-500 w-24 inline-block">Montant:</span>
+                          <span className="font-bold text-amber-700">{amount} DA</span>
+                        </div>
+                      </div>
+                      <p className="text-xs text-amber-700 mt-3">Effectuez le virement via l'app BaridiMob puis joignez le reçu ci-dessous.</p>
                     </div>
                   </motion.div>
                 )}
 
+                {/* Upload reçu commun aux deux méthodes */}
+                <div className="mt-6">
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Reçu de paiement <span className="text-red-500">*</span> <span className="font-normal text-xs text-slate-500">(PDF ou image, max 10MB)</span></label>
+                  <input ref={fileInputRef} type="file" accept="image/*,application/pdf" className="hidden" onChange={(e)=> handleReceiptFileChange(e.target.files?.[0]||null)} />
+                  {!receiptFile ? (
+                    <button type="button" onClick={()=> fileInputRef.current?.click()} className="w-full border-2 border-dashed border-slate-300 rounded-xl p-6 flex flex-col items-center justify-center gap-2 hover:border-medical-300 hover:bg-medical-50/50 transition-colors">
+                      <Upload className="w-8 h-8 text-slate-400"/>
+                      <span className="text-sm font-medium text-slate-700">Cliquez pour joindre votre reçu</span>
+                      <span className="text-xs text-slate-500">JPG, PNG, WEBP ou PDF</span>
+                    </button>
+                  ) : (
+                    <div className="border border-slate-200 rounded-xl p-3 bg-white">
+                      <div className="flex items-start gap-3">
+                        <div className="w-12 h-12 rounded-lg bg-slate-100 flex items-center justify-center shrink-0 overflow-hidden">
+                          {receiptPreview ? <img src={receiptPreview} alt="Aperçu reçu" className="w-full h-full object-cover"/> : <FileText className="w-6 h-6 text-slate-500"/>}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-slate-900 truncate">{receiptFile.name}</p>
+                          <p className="text-xs text-slate-500">{(receiptFile.size/1024/1024).toFixed(2)} MB • {receiptFile.type || 'fichier'}</p>
+                          {isSubmitting && <div className="mt-2 w-full bg-slate-200 rounded-full h-1.5"><div className="bg-medical-600 h-1.5 rounded-full transition-all" style={{width:`${uploadProgress}%`}}/></div>}
+                        </div>
+                        {!isSubmitting && <button type="button" onClick={()=> handleReceiptFileChange(null)} className="p-2 hover:bg-slate-100 rounded-lg"><X className="w-4 h-4 text-slate-500"/></button>}
+                      </div>
+                      {!isSubmitting && <button type="button" onClick={()=> fileInputRef.current?.click()} className="mt-3 w-full text-xs font-medium text-medical-600 hover:text-medical-700 border border-medical-200 rounded-lg py-2">Changer de fichier</button>}
+                    </div>
+                  )}
+                  <p className="text-[11px] text-slate-400 mt-2 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> Stockage : orl-platform/recu-paiement/{String(profile?.displayName||profile?.email?.split('@')[0]||'user').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9_-]+/g,'-').toLowerCase().slice(0,20)}/</p>
+                </div>
+
                 <div className="mt-8 pt-6 border-t border-slate-200">
                   <button
                     type="submit"
-                    disabled={isSubmitting}
-                    className="w-full bg-medical-600 text-white py-4 rounded-xl font-bold text-lg hover:bg-medical-700 transition-colors shadow-lg shadow-medical-600/30 disabled:opacity-70 disabled:cursor-not-allowed flex justify-center items-center gap-2"
+                    disabled={isSubmitting || !receiptFile}
+                    className="w-full bg-medical-600 text-white py-4 rounded-xl font-bold text-lg hover:bg-medical-700 transition-colors shadow-lg shadow-medical-600/30 disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-2"
                   >
                     {isSubmitting ? (
-                      <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    ) : paymentMethod === 'baridimob' ? (
-                      <>
-                        <ShieldCheck className="h-5 w-5" />
-                        Payer {amount} DZD via Chargily Pay
-                      </>
+                      <><Loader2 className="w-5 h-5 animate-spin" /> {uploadProgress>0 && uploadProgress<100 ? `Upload ${uploadProgress}%` : 'Envoi en cours...'} </>
                     ) : (
                       <>
                         <ShieldCheck className="h-5 w-5" />
-                        Envoyer la preuve CCP — {amount} DZD
+                        Envoyer — {amount} DA
                       </>
                     )}
                   </button>
@@ -266,7 +333,7 @@ export default function CheckoutPage() {
               <div className="bg-slate-800/50 rounded-xl p-4 flex items-start gap-3">
                 <ShieldCheck className="h-5 w-5 text-medical-400 flex-shrink-0 mt-0.5" />
                 <p className="text-xs text-slate-400 leading-relaxed">
-                  Paiement 100% sécurisé. En cas de problème, notre équipe de support est disponible 7j/7 pour vous assister.
+                  Validation manuelle par l'admin sous 24h après vérification du reçu (stocké dans Cloudinary).
                 </p>
               </div>
             </div>

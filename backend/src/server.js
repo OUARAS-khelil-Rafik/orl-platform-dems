@@ -9,7 +9,6 @@ import { env } from './config/env.js';
 import authRoutes from './routes/auth.routes.js';
 import dataRoutes from './routes/data.routes.js';
 import uploadRoutes from './routes/upload.routes.js';
-import paymentRoutes from './routes/payment.routes.js';
 import realtimeRoutes from './routes/realtime.routes.js';
 
 const app = express();
@@ -49,19 +48,7 @@ app.use(
     credentials: true,
   }),
 );
-app.use(
-  express.json({
-    limit: '10mb',
-    verify: (req, _res, buf) => {
-      // Keep raw body for Chargily webhook signature verification
-      // ref: backend/src/routes/payment.routes.js verifies req.rawBody
-      try {
-        // @ts-ignore
-        req.rawBody = buf.toString('utf8');
-      } catch {}
-    },
-  }),
-);
+app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 // Lazy-connect for serverless / Render: ensure DB ready on every request (no-op if already connected)
@@ -89,7 +76,6 @@ app.get('/health', (_req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/data', dataRoutes);
 app.use('/api/uploads', uploadRoutes);
-app.use('/api/payments', paymentRoutes);
 app.use('/api/realtime', realtimeRoutes);
 
 app.use((err, _req, res, _next) => {

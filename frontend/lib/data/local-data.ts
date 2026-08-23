@@ -1394,8 +1394,8 @@ export const deleteAuthAccountByUid = async (uid: string) => {
 //   Vidéos          : orl-platform/videos/<speciality>/<nom-video>/
 //   Cas cliniques   : orl-platform/videos/<speciality>/<nom-video>/cas-images/
 //   Questions cas   : orl-platform/videos/<speciality>/<nom-video>/cas-question-images/
-//   Avatars         : orl-platform/avatars/<name-user>/
-//   Support chat    : orl-platform/support-chat/<name-user>/
+//   Avatars         : orl-platform/avatars/<name-user>/   — <name-user> = nom complet plateforme (User.displayName), PAS cloudinary
+//   Support chat    : orl-platform/support-chat/<name-user>/ — <name-user> = nom complet plateforme (User.displayName), PAS cloudinary
 //   Schémas         : orl-platform/diagrams/<speciality>/<nom-video>/
 // ─────────────────────────────────────────────────────────────
 const sanitizeCloudinaryFolderSegment = (value: string, fallback = ''): string => {
@@ -1858,49 +1858,19 @@ export const deleteCloudinaryAsset = async (
 };
 
 // ─────────────────────────────────────────────────────────────
-// Chargily Pay – paiement en ligne (EDAHABIA / CIB)
-// Backend: POST /api/payments/create-checkout → { checkoutUrl, checkoutId }
-//         GET  /api/payments/verify/:checkoutId
+// Paiement manuel – reçu CCP / BaridiMob
+// Stockage Cloudinary: orl-platform/recu-paiement/<name-user>/
+// Ressource: image (jpg/png) ou raw (pdf)
 // ─────────────────────────────────────────────────────────────
-export interface ChargilyCreateCheckoutPayload {
-  amount: number;
-  currency?: 'dzd';
-  type: 'cart' | 'pack' | 'video' | 'subscription';
-  targetId?: string;
-  plan?: 'monthly' | 'yearly' | string;
-  locale?: 'ar' | 'en' | 'fr';
-  paymentMethod?: 'edahabia' | 'cib' | string;
-  description?: string;
-  items?: Array<{ id: string; type: string; title?: string; price?: number }>;
-}
-
-export interface ChargilyCreateCheckoutResponse {
-  checkoutUrl: string;
-  checkoutId: string;
-  paymentId: string;
-  amount: number;
-  currency: string;
-}
-
-export const createChargilyCheckout = async (
-  payload: ChargilyCreateCheckoutPayload,
-): Promise<ChargilyCreateCheckoutResponse> => {
-  return apiRequest<ChargilyCreateCheckoutResponse>(
-    '/payments/create-checkout',
-    {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    },
-    true,
-  );
-};
-
-export const verifyChargilyCheckout = async (
-  checkoutId: string,
-): Promise<{ payment?: Record<string, unknown>; checkout?: Record<string, unknown>; status?: string; chargilyStatus?: string }> => {
-  return apiRequest(
-    `/payments/verify/${encodeURIComponent(checkoutId)}`,
-    { method: 'GET' },
-    true,
-  );
+export const buildPaymentReceiptFolder = (displayName?: string, email?: string, uid?: string): string => {
+  const raw = String(displayName || '').trim() || String(email || '').split('@')[0] || String(uid || 'user');
+  const slug = raw
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .toLowerCase()
+    .slice(0, 60)
+    .replace(/-+$/g, '') || 'user';
+  return `orl-platform/recu-paiement/${slug}`;
 };

@@ -829,7 +829,7 @@ router.post('/cloudinary', authRequired, withSingleFile(cloudinaryUpload), async
 
     let folder;
     if (purpose === 'support-chat') {
-      // orl-platform/support-chat/<name-user>/
+      // orl-platform/support-chat/<name-user>/ — name-user = nom complet plateforme (User.displayName), PAS cloudinary
       const hintedUserName = String(
         req.query.userName || req.query.user_name || req.query.supportUserName || req.query.nameUser || '',
       ).trim();
@@ -1271,7 +1271,7 @@ router.post('/avatar', authRequired, withSingleFile(avatarUpload), async (req, r
       `avatar-${req.authUser.uid}`,
     );
 
-    // orl-platform/avatars/<name-user>/
+    // orl-platform/avatars/<name-user>/ — name-user = nom complet plateforme (User.displayName), PAS cloudinary cloudName
     const avatarUserName = String(
       req.authUser?.displayName || req.authUser?.email?.split('@')[0] || req.authUser?.uid || 'user',
     ).trim();

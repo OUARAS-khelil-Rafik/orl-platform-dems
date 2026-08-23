@@ -24,29 +24,33 @@ const CartContext = createContext<CartContextType | undefined>(undefined);
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const { user, isAuthReady } = useAuth();
-  const [items, setItems] = useState<CartItem[]>(() => {
-    if (typeof window === 'undefined') {
-      return [];
-    }
+  // Hydration-safe: initial render toujours vide (pareil serveur/client), chargement réel dans useEffect
+  const [items, setItems] = useState<CartItem[]>([]);
+  const [isHydrated, setIsHydrated] = useState(false);
 
-    const savedCart = window.localStorage.getItem('dems_ent_cart');
-    if (!savedCart) {
-      return [];
-    }
-
+  // Chargement initial depuis localStorage après hydration
+  useEffect(() => {
     try {
-      return JSON.parse(savedCart) as CartItem[];
+      const savedCart = window.localStorage.getItem('dems_ent_cart');
+      if (savedCart) {
+        const parsed = JSON.parse(savedCart) as CartItem[];
+        if (Array.isArray(parsed)) {
+          setItems(parsed);
+        }
+      }
     } catch {
       console.error('Failed to parse cart from local storage');
-      return [];
+    } finally {
+      setIsHydrated(true);
     }
-  });
+  }, []);
 
   useEffect(() => {
+    if (!isHydrated) return;
     if (typeof window !== 'undefined') {
       window.localStorage.setItem('dems_ent_cart', JSON.stringify(items));
     }
-  }, [items]);
+  }, [items, isHydrated]);
 
   // Clear cart when there is no connected user (e.g. after sign out)
   useEffect(() => {

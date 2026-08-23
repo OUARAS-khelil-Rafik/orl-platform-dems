@@ -191,7 +191,7 @@ export default function PricingPage() {
             </div>
             <div className="flex items-center gap-2 bg-[var(--app-surface)] px-5 sm:px-6 py-3 rounded-xl shadow-md border w-full sm:w-auto justify-center" style={{ borderColor: 'color-mix(in oklab, var(--app-accent) 24%, var(--app-border) 76%)' }}>
               <Zap className="h-5 w-5 sm:h-6 sm:w-6 shrink-0" style={{ color: 'color-mix(in oklab, var(--app-accent) 74%, #f59e0b 26%)' }} />
-              <span className="font-bold text-[var(--app-text)] text-sm sm:text-base">BaridiMob (Chargily Pay)</span>
+              <span className="font-bold text-[var(--app-text)] text-sm sm:text-base">BaridiMob (RIP)</span>
             </div>
           </div>
         </div>
