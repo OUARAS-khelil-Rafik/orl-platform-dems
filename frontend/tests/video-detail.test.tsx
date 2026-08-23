@@ -103,6 +103,8 @@ vi.mock('@/lib/data/local-data', () => ({
     };
   },
   addDoc: vi.fn(),
+  subscribeToDataChanges: () => () => {},
+  emitDataChange: vi.fn(),
 }));
 
 describe('Video detail page', () => {

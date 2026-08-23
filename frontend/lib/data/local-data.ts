@@ -297,6 +297,10 @@ const getApiBaseUrlCandidates = () => {
 
 const AUTH_SESSION_KEY = 'dems-auth-session-v1';
 const AUTH_SESSION_TEMP_KEY = 'dems-auth-session-temp-v1';
+const AUTH_CHANNEL_NAME = 'dems-auth-channel-v1';
+const AUTH_FALLBACK_SYNC_KEY = 'dems-auth-sync-v1';
+const AUTH_FALLBACK_REQUEST_KEY = 'dems-auth-request-v1';
+const AUTH_FALLBACK_RESPONSE_KEY = 'dems-auth-response-v1';
 const DATA_CHANGE_EVENT_NAME = 'dems-data-change-v1';
 const DATA_CHANGE_CHANNEL_NAME = 'dems-data-change-channel-v1';
 const NOTIFICATION_STORAGE_EVENT_NAME = 'dems-notification-storage-v1';
@@ -304,6 +308,265 @@ const NOTIFICATION_STORAGE_EVENT_NAME = 'dems-notification-storage-v1';
 const authListeners = new Set<(user: LocalAuthUser | null) => void>();
 
 const isBrowser = () => typeof window !== 'undefined';
+
+// ─────────────────────────────────────────────────────────────
+// Synchronisation Auth cross-tab (BroadcastChannel + storage)
+// Garde la connexion si on ouvre un nouvel onglet avec le même lien,
+// même en persistence 'session' (sessionStorage non partagé nativement).
+// ─────────────────────────────────────────────────────────────
+let authSyncInitialized = false;
+let authBroadcastChannel: BroadcastChannel | null = null;
+let authBroadcastSuppressed = 0;
+let tabIdCache: string | null = null;
+
+const getTabId = (): string => {
+  if (tabIdCache) return tabIdCache;
+  if (!isBrowser()) return 'server';
+  try {
+    const stored = window.sessionStorage.getItem('dems-tab-id-v1');
+    if (stored) {
+      tabIdCache = stored;
+      return tabIdCache;
+    }
+  } catch {}
+  tabIdCache = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  try {
+    window.sessionStorage.setItem('dems-tab-id-v1', tabIdCache);
+  } catch {}
+  return tabIdCache;
+};
+
+const getAuthBroadcastChannel = (): BroadcastChannel | null => {
+  if (!isBrowser() || typeof BroadcastChannel === 'undefined') return null;
+  if (authBroadcastChannel) return authBroadcastChannel;
+  try {
+    const ch = new BroadcastChannel(AUTH_CHANNEL_NAME);
+    ch.onmessage = handleAuthBroadcastMessage;
+    authBroadcastChannel = ch;
+    return ch;
+  } catch {
+    return null;
+  }
+};
+
+const broadcastAuthState = (session: ApiSessionPayload | null, persistence: 'local' | 'session') => {
+  if (!isBrowser() || authBroadcastSuppressed > 0) return;
+  const payload = { type: 'auth-change' as const, session, persistence, tabId: getTabId(), timestamp: Date.now() };
+  try {
+    const ch = getAuthBroadcastChannel();
+    if (ch) ch.postMessage(payload);
+  } catch {}
+  try {
+    window.localStorage.setItem(AUTH_FALLBACK_SYNC_KEY, JSON.stringify(payload));
+  } catch {}
+};
+
+const applyExternalAuthChange = (session: ApiSessionPayload | null, persistence: 'local' | 'session') => {
+  if (!isBrowser()) return;
+  const current = getStoredSession();
+  const curStr = current ? JSON.stringify(current) : null;
+  const incStr = session ? JSON.stringify(session) : null;
+  const curPers = getSessionPersistence();
+  if (curStr === incStr && (session === null || curPers === persistence)) {
+    return;
+  }
+  authBroadcastSuppressed++;
+  try {
+    window.localStorage.removeItem(AUTH_SESSION_KEY);
+    window.sessionStorage.removeItem(AUTH_SESSION_TEMP_KEY);
+    if (session) {
+      const serialized = JSON.stringify(session);
+      if (persistence === 'session') {
+        window.sessionStorage.setItem(AUTH_SESSION_TEMP_KEY, serialized);
+      } else {
+        window.localStorage.setItem(AUTH_SESSION_KEY, serialized);
+      }
+    }
+  } finally {
+    authBroadcastSuppressed--;
+  }
+  notifyAuthListeners(session?.user || null);
+};
+
+const handleAuthBroadcastMessage = (event: MessageEvent) => {
+  const data = event.data as unknown as {
+    type?: string;
+    session?: ApiSessionPayload | null;
+    persistence?: string;
+    tabId?: string;
+    requesterId?: string;
+  };
+  if (!data || typeof data.type !== 'string') return;
+  if (data.tabId === getTabId()) return;
+  if (data.type === 'auth-change') {
+    applyExternalAuthChange(data.session ?? null, data.persistence === 'session' ? 'session' : 'local');
+  } else if (data.type === 'auth-request') {
+    const local = getStoredSession();
+    if (!local) return;
+    const pers = getSessionPersistence();
+    const response = {
+      type: 'auth-response' as const,
+      session: local,
+      persistence: pers,
+      tabId: getTabId(),
+      requesterId: data.tabId,
+      timestamp: Date.now(),
+    };
+    try {
+      const ch = getAuthBroadcastChannel();
+      if (ch) ch.postMessage(response);
+    } catch {}
+    try {
+      window.localStorage.setItem(AUTH_FALLBACK_RESPONSE_KEY, JSON.stringify(response));
+      setTimeout(() => {
+        try {
+          window.localStorage.removeItem(AUTH_FALLBACK_RESPONSE_KEY);
+        } catch {}
+      }, 1500);
+    } catch {}
+  } else if (data.type === 'auth-response') {
+    if (data.requesterId && data.requesterId !== getTabId()) return;
+    if (getStoredSession()) return;
+    if (data.session) {
+      applyExternalAuthChange(data.session as ApiSessionPayload | null, data.persistence === 'session' ? 'session' : 'local');
+    }
+  }
+};
+
+const handleAuthStorageEvent = (event: StorageEvent) => {
+  if (!isBrowser()) return;
+  if (event.key === AUTH_SESSION_KEY) {
+    let incoming: ApiSessionPayload | null = null;
+    if (event.newValue) {
+      try {
+        incoming = JSON.parse(event.newValue) as ApiSessionPayload;
+      } catch {
+        incoming = null;
+      }
+    }
+    let previous: ApiSessionPayload | null = null;
+    if (event.oldValue) {
+      try {
+        previous = JSON.parse(event.oldValue) as ApiSessionPayload;
+      } catch {
+        previous = null;
+      }
+    }
+    // Compare previous vs incoming to detect real change; current (post-event) is already equal to incoming
+    const prevUserStr = previous ? JSON.stringify(previous.user) : null;
+    const incUserStr = incoming ? JSON.stringify(incoming.user) : null;
+    const prevToken = previous?.token || null;
+    const incToken = incoming?.token || null;
+    if (prevUserStr === incUserStr && prevToken === incToken) {
+      return; // No effective change
+    }
+    authBroadcastSuppressed++;
+    try {
+      if (incoming === null) {
+        window.localStorage.removeItem(AUTH_SESSION_KEY);
+        window.sessionStorage.removeItem(AUTH_SESSION_TEMP_KEY);
+      } else {
+        // Login / update: localStorage already contains incoming (partagé), on nettoie juste sessionStorage fantôme
+        window.sessionStorage.removeItem(AUTH_SESSION_TEMP_KEY);
+      }
+    } finally {
+      authBroadcastSuppressed--;
+    }
+    notifyAuthListeners(incoming?.user || null);
+    return;
+  }
+  if (event.key === AUTH_FALLBACK_SYNC_KEY && event.newValue) {
+    try {
+      const parsed = JSON.parse(event.newValue) as {
+        type?: string;
+        session?: ApiSessionPayload | null;
+        persistence?: string;
+        tabId?: string;
+      };
+      if (parsed?.tabId === getTabId()) return;
+      if (parsed?.type === 'auth-change') {
+        applyExternalAuthChange(parsed.session || null, parsed.persistence === 'session' ? 'session' : 'local');
+      }
+    } catch {}
+    return;
+  }
+  if (event.key === AUTH_FALLBACK_REQUEST_KEY && event.newValue) {
+    try {
+      const parsed = JSON.parse(event.newValue) as { tabId?: string };
+      if (!parsed?.tabId || parsed.tabId === getTabId()) return;
+      const local = getStoredSession();
+      if (!local) return;
+      const pers = getSessionPersistence();
+      const response = {
+        type: 'auth-response' as const,
+        session: local,
+        persistence: pers,
+        tabId: getTabId(),
+        requesterId: parsed.tabId,
+        timestamp: Date.now(),
+      };
+      try {
+        window.localStorage.setItem(AUTH_FALLBACK_RESPONSE_KEY, JSON.stringify(response));
+        setTimeout(() => {
+          try {
+            window.localStorage.removeItem(AUTH_FALLBACK_RESPONSE_KEY);
+          } catch {}
+        }, 1500);
+      } catch {}
+      const ch = getAuthBroadcastChannel();
+      if (ch) try { ch.postMessage(response); } catch {}
+    } catch {}
+    return;
+  }
+  if (event.key === AUTH_FALLBACK_RESPONSE_KEY && event.newValue) {
+    try {
+      const parsed = JSON.parse(event.newValue) as {
+        session?: ApiSessionPayload | null;
+        persistence?: string;
+        requesterId?: string;
+      };
+      if (parsed?.requesterId !== getTabId()) return;
+      if (getStoredSession()) return;
+      if (parsed?.session) {
+        applyExternalAuthChange(parsed.session as ApiSessionPayload, parsed.persistence === 'session' ? 'session' : 'local');
+      }
+    } catch {}
+  }
+};
+
+const ensureAuthSyncInitialized = () => {
+  if (!isBrowser() || authSyncInitialized) return;
+  authSyncInitialized = true;
+  try {
+    getAuthBroadcastChannel();
+  } catch {}
+  window.addEventListener('storage', handleAuthStorageEvent);
+  if (!getStoredSession()) {
+    setTimeout(() => {
+      if (getStoredSession()) return;
+      const req = { tabId: getTabId(), timestamp: Date.now() };
+      try {
+        const ch = getAuthBroadcastChannel();
+        if (ch) ch.postMessage({ type: 'auth-request', ...req });
+      } catch {}
+      try {
+        window.localStorage.setItem(AUTH_FALLBACK_REQUEST_KEY, JSON.stringify(req));
+        setTimeout(() => {
+          try {
+            window.localStorage.removeItem(AUTH_FALLBACK_REQUEST_KEY);
+          } catch {}
+        }, 1500);
+      } catch {}
+      setTimeout(() => {
+        if (getStoredSession()) return;
+        try {
+          const ch2 = getAuthBroadcastChannel();
+          if (ch2) ch2.postMessage({ type: 'auth-request', tabId: getTabId(), timestamp: Date.now() });
+        } catch {}
+      }, 400);
+    }, 90);
+  }
+};
 
 const normalizeCollectionName = (collectionName: string) => {
   if (collectionName === 'clinical_cases') {
@@ -318,6 +581,8 @@ const getStoredSession = (): ApiSessionPayload | null => {
   if (!isBrowser()) {
     return null;
   }
+  // Initialise la sync cross-tab au premier accès storage (idempotent)
+  ensureAuthSyncInitialized();
 
   const raw =
     window.localStorage.getItem(AUTH_SESSION_KEY) ??
@@ -340,21 +605,23 @@ const writeSession = (session: ApiSessionPayload | null, persistence: 'local' | 
   if (!isBrowser()) {
     return;
   }
+  ensureAuthSyncInitialized();
 
   window.localStorage.removeItem(AUTH_SESSION_KEY);
   window.sessionStorage.removeItem(AUTH_SESSION_TEMP_KEY);
 
   if (!session) {
+    broadcastAuthState(null, persistence);
     return;
   }
 
   const serialized = JSON.stringify(session);
   if (persistence === 'session') {
     window.sessionStorage.setItem(AUTH_SESSION_TEMP_KEY, serialized);
-    return;
+  } else {
+    window.localStorage.setItem(AUTH_SESSION_KEY, serialized);
   }
-
-  window.localStorage.setItem(AUTH_SESSION_KEY, serialized);
+  broadcastAuthState(session, persistence);
 };
 
 const getSessionPersistence = (): 'local' | 'session' => {
@@ -1070,16 +1337,37 @@ export const onAuthStateChanged = (
   _auth: typeof auth,
   callback: (user: LocalAuthUser | null) => void,
 ) => {
+  // Assure la synchronisation cross-tab dès l'abonnement (storage + BroadcastChannel + request sessionStorage)
+  ensureAuthSyncInitialized();
+  // Notifie immédiatement avec la session actuelle (localStorage ou sessionStorage clonée)
   callback(getStoredSession()?.user || null);
   authListeners.add(callback);
 
+  // Si on est en attente d'une session clonée (cas sessionStorage), re-notifie dès qu'elle arrive.
+  // Le mécanisme de réponse arrive via applyExternalAuthChange -> notifyAuthListeners,
+  // donc pas besoin de poll supplémentaire ici. On ajoute toutefois une vérification
+  // différée pour les environnements où BroadcastChannel n'est pas instantané.
+  let pollTimer: ReturnType<typeof setTimeout> | null = null;
+  if (!getStoredSession()) {
+    pollTimer = setTimeout(() => {
+      const nowSession = getStoredSession();
+      if (nowSession?.user) {
+        // Si une session est arrivée entre temps (fallback localStorage), on s'assure de notifier
+        // Seule la nouvelle valeur compte; applyExternalAuthChange l'a déjà notifié, mais on sécurise.
+        callback(nowSession.user);
+      }
+    }, 600);
+  }
+
   return () => {
     authListeners.delete(callback);
+    if (pollTimer) clearTimeout(pollTimer);
   };
 };
 
 export const signOut = async (_auth: typeof auth) => {
-  writeSession(null);
+  const persistence = getSessionPersistence();
+  writeSession(null, persistence);
   notifyAuthListeners(null);
 };
 
@@ -1098,20 +1386,28 @@ export const getValidatedSessionUser = async (): Promise<LocalAuthUser | null> =
     });
 
     if (!response.ok) {
-      writeSession(null);
+      const pers = getSessionPersistence();
+      writeSession(null, pers);
+      notifyAuthListeners(null);
       return null;
     }
 
     const payload = (await response.json()) as { user?: LocalAuthUser };
     if (!payload?.user?.uid) {
-      writeSession(null);
+      const pers = getSessionPersistence();
+      writeSession(null, pers);
+      notifyAuthListeners(null);
       return null;
     }
 
-    writeSession(
-      { token: session.token, user: payload.user },
-      getSessionPersistence(),
-    );
+    const freshSession = { token: session.token, user: payload.user };
+    const curStr = JSON.stringify(session);
+    const freshStr = JSON.stringify(freshSession);
+    writeSession(freshSession, getSessionPersistence());
+    // Notifie uniquement si l'utilisateur a changé (évite double rendu inutile)
+    if (curStr !== freshStr) {
+      notifyAuthListeners(payload.user);
+    }
 
     return payload.user;
   } catch {
@@ -1329,7 +1625,7 @@ export const updateAuthDisplayName = async (uid: string, displayName: string) =>
         displayName: response.user.displayName,
       },
     };
-    writeSession(nextSession);
+    writeSession(nextSession, getSessionPersistence());
     notifyAuthListeners(nextSession.user);
   }
 };
@@ -1353,7 +1649,7 @@ export const updateAuthPhotoURL = async (uid: string, photoURL: string) => {
         photoURL: response.user.photoURL,
       },
     };
-    writeSession(nextSession);
+    writeSession(nextSession, getSessionPersistence());
     notifyAuthListeners(nextSession.user);
   }
 };
@@ -1382,7 +1678,7 @@ export const deleteAuthAccountByUid = async (uid: string) => {
 
   const session = getStoredSession();
   if (response.deleted && session?.user.uid === uid) {
-    writeSession(null);
+    writeSession(null, getSessionPersistence());
     notifyAuthListeners(null);
   }
 
