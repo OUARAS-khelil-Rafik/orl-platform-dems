@@ -219,6 +219,210 @@ const buildPasswordResetEmailHtml = ({ safeName, safeResetUrl, expiryLabel }) =>
   `;
 };
 
+export const getContactRecipient = () => {
+  const explicit = String(process.env.CONTACT_TO_EMAIL || '').trim();
+  if (explicit) return explicit;
+  if (smtpFromEmail) return smtpFromEmail;
+  if (smtpUser) return smtpUser;
+  return '';
+};
+
+const buildContactEmailText = ({ name, email, phone, subject, message, metaLine }) => {
+  return [
+    `Nouveau message de contact — DEMS ENT`,
+    '',
+    `Nom: ${name}`,
+    `Email: ${email}`,
+    phone ? `Telephone: ${phone}` : null,
+    `Sujet: ${subject}`,
+    metaLine ? `Info: ${metaLine}` : null,
+    '',
+    'Message:',
+    message,
+    '',
+    `— Envoye depuis le formulaire de contact DEMS ENT`,
+  ].filter(Boolean).join('\n');
+};
+
+const buildContactEmailHtml = ({ safeName, safeEmail, safePhone, safeSubject, safeMessageHtml, safeMetaLine, receivedAtLabel }) => {
+  const brandName = escapeHtml(smtpFromName || 'DEMS ENT');
+  const currentYear = new Date().getFullYear();
+  const recipientDisplay = escapeHtml(getContactRecipient() || smtpFromEmail || '');
+
+  return `
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Nouveau message — ${brandName}</title>
+  </head>
+  <body style="margin:0;padding:0;background-color:#f3ede8;">
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">
+      Nouveau message de ${safeName} — ${safeSubject}
+    </div>
+
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f3ede8;padding:26px 14px;font-family:Arial,Helvetica,sans-serif;">
+      <tr>
+        <td align="center">
+          <!-- container -->
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:640px;background-color:#ffffff;border:1px solid #e8ddd0;border-radius:16px;overflow:hidden;box-shadow:0 10px 28px rgba(63,51,38,0.08);">
+            <!-- header -->
+            <tr>
+              <td style="background:linear-gradient(135deg,#2f261d 0%,#3d2d1e 52%,#8a5a36 100%);padding:22px 26px;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                  <tr>
+                    <td>
+                      <p style="margin:0;color:#fff6ed;font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;opacity:0.92;">DEMS ENT &nbsp;·&nbsp; Plateforme ORL</p>
+                      <p style="margin:8px 0 0 0;color:#ffffff;font-size:20px;font-weight:800;line-height:1.25;letter-spacing:-0.02em;">Nouveau message de contact</p>
+                      <p style="margin:6px 0 0 0;color:#f5e0c8;font-size:13px;line-height:1.5;">Reçu via le formulaire <strong style="color:#fff;">Contactez-nous</strong> — réponse directe possible.</p>
+                    </td>
+                    <td align="right" valign="top" style="padding-left:12px;">
+                      <span style="display:inline-block;background:rgba(255,255,255,0.14);border:1px solid rgba(255,255,255,0.22);color:#fff6ed;font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;padding:7px 10px;border-radius:999px;white-space:nowrap;">● Nouveau</span>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+            <!-- sender meta grid -->
+            <tr>
+              <td style="padding:20px 24px 0 24px;">
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border:1px solid #efe3d3;background:#fffaf2;border-radius:12px;overflow:hidden;">
+                  <tr>
+                    <td style="padding:14px 16px;width:50%;border-right:1px solid #efe3d3;vertical-align:top;">
+                      <p style="margin:0;color:#8a7762;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;">Expéditeur</p>
+                      <p style="margin:8px 0 0 0;color:#2f261d;font-size:15px;font-weight:700;line-height:1.35;">${safeName}</p>
+                      <p style="margin:4px 0 0 0;color:#b0673e;font-size:13px;font-weight:600;word-break:break-all;">
+                        <a href="mailto:${safeEmail}" style="color:#b0673e;text-decoration:none;word-break:break-all;">${safeEmail}</a>
+                      </p>
+                      ${safePhone ? `<p style="margin:6px 0 0 0;color:#5d4b3a;font-size:13px;line-height:1.5;">☎ ${safePhone}</p>` : ''}
+                    </td>
+                    <td style="padding:14px 16px;width:50%;vertical-align:top;">
+                      <p style="margin:0;color:#8a7762;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;">Sujet & infos</p>
+                      <p style="margin:8px 0 0 0;display:inline-block;background:#2f261d;color:#fff6ed;font-size:12px;font-weight:700;padding:6px 10px;border-radius:999px;max-width:100%;word-break:break-word;">${safeSubject}</p>
+                      <p style="margin:10px 0 0 0;color:#7a6a57;font-size:12px;line-height:1.6;">${safeMetaLine}</p>
+                      <p style="margin:4px 0 0 0;color:#9a8a78;font-size:11px;">Reçu le ${escapeHtml(receivedAtLabel)}</p>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+            <!-- message -->
+            <tr>
+              <td style="padding:18px 24px 0 24px;">
+                <p style="margin:0;color:#8a7762;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;">Message</p>
+                <div style="margin:10px 0 0 0;background:#ffffff;border:1px solid #e8ddd0;border-left:4px solid #b0673e;border-radius:12px;padding:16px 16px;color:#2f261d;font-size:14px;line-height:1.7;white-space:pre-wrap;word-break:break-word;">${safeMessageHtml}</div>
+              </td>
+            </tr>
+
+            <!-- CTA -->
+            <tr>
+              <td style="padding:18px 24px 0 24px;">
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                  <tr>
+                    <td align="center" bgcolor="#b0673e" style="border-radius:10px;">
+                      <a href="mailto:${safeEmail}?subject=Re:%20${safeSubject}" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:12px 18px;font-size:13px;font-weight:800;letter-spacing:0.02em;color:#fff6ed;text-decoration:none;">
+                        ↩ Répondre à ${safeName}
+                      </a>
+                    </td>
+                    <td style="padding-left:10px;">
+                      <a href="mailto:${safeEmail}" style="display:inline-block;padding:11px 14px;font-size:12px;font-weight:700;color:#5d4b3a;text-decoration:none;border:1px solid #e8ddd0;border-radius:10px;background:#fffaf2;">Copier l'email</a>
+                    </td>
+                  </tr>
+                </table>
+                <p style="margin:10px 0 0 0;color:#9a8a78;font-size:11px;line-height:1.6;">Astuce : le champ <strong>Répondre</strong> de cet email pointe déjà vers <strong>${safeEmail}</strong> — cliquez simplement sur Répondre.</p>
+              </td>
+            </tr>
+
+            <!-- tip -->
+            <tr>
+              <td style="padding:16px 24px 0 24px;">
+                <div style="background:#f9f5ef;border:1px dashed #e8ddd0;border-radius:10px;padding:11px 13px;">
+                  <p style="margin:0;color:#7a6a57;font-size:12px;line-height:1.6;">
+                    <strong style="color:#3f3326;">Info :</strong> ce message a été envoyé depuis <strong>dems-ent.com/contact</strong>. Ne pas répondre directement à ${recipientDisplay} si vous consultez cet email via une redirection.
+                  </p>
+                </div>
+              </td>
+            </tr>
+
+            <!-- footer -->
+            <tr>
+              <td style="padding:18px 24px 22px 24px;border-top:1px solid #efe3d3;margin-top:16px;">
+                <p style="margin:0;color:#9a8a78;font-size:11px;line-height:1.6;">
+                  © ${currentYear} ${brandName}. Plateforme DEMS ENT — ORL.
+                  <span style="color:#bba99a;">Cet email est généré automatiquement depuis le formulaire de contact.</span>
+                </p>
+              </td>
+            </tr>
+          </table>
+
+          <p style="margin:14px 0 0 0;color:#9a8a78;font-size:11px;">Si le bouton ne fonctionne pas, répondez directement à : <a href="mailto:${safeEmail}" style="color:#b0673e;text-decoration:underline;">${safeEmail}</a></p>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>
+  `;
+};
+
+export const sendContactMail = async ({ name, email, phone, subject, message, meta }) => {
+  const transporter = resolveTransporter();
+  if (!transporter) return false;
+
+  const to = getContactRecipient();
+  if (!to) return false;
+
+  const safeName = escapeHtml(name);
+  const safeEmail = escapeHtml(email);
+  const safePhone = phone ? escapeHtml(phone) : '';
+  const safeSubject = escapeHtml(subject);
+  const safeMessageHtml = escapeHtml(message).replace(/\n/g, '<br />');
+  const receivedAtLabel = new Date().toLocaleString('fr-DZ', {
+    timeZone: 'Africa/Algiers',
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+  const metaBits = [];
+  if (meta?.ip) metaBits.push(`IP: ${escapeHtml(meta.ip)}`);
+  if (meta?.userAgent) metaBits.push(escapeHtml(String(meta.userAgent).slice(0, 120)));
+  const safeMetaLine = metaBits.length ? metaBits.join(' · ') : 'Formulaire web — DEMS ENT';
+
+  const html = buildContactEmailHtml({
+    safeName,
+    safeEmail,
+    safePhone,
+    safeSubject,
+    safeMessageHtml,
+    safeMetaLine,
+    receivedAtLabel,
+  });
+  const text = buildContactEmailText({
+    name,
+    email,
+    phone,
+    subject,
+    message,
+    metaLine: metaBits.join(' | ') || 'Formulaire web DEMS ENT',
+  });
+
+  await transporter.sendMail({
+    from: buildFromHeader(),
+    to,
+    replyTo: `"${String(name).replace(/"/g, "'")}" <${email}>`,
+    subject: `[DEMS ENT] Contact — ${subject} — ${name}`,
+    text,
+    html,
+  });
+
+  return true;
+};
+
 export const sendPasswordResetMail = async ({ toEmail, displayName, resetUrl, expiresInMinutes }) => {
   const transporter = resolveTransporter();
   if (!transporter) {

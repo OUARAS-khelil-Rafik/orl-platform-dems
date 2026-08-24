@@ -68,3 +68,5 @@ services:
         value: 30
       - key: PASSWORD_RESET_EXPOSE_LINK
         value: false
+      - key: CONTACT_TO_EMAIL
+        sync: false # kh.ouaras@univ-alger.dz — sinon SMTP_FROM_EMAIL
