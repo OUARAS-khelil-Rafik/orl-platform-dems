@@ -1,0 +1,1064 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="light">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ORL Platform — Backend API</title>
+<meta name="description" content="Backend DEMS ORL Platform — API, Health & Realtime Dashboard" />
+<meta name="theme-color" content="#4f46e5" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%234f46e5'/%3E%3Cpath d='M16 8a8 8 0 0 0-8 8c0 3.5 2.2 6.5 5.5 7.7L16 26l2.5-2.3A8 8 0 0 0 24 16a8 8 0 0 0-8-8zm0 2a6 6 0 0 1 6 6c0 2.3-1.3 4.3-3.2 5.4L16 23.2l-2.8-1.8A6 6 0 0 1 10 16a6 6 0 0 1 6-6z' fill='white'/%3E%3Ccircle cx='16' cy='16' r='2.5' fill='white'/%3E%3C/svg%3E" />
+<style>
+  :root{
+    --bg:#f8fafc;
+    --bg-soft:#f1f5f9;
+    --card:#ffffff;
+    --card-hover:#ffffff;
+    --text:#0f172a;
+    --text-soft:#334155;
+    --muted:#64748b;
+    --muted-2:#94a3b8;
+    --border:#e2e8f0;
+    --border-strong:#cbd5e1;
+    --primary:#4f46e5;
+    --primary-hover:#4338ca;
+    --primary-soft:#eef2ff;
+    --primary-ring:rgba(79,70,229,.18);
+    --success:#10b981;
+    --success-soft:#ecfdf5;
+    --success-ring:rgba(16,185,129,.18);
+    --warning:#f59e0b;
+    --warning-soft:#fffbeb;
+    --danger:#ef4444;
+    --danger-soft:#fef2f2;
+    --shadow:0 1px 3px rgba(15,23,42,.06),0 4px 16px rgba(15,23,42,.04);
+    --shadow-lg:0 4px 24px rgba(15,23,42,.08),0 12px 40px rgba(15,23,42,.06);
+    --radius:16px;
+    --radius-sm:10px;
+    --radius-xs:8px;
+    --max:1200px;
+  }
+  [data-theme="dark"]{
+    --bg:#0b1220;
+    --bg-soft:#111a2e;
+    --card:#111d33;
+    --card-hover:#132040;
+    --text:#e6edf7;
+    --text-soft:#cbd5e1;
+    --muted:#8a9bb4;
+    --muted-2:#6b7fa0;
+    --border:#1e2d4a;
+    --border-strong:#24365c;
+    --primary:#6366f1;
+    --primary-hover:#818cf8;
+    --primary-soft:#1a1f3d;
+    --primary-ring:rgba(99,102,241,.25);
+    --success:#34d399;
+    --success-soft:#0f2a22;
+    --warning:#fbbf24;
+    --warning-soft:#2a2310;
+    --danger:#f87171;
+    --danger-soft:#2a1214;
+    --shadow:0 1px 3px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.25);
+    --shadow-lg:0 8px 32px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0;
+    font-family: ui-sans-system, -apple-system, BlinkMacSystemFont, "SF Pro Display","Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background:var(--bg);
+    color:var(--text);
+    line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+    transition: background .25s ease, color .25s ease;
+  }
+  a{color:var(--primary);text-decoration:none}
+  a:hover{text-decoration:underline}
+  button{font:inherit}
+  ::selection{background:var(--primary);color:white}
+  /* Header */
+  .topbar{
+    position:sticky;top:0;z-index:40;
+    backdrop-filter: saturate(1.2) blur(14px);
+    background: color-mix(in srgb, var(--card) 82%, transparent);
+    border-bottom:1px solid var(--border);
+  }
+  .topbar-inner{
+    max-width:var(--max);margin:0 auto;
+    padding:14px 20px;
+    display:flex;align-items:center;justify-content:space-between;gap:16px;
+  }
+  .brand{display:flex;align-items:center;gap:12px;min-width:0}
+  .brand-logo{
+    width:40px;height:40px;border-radius:11px;
+    background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #06b6d4 100%);
+    display:grid;place-items:center;
+    box-shadow:0 4px 14px rgba(79,70,229,.3);
+    flex-shrink:0;
+  }
+  .brand-logo svg{width:22px;height:22px}
+  .brand-text h1{margin:0;font-size:15px;font-weight:750;letter-spacing:-.02em;line-height:1.1}
+  .brand-text p{margin:2px 0 0;font-size:12.5px;color:var(--muted);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .top-actions{display:flex;align-items:center;gap:10px;flex-shrink:0}
+  .status-pill{
+    display:inline-flex;align-items:center;gap:8px;
+    padding:7px 12px;border-radius:999px;
+    background:var(--success-soft);border:1px solid color-mix(in srgb, var(--success) 18%, transparent);
+    font-size:12.5px;font-weight:650;color:color-mix(in srgb, var(--success) 85%, var(--text));
+  }
+  .status-dot{width:8px;height:8px;border-radius:50%;background:var(--success);box-shadow:0 0 0 4px var(--success-ring);animation:pulse 2s infinite}
+  .status-pill.offline{background:var(--danger-soft);border-color:color-mix(in srgb, var(--danger) 18%, transparent);color:var(--danger)}
+  .status-pill.offline .status-dot{background:var(--danger);box-shadow:0 0 0 4px color-mix(in srgb, var(--danger) 14%, transparent)}
+  @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.85;transform:scale(.96)}}
+  .icon-btn{
+    width:40px;height:40px;border-radius:10px;
+    border:1px solid var(--border);background:var(--card);
+    display:grid;place-items:center;cursor:pointer;
+    color:var(--muted);transition:all .15s;
+  }
+  .icon-btn:hover{border-color:var(--border-strong);color:var(--text);transform:translateY(-1px);box-shadow:var(--shadow)}
+  .icon-btn:active{transform:translateY(0)}
+  /* Layout */
+  .wrap{max-width:var(--max);margin:0 auto;padding:28px 20px 48px}
+  .hero{
+    display:grid;grid-template-columns:1.35fr .85fr;gap:18px;
+    margin:8px 0 22px;
+  }
+  @media(max-width:860px){.hero{grid-template-columns:1fr}}
+  .hero-card{
+    background: linear-gradient(135deg, color-mix(in srgb, var(--primary) 9%, var(--card)) 0%, var(--card) 55%);
+    border:1px solid var(--border);border-radius:var(--radius);
+    padding:22px;box-shadow:var(--shadow);
+    position:relative;overflow:hidden;
+  }
+  .hero-card::after{
+    content:"";position:absolute;inset:auto -30% -45% auto;width:380px;height:380px;
+    background: radial-gradient(closest-side, color-mix(in srgb, var(--primary) 10%, transparent), transparent 70%);
+    pointer-events:none;
+  }
+  .eyebrow{
+    display:inline-flex;align-items:center;gap:7px;
+    font-size:11px;font-weight:750;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--primary);background:var(--primary-soft);
+    border:1px solid color-mix(in srgb, var(--primary) 12%, transparent);
+    padding:5px 9px;border-radius:999px;
+  }
+  .hero h2{margin:12px 0 8px;font-size:26px;line-height:1.15;letter-spacing:-.03em;font-weight:800}
+  .hero p{margin:0;color:var(--muted);font-size:14.5px;max-width:52ch}
+  .hero-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px;position:relative;z-index:1}
+  .btn{
+    display:inline-flex;align-items:center;gap:8px;
+    padding:10px 14px;border-radius:10px;
+    font-size:13.5px;font-weight:650;cursor:pointer;
+    border:1px solid transparent;transition:all .15s;
+    text-decoration:none !important;
+  }
+  .btn-primary{background:var(--primary);color:white;box-shadow:0 4px 14px var(--primary-ring)}
+  .btn-primary:hover{background:var(--primary-hover);transform:translateY(-1px)}
+  .btn-ghost{background:var(--card);border-color:var(--border);color:var(--text)}
+  .btn-ghost:hover{border-color:var(--border-strong);background:var(--card-hover);transform:translateY(-1px)}
+  .mini-stats{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .mini-card{
+    background:var(--card);border:1px solid var(--border);border-radius:14px;
+    padding:14px;box-shadow:var(--shadow);
+  }
+  .mini-card .k{font-size:11px;font-weight:750;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+  .mini-card .v{margin-top:6px;font-size:18px;font-weight:800;letter-spacing:-.02em}
+  .mini-card .s{margin-top:4px;font-size:12.5px;color:var(--muted)}
+  /* Stats grid */
+  .stats{
+    display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px;
+  }
+  @media(max-width:980px){.stats{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:520px){.stats{grid-template-columns:1fr}}
+  .stat{
+    background:var(--card);border:1px solid var(--border);border-radius:14px;
+    padding:16px;box-shadow:var(--shadow);
+    transition: transform .15s, box-shadow .15s, border-color .15s;
+  }
+  .stat:hover{transform:translateY(-2px);box-shadow:var(--shadow-lg);border-color:var(--border-strong)}
+  .stat-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+  .stat-icon{width:36px;height:36px;border-radius:10px;display:grid;place-items:center}
+  .stat-icon svg{width:18px;height:18px}
+  .stat-label{font-size:11px;font-weight:750;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+  .stat-value{font-size:22px;font-weight:850;letter-spacing:-.03em;line-height:1}
+  .stat-sub{margin-top:6px;font-size:12.5px;color:var(--muted);display:flex;align-items:center;gap:6px}
+  .badge{font-size:11px;font-weight:700;padding:3px 7px;border-radius:999px;border:1px solid var(--border);background:var(--bg-soft);color:var(--muted)}
+  .badge.ok{background:var(--success-soft);color:var(--success);border-color:color-mix(in srgb, var(--success) 18%, transparent)}
+  .badge.warn{background:var(--warning-soft);color:var(--warning);border-color:color-mix(in srgb, var(--warning) 18%, transparent)}
+  .badge.err{background:var(--danger-soft);color:var(--danger);border-color:color-mix(in srgb, var(--danger) 18%, transparent)}
+  /* Sections */
+  .section{margin-top:18px}
+  .section-head{display:flex;align-items:end;justify-content:space-between;gap:12px;margin-bottom:12px;flex-wrap:wrap}
+  .section-head h3{margin:0;font-size:16px;font-weight:800;letter-spacing:-.02em;display:flex;align-items:center;gap:9px}
+  .section-head h3 i{width:28px;height:28px;border-radius:8px;background:var(--primary-soft);border:1px solid color-mix(in srgb, var(--primary) 10%, transparent);display:grid;place-items:center;color:var(--primary)}
+  .section-head h3 i svg{width:16px;height:16px}
+  .section-head p{margin:0;font-size:13px;color:var(--muted)}
+  .card{
+    background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+    box-shadow:var(--shadow);overflow:hidden;
+  }
+  .card-pad{padding:18px}
+  .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:860px){.grid-2{grid-template-columns:1fr}}
+  /* Health */
+  .health-grid{display:grid;grid-template-columns:1.15fr .85fr;gap:14px}
+  @media(max-width:860px){.health-grid{grid-template-columns:1fr}}
+  .code{
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    font-size:12.5px;line-height:1.6;
+    background:var(--bg-soft);border:1px solid var(--border);
+    border-radius:10px;padding:12px;overflow:auto;max-height:240px;
+  }
+  .kv{display:grid;grid-template-columns:140px 1fr;gap:8px 14px;font-size:13px}
+  .kv dt{color:var(--muted);font-weight:600}
+  .kv dd{margin:0;font-weight:650;word-break:break-word}
+  .latency{font-variant-numeric:tabular-nums}
+  /* Tabs */
+  .tabs{display:flex;gap:6px;padding:6px;background:var(--bg-soft);border:1px solid var(--border);border-radius:12px;overflow:auto;scrollbar-width:none}
+  .tabs::-webkit-scrollbar{display:none}
+  .tab{
+    padding:8px 12px;border-radius:8px;border:1px solid transparent;
+    font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;
+    color:var(--muted);background:transparent;transition:all .15s;
+  }
+  .tab.active{background:var(--card);border-color:var(--border);color:var(--text);box-shadow:var(--shadow)}
+  .tab:hover{color:var(--text)}
+  .panel{display:none}
+  .panel.active{display:block}
+  .endpoint{
+    display:grid;grid-template-columns:auto 1fr auto;gap:10px;
+    align-items:center;
+    padding:12px 14px;border:1px solid var(--border);border-radius:12px;
+    background:var(--card);transition:all .15s;
+  }
+  .endpoint + .endpoint{margin-top:10px}
+  .endpoint:hover{border-color:var(--border-strong);transform:translateY(-1px);box-shadow:var(--shadow)}
+  .method{
+    font-size:11px;font-weight:850;letter-spacing:.06em;
+    padding:5px 7px;border-radius:7px;min-width:56px;text-align:center;
+    border:1px solid var(--border);
+  }
+  .method.get{background:#ecfdf5;color:#065f46;border-color:#a7f3d0}
+  [data-theme="dark"] .method.get{background:#0f2a22;color:#6ee7b7;border-color:#1e4a3a}
+  .method.post{background:#eff6ff;color:#1e40af;border-color:#bfdbfe}
+  [data-theme="dark"] .method.post{background:#131d3a;color:#93c5fd;border-color:#24365c}
+  .method.put{background:#fffbeb;color:#92400e;border-color:#fde68a}
+  [data-theme="dark"] .method.put{background:#2a2310;color:#fcd34d;border-color:#4a3a18}
+  .method.patch{background:#fdf2f8;color:#9d174d;border-color:#fbcfe8}
+  [data-theme="dark"] .method.patch{background:#2a1430;color:#f9a8d4;border-color:#4a2340}
+  .method.delete{background:#fef2f2;color:#991b1b;border-color:#fecaca}
+  [data-theme="dark"] .method.delete{background:#2a1214;color:#fca5a5;border-color:#4a2020}
+  .ep-path{font-family:ui-monospace,monospace;font-size:13px;font-weight:700;letter-spacing:-.01em;word-break:break-all}
+  .ep-desc{font-size:12.5px;color:var(--muted);margin-top:2px}
+  .ep-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+  .chip{
+    display:inline-flex;align-items:center;gap:5px;
+    font-size:11px;font-weight:700;padding:4px 7px;border-radius:999px;
+    border:1px solid var(--border);background:var(--bg-soft);color:var(--muted)
+  }
+  .chip.auth{color:var(--primary);border-color:color-mix(in srgb, var(--primary) 18%, transparent);background:var(--primary-soft)}
+  .small-btn{
+    padding:7px 9px;border-radius:8px;border:1px solid var(--border);
+    background:var(--card);font-size:12px;font-weight:700;cursor:pointer;
+    color:var(--text);transition:all .15s;
+  }
+  .small-btn:hover{border-color:var(--border-strong);transform:translateY(-1px)}
+  .small-btn.primary{background:var(--primary);border-color:var(--primary);color:white}
+  .small-btn.primary:hover{background:var(--primary-hover)}
+  /* realtime */
+  .version-item{
+    display:flex;align-items:center;justify-content:space-between;gap:12px;
+    padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--bg-soft);
+  }
+  .version-item + .version-item{margin-top:8px}
+  .version-name{font-size:13px;font-weight:700}
+  .version-meta{font-size:12px;color:var(--muted);display:flex;gap:10px;flex-wrap:wrap}
+  /* footer */
+  footer{margin-top:28px;padding:18px 0 0;border-top:1px solid var(--border);display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;font-size:12.5px;color:var(--muted)}
+  .foot-links{display:flex;gap:12px;flex-wrap:wrap}
+  .foot-links a{color:var(--muted);font-weight:600}
+  .foot-links a:hover{color:var(--text)}
+  /* toast */
+  .toast{
+    position:fixed;right:16px;bottom:16px;z-index:50;
+    background:var(--text);color:var(--bg);
+    padding:10px 12px;border-radius:10px;font-size:13px;font-weight:600;
+    box-shadow:var(--shadow-lg);transform:translateY(12px);opacity:0;pointer-events:none;
+    transition:all .2s;
+  }
+  .toast.show{transform:translateY(0);opacity:1}
+  /* skeleton */
+  .skeleton{height:12px;border-radius:999px;background:linear-gradient(90deg, var(--bg-soft) 25%, color-mix(in srgb, var(--border) 60%, var(--bg-soft)) 50%, var(--bg-soft) 75%);background-size:200% 100%;animation:shimmer 1.2s infinite}
+  @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+  /* scrollbar */
+  *{scrollbar-width:thin;scrollbar-color:var(--border-strong) transparent}
+  *::-webkit-scrollbar{width:8px;height:8px}
+  *::-webkit-scrollbar-thumb{background:var(--border-strong);border-radius:999px}
+  *::-webkit-scrollbar-track{background:transparent}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <div class="brand-logo" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M12 3a7 7 0 0 0-7 7c0 3 1.9 5.6 4.7 6.7L12 19l2.3-2.3A7 7 0 0 0 19 10a7 7 0 0 0-7-7Z" stroke="white" stroke-width="1.6" stroke-linejoin="round"/><circle cx="12" cy="10" r="2.2" fill="white"/></svg>
+      </div>
+      <div class="brand-text">
+        <h1>ORL Platform — Backend</h1>
+        <p>DEMS • API &amp; Health Dashboard</p>
+      </div>
+    </div>
+    <div class="top-actions">
+      <div id="statusPill" class="status-pill" title="Statut global du service">
+        <span class="status-dot"></span>
+        <span id="statusText">Vérification…</span>
+      </div>
+      <button id="themeToggle" class="icon-btn" aria-label="Basculer thème clair/sombre" title="Thème clair/sombre">
+        <svg id="iconSun" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.66 17.66l1.42 1.42M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.66 6.34l1.42-1.42"/></svg>
+        <svg id="iconMoon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" style="display:none"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <!-- HERO -->
+  <section class="hero">
+    <div class="hero-card">
+      <span class="eyebrow"><span style="width:7px;height:7px;border-radius:50%;background:var(--success);display:inline-block;box-shadow:0 0 0 4px var(--success-ring)"></span> Backend opérationnel</span>
+      <h2>L’API DEMS sous contrôle, en temps réel</h2>
+      <p>Surveillez la santé du service, explorez les endpoints, testez les routes et suivez les collections — directement depuis l’URL racine du backend, sans passer par le frontend.</p>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="#health">⟡ Vérifier la santé</a>
+        <a class="btn btn-ghost" href="#api">▦ Explorer l’API</a>
+        <button class="btn btn-ghost" id="btnCopyBaseUrl" type="button">⧉ Copier Base URL</button>
+      </div>
+    </div>
+    <div class="mini-stats">
+      <div class="mini-card">
+        <div class="k">Base URL</div>
+        <div id="baseUrl" class="v" style="font-size:14px;word-break:break-all">—</div>
+        <div class="s">Racine actuelle • <span id="envInline">—</span></div>
+      </div>
+      <div class="mini-card">
+        <div class="k">Latence</div>
+        <div id="latencyHero" class="v">—</div>
+        <div class="s"><span id="lastCheck">jamais</span> • auto 5s</div>
+      </div>
+      <div class="mini-card">
+        <div class="k">Service</div>
+        <div id="serviceName" class="v" style="font-size:15px">orl-platform-dems-backend</div>
+        <div class="s" id="serviceVersion">v1.0.0 • Node —</div>
+      </div>
+      <div class="mini-card">
+        <div class="k">Uptime</div>
+        <div id="uptimeHero" class="v">—</div>
+        <div class="s" id="timestampHero">—</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- STATS -->
+  <section class="stats" aria-label="Statistiques">
+    <div class="stat">
+      <div class="stat-top">
+        <div class="stat-icon" style="background:var(--success-soft);color:var(--success);border:1px solid color-mix(in srgb, var(--success) 16%, transparent)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/><circle cx="12" cy="12" r="9" stroke-opacity=".18"/></svg></div>
+        <span id="mongoBadge" class="badge">—</span>
+      </div>
+      <div class="stat-label">MongoDB</div>
+      <div id="mongoValue" class="stat-value">—</div>
+      <div class="stat-sub"><span id="mongoDbName">—</span> • <span id="mongoLatency">—</span></div>
+    </div>
+    <div class="stat">
+      <div class="stat-top">
+        <div class="stat-icon" style="background:var(--primary-soft);color:var(--primary);border:1px solid color-mix(in srgb, var(--primary) 14%, transparent)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M8 12h8M12 8v8"/></svg></div>
+        <span class="badge">Realtime</span>
+      </div>
+      <div class="stat-label">Collections surveillées</div>
+      <div id="watchedValue" class="stat-value">13</div>
+      <div class="stat-sub">Hash <span id="hashValue" style="font-family:monospace">—</span> • <span id="realtimeTs">—</span></div>
+    </div>
+    <div class="stat">
+      <div class="stat-top">
+        <div class="stat-icon" style="background:var(--warning-soft);color:#b45309;border:1px solid color-mix(in srgb, var(--warning) 18%, transparent)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2l9 16H3L12 2Z"/><path d="M12 9v5M12 17h.01"/></svg></div>
+        <span class="badge">CORS</span>
+      </div>
+      <div class="stat-label">Origines autorisées</div>
+      <div id="corsValue" class="stat-value">—</div>
+      <div class="stat-sub" id="corsOrigins">—</div>
+    </div>
+    <div class="stat">
+      <div class="stat-top">
+        <div class="stat-icon" style="background:#fef2f8;color:#be185d;border:1px solid #fbcfe8"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M10 13H8M16 17H8M13 13h2"/></svg></div>
+        <span class="badge">Env</span>
+      </div>
+      <div class="stat-label">Environnement</div>
+      <div id="envValue" class="stat-value">—</div>
+      <div class="stat-sub" id="platformValue">— • —</div>
+    </div>
+  </section>
+
+  <!-- HEALTH -->
+  <section id="health" class="section">
+    <div class="section-head">
+      <h3><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></i> Santé &amp; Diagnostics</h3>
+      <p>Endpoints <code>/api/health</code> et <code>/health</code> • polling auto 5s</p>
+    </div>
+    <div class="health-grid">
+      <div class="card">
+        <div class="card-pad">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+            <strong style="font-size:13px;letter-spacing:-.01em">Réponse live — /api/health</strong>
+            <span style="display:flex;gap:8px;align-items:center">
+              <span id="healthStatus" class="badge">—</span>
+              <span id="healthLatency" class="badge latency">— ms</span>
+            </span>
+          </div>
+          <pre id="healthJson" class="code" aria-live="polite">Chargement…</pre>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+            <button class="small-btn primary" id="btnRefreshHealth" type="button">↻ Rafraîchir</button>
+            <button class="small-btn" id="btnCopyHealth" type="button">⧉ Copier JSON</button>
+            <a class="small-btn" href="/api/health" target="_blank" rel="noopener">↗ Ouvrir /api/health</a>
+            <a class="small-btn" href="/health" target="_blank" rel="noopener">↗ /health</a>
+          </div>
+          <dl class="kv" style="margin-top:14px">
+            <dt>Service</dt><dd id="kvService">—</dd>
+            <dt>Mongo</dt><dd id="kvMongo">—</dd>
+            <dt>Uptime</dt><dd id="kvUptime">—</dd>
+            <dt>Timestamp</dt><dd id="kvTimestamp">—</dd>
+            <dt>Node</dt><dd id="kvNode">—</dd>
+          </dl>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-pad">
+          <strong style="font-size:13px">Realtime — versions des collections</strong>
+          <p style="margin:6px 0 12px;color:var(--muted);font-size:13px"><code>/api/realtime/versions</code> • cache 1.5s • idéal pour détecter les changements.</p>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+            <button class="small-btn primary" id="btnRefreshVersions" type="button">↻ Rafraîchir</button>
+            <button class="small-btn" id="btnSse" type="button">● SSE Stream</button>
+            <a class="small-btn" href="/api/realtime/versions" target="_blank" rel="noopener">↗ Ouvrir JSON</a>
+          </div>
+          <div id="versionsList" style="max-height:272px;overflow:auto;padding-right:2px">
+            <div class="skeleton" style="height:44px;border-radius:10px"></div>
+            <div class="skeleton" style="height:44px;border-radius:10px;margin-top:8px"></div>
+            <div class="skeleton" style="height:44px;border-radius:10px;margin-top:8px"></div>
+          </div>
+          <div id="sseLog" class="code" style="display:none;margin-top:12px;max-height:140px"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- API CATALOG -->
+  <section id="api" class="section">
+    <div class="section-head">
+      <h3><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></i> Catalogue API</h3>
+      <p>Copiez le <code>curl</code> ou testez directement (Bearer token optionnel).</p>
+    </div>
+    <div class="card">
+      <div class="card-pad">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;margin-bottom:14px">
+          <div class="tabs" role="tablist" aria-label="Catégories d'endpoints">
+            <button class="tab active" data-tab="auth" role="tab" aria-selected="true">Auth &amp; Google</button>
+            <button class="tab" data-tab="data" role="tab">Data &amp; Collections</button>
+            <button class="tab" data-tab="uploads" role="tab">Uploads &amp; Cloudinary</button>
+            <button class="tab" data-tab="realtime" role="tab">Realtime</button>
+            <button class="tab" data-tab="contact" role="tab">Contact</button>
+            <button class="tab" data-tab="system" role="tab">System</button>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <input id="apiSearch" placeholder="Filtrer… /health, auth, video" style="padding:8px 10px;border-radius:9px;border:1px solid var(--border);background:var(--bg-soft);color:var(--text);font-size:13px;min-width:220px;outline:none" />
+            <input id="tokenInput" placeholder="Bearer token (optionnel)" style="padding:8px 10px;border-radius:9px;border:1px solid var(--border);background:var(--bg-soft);color:var(--text);font-size:13px;min-width:220px;outline:none" />
+          </div>
+        </div>
+
+        <!-- AUTH -->
+        <div class="panel active" data-panel="auth">
+          <div class="endpoint" data-keywords="auth signup signin inscription connexion">
+            <span class="method post">POST</span>
+            <div><div class="ep-path">/api/auth/signup</div><div class="ep-desc">Création de compte — email, password ≥6, displayName</div></div>
+            <div class="ep-actions"><span class="chip">public</span><button class="small-btn" data-copy="curl -X POST BASE/api/auth/signup -H 'Content-Type: application/json' -d '{\&quot;email\&quot;:\&quot;test@ex.com\&quot;,\&quot;password\&quot;:\&quot;secret12\&quot;,\&quot;displayName\&quot;:\&quot;Test\&quot;}'">⧉ curl</button><button class="small-btn primary" data-try="/api/auth/signup" data-method="POST">Try</button></div>
+          </div>
+          <div class="endpoint" data-keywords="auth signin login">
+            <span class="method post">POST</span>
+            <div><div class="ep-path">/api/auth/signin</div><div class="ep-desc">Connexion — email + password → token + user</div></div>
+            <div class="ep-actions"><span class="chip">public</span><button class="small-btn" data-copy="curl -X POST BASE/api/auth/signin -H 'Content-Type: application/json' -d '{\&quot;email\&quot;:\&quot;test@ex.com\&quot;,\&quot;password\&quot;:\&quot;secret12\&quot;}'">⧉ curl</button><button class="small-btn primary" data-try="/api/auth/signin" data-method="POST">Try</button></div>
+          </div>
+          <div class="endpoint" data-keywords="auth forgot reset password">
+            <span class="method post">POST</span>
+            <div><div class="ep-path">/api/auth/forgot-password</div><div class="ep-desc">Demande reset — email → lien (30 min) + email si SMTP configuré</div></div>
+            <div class="ep-actions"><span class="chip">public</span><button class="small-btn" data-copy="curl -X POST BASE/api/auth/forgot-password -H 'Content-Type: application/json' -d '{\&quot;email\&quot;:\&quot;test@ex.com\&quot;}'">⧉ curl</button></div>
+          </div>
+          <div class="endpoint" data-keywords="auth reset password token">
+            <span class="method post">POST</span>
+            <div><div class="ep-path">/api/auth/reset-password</div><div class="ep-desc">Reset — token + newPassword ≥6</div></div>
+            <div class="ep-actions"><span class="chip">public</span><button class="small-btn" data-copy="curl -X POST BASE/api/auth/reset-password -H 'Content-Type: application/json' -d '{\&quot;token\&quot;:\&quot;...&quot;,\&quot;newPassword\&quot;:\&quot;newpass12\&quot;}'">⧉ curl</button></div>
+          </div>
+          <div class="endpoint" data-keywords="auth me profile">
+            <span class="method get">GET</span>
+            <div><div class="ep-path">/api/auth/me</div><div class="ep-desc">Session courante — Authorization: Bearer &lt;token&gt;</div></div>
+            <div class="ep-actions"><span class="chip auth">auth</span><button class="small-btn" data-copy="curl BASE/api/auth/me -H 'Authorization: Bearer TOKEN'">⧉ curl</button><button class="small-btn primary" data-try="/api/auth/me" data-method="GET">Try</button></div>
+          </div>
+          <div class="endpoint" data-keywords="auth profile patch">
+            <span class="method patch">PATCH</span>
+            <div><div class="ep-path">/api/auth/profile</div><div class="ep-desc">Màj profil — displayName, photoURL (uid optionnel si admin)</div></div>
+            <div class="ep-actions"><span class="chip auth">auth</span><button class="small-btn" data-copy="curl -X PATCH BASE/api/auth/profile -H 'Authorization: Bearer TOKEN' -H 'Content-Type: application/json' -d '{\&quot;displayName\&quot;:\&quot;Dr. Nom\&quot;}'">⧉ curl</button></div>
+          </div>
+          <div class="endpoint" data-keywords="auth change password">
+            <span class="method post">POST</span>
+            <div><div class="ep-path">/api/auth/change-password</div><div class="ep-desc">Changer mot de passe — currentPassword + newPassword (ou Google lié)</div></div>
+            <div class="ep-actions"><span class="chip auth">auth</span><button class="small-btn" data-copy="curl -X POST BASE/api/auth/change-password -H 'Authorization: Bearer TOKEN' -H 'Content-Type: application/json' -d '{\&quot;currentPassword\&quot;:\&quot;old12\&quot;,\&quot;newPassword\&quot;:\&quot;new12\&quot;}'">⧉ curl</button></div>
+          </div>
+          <div class="endpoint" data-keywords="google oauth start callback">
+            <span class="method get">GET</span>
+            <div><div class="ep-path">/api/auth/google/start?remember=&amp;next=</div><div class="ep-desc">OAuth Google — redirection vers consent screen</div></div>
+            <div class="ep-actions"><span class="chip">public</span><a class="small-btn" href="/api/auth/google/start" target="_blank" rel="noopener">↗ Ouvrir</a></div>
+          </div>
+          <div class="endpoint" data-keywords="google connect disconnect">
+            <span class="method post">POST</span>
+            <div><div class="ep-path">/api/auth/google/connect-start • /api/auth/google/disconnect</div><div class="ep-desc">Lier / délier Google — authRequired (disconnect peut prendre newPassword)</div></div>
+            <div class="ep-actions"><span class="chip auth">auth</span><button class="small-btn" data-copy="curl -X POST BASE/api/auth/google/connect-start -H 'Authorization: Bearer TOKEN' -H 'Content-Type: application/json' -d '{}'">⧉ curl</button></div>
+          </div>
+          <div class="endpoint" data-keywords="admin create users delete seed">
+            <span class="method post">POST</span>
+            <div><div class="ep-path">/api/auth/admin-create • DELETE /api/auth/users/:uid • POST /api/auth/seed-demo</div><div class="ep-desc">Admin — création utilisateurs, suppression, seed INITIAL_ADMIN_ACCOUNTS</div></div>
+            <div class="ep-actions"><span class="chip auth">admin</span><button class="small-btn" data-copy="curl -X POST BASE/api/auth/seed-demo">⧉ curl</button></div>
+          </div>
+        </div>
+
+        <!-- DATA -->
+        <div class="panel" data-panel="data">
+          <div class="endpoint" data-keywords="data collections videos qcms">
+            <span class="method get">GET</span>
+            <div><div class="ep-path">/api/data/:collection</div><div class="ep-desc">Lister une collection — videos, qcms, openQuestions, clinicalCases, diagrams, users, etc.</div></div>
+            <div class="ep-actions"><span class="chip">public*</span><button class="small-btn" data-copy="curl BASE/api/data/videos">⧉ curl</button><button class="small-btn primary" data-try="/api/data/videos" data-method="GET">Try</button></div>
+          </div>
+          <div class="endpoint" data-keywords="data query filter constraints">
+            <span class="method post">POST</span>
+            <div><div class="ep-path">/api/data/query</div><div class="ep-desc">Requête filtrée — { collection, constraints: [{ fieldPath, operator, value }] }</div></div>
+            <div class="ep-actions"><span class="chip">public*</span><button class="small-btn" data-copy="curl -X POST BASE/api/data/query -H 'Content-Type: application/json' -d '{\&quot;collection\&quot;:\&quot;videos\&quot;,\&quot;constraints\&quot;:[]}'">⧉ curl</button></div>
+          </div>
+          <div class="endpoint" data-keywords="data import qcm open question">
+            <span class="method post">POST</span>
+            <div><div class="ep-path">/api/data/qcms/import • /openQuestions/import • /clinicalCases/import • /diagrams/import</div><div class="ep-desc">Imports groupés — rows[], déduplication, création vidéos placeholder, upload Drive → Cloudinary</div></div>
+            <div class="ep-actions"><span class="chip">public*</span><button class="small-btn" data-copy="curl -X POST BASE/api/data/qcms/import -H 'Content-Type: application/json' -d '{\&quot;rows\&quot;:[]}'">⧉ curl</button></div>
+          </div>
+          <div class="endpoint" data-keywords="data crud get post put patch delete">
+            <span class="method get">GET</span>
+            <div><div class="ep-path">GET /api/data/:collection/:id • POST /:collection • PUT /:collection/:id • PATCH /:collection/:id • DELETE /:collection/:id</div><div class="ep-desc">CRUD générique — users via uid, autres via _id / ObjectId; PATCH supporte arrayUnion/arrayRemove</div></div>
+            <div class="ep-actions"><span class="chip">public*</span><button class="small-btn" data-copy="curl BASE/api/data/videos/ID">⧉ curl</button></div>
+          </div>
+          <p style="margin:12px 2px 0;color:var(--muted);font-size:12.5px">* Certaines écritures vérifient <code>isCloudinarySettingsDoc</code> → adminOnly pour <code>users-cloudinary-settings</code>. Les collections sensibles (videos, qcms, clinicalCases, diagrams) ont garde-fou anti-duplicata.</p>
+        </div>
+
+        <!-- UPLOADS -->
+        <div class="panel" data-panel="uploads">
+          <div class="endpoint" data-keywords="upload cloudinary video image raw">
+            <span class="method post">POST</span>
+            <div><div class="ep-path">/api/uploads/cloudinary?resourceType=video&amp;folder=&amp;specialty=&amp;videoTitle=&amp;subFolder=</div><div class="ep-desc">Upload — multipart file, ≤1024 MB, split ffmpeg &gt;100 MB, préflight anti-doublon publicId</div></div>
+            <div class="ep-actions"><span class="chip auth">auth</span><button class="small-btn" data-copy="curl -X POST 'BASE/api/uploads/cloudinary?resourceType=video' -H 'Authorization: Bearer TOKEN' -F file=@video.mp4">⧉ curl</button></div>
+          </div>
+          <div class="endpoint" data-keywords="upload cloudinary delete">
+            <span class="method delete">DELETE</span>
+            <div><div class="ep-path">/api/uploads/cloudinary?publicId=&amp;resourceType=</div><div class="ep-desc">Suppression asset Cloudinary — image | video | raw</div></div>
+            <div class="ep-actions"><span class="chip auth">auth</span><button class="small-btn" data-copy="curl -X DELETE 'BASE/api/uploads/cloudinary?publicId=orl-platform/videos/...&resourceType=video' -H 'Authorization: Bearer TOKEN'">⧉ curl</button></div>
+          </div>
+          <div class="endpoint" data-keywords="upload cleanup cloudinary">
+            <span class="method post">POST</span>
+            <div><div class="ep-path">/api/uploads/cleanup</div><div class="ep-desc">Nettoyage — { assets: [{ publicId, secureUrl, resourceType }] } ≤200, vérif. usage Mongo avant suppression</div></div>
+            <div class="ep-actions"><span class="chip auth">auth</span><button class="small-btn" data-copy="curl -X POST BASE/api/uploads/cleanup -H 'Authorization: Bearer TOKEN' -H 'Content-Type: application/json' -d '{\&quot;assets\&quot;:[]}'">⧉ curl</button></div>
+          </div>
+          <div class="endpoint" data-keywords="upload avatar image">
+            <span class="method post">POST</span>
+            <div><div class="ep-path">/api/uploads/avatar</div><div class="ep-desc">Avatar — mémoire 10 MB, dossier orl-platform/avatars/&lt;name-user&gt;/</div></div>
+            <div class="ep-actions"><span class="chip auth">auth</span><button class="small-btn" data-copy="curl -X POST BASE/api/uploads/avatar -H 'Authorization: Bearer TOKEN' -F file=@avatar.jpg">⧉ curl</button></div>
+          </div>
+          <p style="margin:12px 2px 0;color:var(--muted);font-size:12.5px">Dossiers organisés: <code>orl-platform/videos/&lt;specialité&gt;/&lt;vidéo&gt;/</code>, <code>cas-images</code>, <code>cas-question-images</code>, <code>diagrams</code>, <code>avatars</code>, <code>support-chat</code>.</p>
+        </div>
+
+        <!-- REALTIME -->
+        <div class="panel" data-panel="realtime">
+          <div class="endpoint" data-keywords="realtime versions polling hash">
+            <span class="method get">GET</span>
+            <div><div class="ep-path">/api/realtime/versions</div><div class="ep-desc">Polling léger — count + updatedAt par collection, hash global, cache 1.5s</div></div>
+            <div class="ep-actions"><span class="chip">public</span><button class="small-btn primary" data-try="/api/realtime/versions" data-method="GET">Try</button><button class="small-btn" data-copy="curl BASE/api/realtime/versions">⧉ curl</button></div>
+          </div>
+          <div class="endpoint" data-keywords="realtime stream sse event source">
+            <span class="method get">GET</span>
+            <div><div class="ep-path">/api/realtime/stream</div><div class="ep-desc">SSE — text/event-stream toutes les 3s + heartbeat 15s</div></div>
+            <div class="ep-actions"><span class="chip">public</span><button class="small-btn" id="btnCopySse" data-copy="const es = new EventSource(BASE+'/api/realtime/stream'); es.onmessage = e => console.log(JSON.parse(e.data))">⧉ JS</button><a class="small-btn" href="/api/realtime/stream" target="_blank" rel="noopener">↗ Ouvrir</a></div>
+          </div>
+          <p style="margin:12px 2px 0;color:var(--muted);font-size:12.5px">Collections: videos, qcms, openQuestions, clinicalCases, diagrams, users, payments, notifications, supportChats, supportChatMessages, pedagogicalFeedback, clinicalCaseFeedback, appSettings.</p>
+        </div>
+
+        <!-- CONTACT -->
+        <div class="panel" data-panel="contact">
+          <div class="endpoint" data-keywords="contact form email smtp">
+            <span class="method post">POST</span>
+            <div><div class="ep-path">/api/contact</div><div class="ep-desc">Contact — { name, email, phone?, subject, message, website(honeypot) } • rate-limit 5 / 15min</div></div>
+            <div class="ep-actions"><span class="chip">public</span><button class="small-btn" data-copy="curl -X POST BASE/api/contact -H 'Content-Type: application/json' -d '{\&quot;name\&quot;:\&quot;Test\&quot;,\&quot;email\&quot;:\&quot;a@b.com\&quot;,\&quot;subject\&quot;:\&quot;Support\&quot;,\&quot;message\&quot;:\&quot;Hello\&quot;}'">⧉ curl</button><button class="small-btn primary" data-try="/api/contact" data-method="POST">Try</button></div>
+          </div>
+          <div class="endpoint" data-keywords="contact health smtp">
+            <span class="method get">GET</span>
+            <div><div class="ep-path">/api/contact/health</div><div class="ep-desc">Diag contact — { ok, smtpConfigured, recipient }</div></div>
+            <div class="ep-actions"><span class="chip">public</span><button class="small-btn primary" data-try="/api/contact/health" data-method="GET">Try</button></div>
+          </div>
+        </div>
+
+        <!-- SYSTEM -->
+        <div class="panel" data-panel="system">
+          <div class="endpoint" data-keywords="system health meta">
+            <span class="method get">GET</span>
+            <div><div class="ep-path">/api/health • /health • /api/meta</div><div class="ep-desc">Santé — /api/health &amp; /health (ok, service, mongoConnected) • /api/meta (uptime, version, env, node, cors…)</div></div>
+            <div class="ep-actions"><span class="chip">public</span><button class="small-btn primary" data-try="/api/meta" data-method="GET">Try /api/meta</button><button class="small-btn" data-copy="curl BASE/api/meta">⧉ curl</button></div>
+          </div>
+          <div class="endpoint" data-keywords="system root dashboard">
+            <span class="method get">GET</span>
+            <div><div class="ep-path">GET /  (ce dashboard)</div><div class="ep-desc">Racine — sert ce dashboard HTML (text/html) ou JSON si Accept: application/json</div></div>
+            <div class="ep-actions"><span class="chip">public</span><a class="small-btn" href="/" target="_blank" rel="noopener">↗ Ouvrir</a></div>
+          </div>
+          <div class="endpoint" data-keywords="system env cors">
+            <span class="method get">GET</span>
+            <div><div class="ep-path">CORS &amp; Env</div><div class="ep-desc" id="systemEnvDesc">—</div></div>
+            <div class="ep-actions"><span class="chip">info</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- DETAILS / DIO -->
+  <section class="section">
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-pad">
+          <strong style="font-size:13px">Tester un endpoint</strong>
+          <p style="margin:6px 0 12px;color:var(--muted);font-size:13px">Sélectionnez “Try” sur un endpoint ou lancez une requête custom.</p>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+            <select id="tryMethod" style="padding:8px 10px;border-radius:9px;border:1px solid var(--border);background:var(--bg-soft);color:var(--text);font-size:13px">
+              <option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option>
+            </select>
+            <input id="tryPath" value="/api/health" style="flex:1;min-width:180px;padding:8px 10px;border-radius:9px;border:1px solid var(--border);background:var(--bg-soft);color:var(--text);font-size:13px" />
+            <button class="small-btn primary" id="btnTryCustom" type="button">Envoyer</button>
+          </div>
+          <textarea id="tryBody" placeholder='Body JSON (pour POST/PUT/PATCH)' rows="3" style="width:100%;padding:10px;border-radius:9px;border:1px solid var(--border);background:var(--bg-soft);color:var(--text);font-size:13px;font-family:ui-monospace,monospace;resize:vertical"></textarea>
+          <pre id="tryResult" class="code" style="margin-top:10px;max-height:220px">—</pre>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-pad">
+          <strong style="font-size:13px">Journal live</strong>
+          <p style="margin:6px 0 12px;color:var(--muted);font-size:13px">Derniers checks, erreurs et évènements SSE.</p>
+          <div id="log" class="code" style="max-height:340px;overflow:auto;font-size:12px;line-height:1.5">—</div>
+          <div style="display:flex;gap:8px;margin-top:10px">
+            <button class="small-btn" id="btnClearLog" type="button">Effacer</button>
+            <button class="small-btn" id="btnCopyLog" type="button">⧉ Copier</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div>© 2026 DEMS — ORL Platform • Backend <span id="footService">orl-platform-dems-backend</span> • <span id="footEnv">—</span> • <a href="/api/health">/api/health</a> • <a href="/api/meta">/api/meta</a></div>
+    <div class="foot-links">
+      <a href="#health">Santé</a>
+      <a href="#api">API</a>
+      <a href="/api/realtime/versions" target="_blank" rel="noopener">Versions</a>
+      <span id="footTime" style="font-variant-numeric:tabular-nums">—</span>
+    </div>
+  </footer>
+</main>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function(){
+  var baseUrl = location.origin;
+  var els = {};
+  function $(s){ return document.querySelector(s); }
+  function $all(s){ return Array.prototype.slice.call(document.querySelectorAll(s)); }
+  els.baseUrl = $('#baseUrl');
+  els.envInline = $('#envInline');
+  els.latencyHero = $('#latencyHero');
+  els.lastCheck = $('#lastCheck');
+  els.serviceName = $('#serviceName');
+  els.serviceVersion = $('#serviceVersion');
+  els.uptimeHero = $('#uptimeHero');
+  els.timestampHero = $('#timestampHero');
+  els.statusPill = $('#statusPill');
+  els.statusText = $('#statusText');
+  els.mongoBadge = $('#mongoBadge');
+  els.mongoValue = $('#mongoValue');
+  els.mongoDbName = $('#mongoDbName');
+  els.mongoLatency = $('#mongoLatency');
+  els.watchedValue = $('#watchedValue');
+  els.hashValue = $('#hashValue');
+  els.realtimeTs = $('#realtimeTs');
+  els.corsValue = $('#corsValue');
+  els.corsOrigins = $('#corsOrigins');
+  els.envValue = $('#envValue');
+  els.platformValue = $('#platformValue');
+  els.healthJson = $('#healthJson');
+  els.healthStatus = $('#healthStatus');
+  els.healthLatency = $('#healthLatency');
+  els.kvService = $('#kvService');
+  els.kvMongo = $('#kvMongo');
+  els.kvUptime = $('#kvUptime');
+  els.kvTimestamp = $('#kvTimestamp');
+  els.kvNode = $('#kvNode');
+  els.versionsList = $('#versionsList');
+  els.sseLog = $('#sseLog');
+  els.systemEnvDesc = $('#systemEnvDesc');
+  els.log = $('#log');
+  els.toast = $('#toast');
+  els.footService = $('#footService');
+  els.footEnv = $('#footEnv');
+  els.footTime = $('#footTime');
+
+  // Theme
+  var themeToggle = $('#themeToggle');
+  var iconSun = $('#iconSun');
+  var iconMoon = $('#iconMoon');
+  function applyTheme(t){
+    document.documentElement.setAttribute('data-theme', t);
+    localStorage.setItem('orl-backend-theme', t);
+    var isDark = t === 'dark';
+    iconSun.style.display = isDark ? 'none' : 'block';
+    iconMoon.style.display = isDark ? 'block' : 'none';
+    document.querySelector('meta[name="theme-color"]').setAttribute('content', isDark ? '#0b1220' : '#4f46e5');
+  }
+  var saved = localStorage.getItem('orl-backend-theme');
+  var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  applyTheme(saved || (prefersDark ? 'dark' : 'light'));
+  themeToggle.addEventListener('click', function(){
+    var cur = document.documentElement.getAttribute('data-theme');
+    applyTheme(cur === 'dark' ? 'light' : 'dark');
+  });
+
+  // Base URL
+  els.baseUrl.textContent = baseUrl;
+  $('#btnCopyBaseUrl').addEventListener('click', function(){ copyText(baseUrl); });
+
+  // Tabs
+  $all('.tab').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var tab = btn.getAttribute('data-tab');
+      $all('.tab').forEach(function(b){ b.classList.remove('active'); b.setAttribute('aria-selected','false'); });
+      btn.classList.add('active'); btn.setAttribute('aria-selected','true');
+      $all('.panel').forEach(function(p){ p.classList.toggle('active', p.getAttribute('data-panel')===tab); });
+    });
+  });
+  // Search
+  var search = $('#apiSearch');
+  search.addEventListener('input', function(){
+    var q = search.value.trim().toLowerCase();
+    $all('.endpoint').forEach(function(ep){
+      var kw = (ep.getAttribute('data-keywords')||'') + ' ' + ep.textContent.toLowerCase();
+      ep.style.display = !q || kw.indexOf(q)!==-1 ? '' : 'none';
+    });
+  });
+
+  function toast(msg){
+    els.toast.textContent = msg;
+    els.toast.classList.add('show');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(function(){ els.toast.classList.remove('show'); }, 2200);
+  }
+  function copyText(t){
+    var txt = t.replace(/BASE/g, baseUrl);
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(txt).then(function(){ toast('Copié !'); }, function(){ fallbackCopy(txt); });
+    } else fallbackCopy(txt);
+  }
+  function fallbackCopy(txt){
+    var ta=document.createElement('textarea'); ta.value=txt; ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta); ta.select(); try{document.execCommand('copy'); toast('Copié !');}catch(e){ toast('Copie échouée'); } ta.remove();
+  }
+  $all('[data-copy]').forEach(function(b){
+    b.addEventListener('click', function(){ copyText(b.getAttribute('data-copy')); });
+  });
+  $('#btnCopySse').addEventListener('click', function(){ copyText($('#btnCopySse').getAttribute('data-copy')); });
+
+  // Log
+  function log(msg, level){
+    var time = new Date().toLocaleTimeString();
+    var line = '['+time+'] ' + msg;
+    var div = document.createElement('div');
+    div.textContent = line;
+    div.style.color = level==='error' ? 'var(--danger)' : level==='ok' ? 'var(--success)' : 'var(--muted)';
+    div.style.borderBottom = '1px solid var(--border)';
+    div.style.padding = '4px 0';
+    if(els.log.textContent==='—') els.log.textContent='';
+    els.log.prepend(div);
+    // keep max 80
+    while(els.log.children.length>80) els.log.removeChild(els.log.lastChild);
+  }
+  $('#btnClearLog').addEventListener('click', function(){ els.log.textContent='—'; });
+  $('#btnCopyLog').addEventListener('click', function(){ copyText(els.log.innerText||els.log.textContent); });
+
+  // Format helpers
+  function fmtUptime(s){
+    if(s==null || isNaN(s)) return '—';
+    s = Math.floor(Number(s));
+    var d=Math.floor(s/86400), h=Math.floor((s%86400)/3600), m=Math.floor((s%3600)/60), sec=s%60;
+    if(d>0) return d+'j '+h+'h '+m+'m';
+    if(h>0) return h+'h '+m+'m '+sec+'s';
+    if(m>0) return m+'m '+sec+'s';
+    return sec+'s';
+  }
+  function fmtTime(ts){
+    try{ return new Date(ts).toLocaleString(); }catch(e){ return String(ts||'—'); }
+  }
+
+  // Try request
+  function doTry(method, path, body, token){
+    var url = path;
+    if(url.indexOf('http')!==0){
+      if(url.charAt(0)!=='/') url='/'+url;
+      url = baseUrl + url;
+    }
+    var headers = {};
+    if(token) headers['Authorization'] = 'Bearer ' + token.trim();
+    var opts = { method: method, headers: headers };
+    if(body && method!=='GET' && method!=='DELETE'){
+      headers['Content-Type']='application/json';
+      opts.body = body;
+    }
+    var start = performance.now();
+    return fetch(url, opts).then(function(res){
+      var ct = res.headers.get('content-type')||'';
+      var isJson = ct.indexOf('json')!==-1;
+      var p = isJson ? res.json().catch(function(){ return res.text(); }) : res.text();
+      return p.then(function(data){
+        var ms = Math.round(performance.now()-start);
+        return { ok: res.ok, status: res.status, data: data, ms: ms, url: url };
+      });
+    }).catch(function(err){
+      return { ok:false, status:0, data: { error: String(err && err.message || err) }, ms: Math.round(performance.now()-start), url:url };
+    });
+  }
+  $all('[data-try]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var path = btn.getAttribute('data-try');
+      var method = btn.getAttribute('data-method')||'GET';
+      var token = $('#tokenInput').value;
+      var bodyInput = $('#tryBody').value.trim();
+      var body = null;
+      if((method==='POST'||method==='PUT'||method==='PATCH') && !bodyInput && path.indexOf('/api/auth')!==-1){
+        // provide minimal body hint
+        if(path==='/api/auth/signin' || path==='/api/auth/signup') body = JSON.stringify({ email:'test@example.com', password:'secret12', displayName:'Test'});
+        else if(path==='/api/contact') body = JSON.stringify({ name:'Test', email:'a@b.com', subject:'Support technique', message:'Hello depuis le dashboard'});
+      } else if(bodyInput) body = bodyInput;
+      $('#tryMethod').value = method;
+      $('#tryPath').value = path;
+      if(body) $('#tryBody').value = typeof body==='string' ? body : JSON.stringify(body,null,2);
+      executeTry();
+    });
+  });
+  function executeTry(){
+    var method = $('#tryMethod').value;
+    var path = $('#tryPath').value.trim()||'/api/health';
+    var body = $('#tryBody').value.trim()||null;
+    var token = $('#tokenInput').value;
+    $('#tryResult').textContent = '… envoi '+method+' '+path+' …';
+    doTry(method, path, body, token).then(function(r){
+      var pretty = '';
+      try{ pretty = typeof r.data==='string' ? r.data : JSON.stringify(r.data,null,2); }catch(e){ pretty = String(r.data); }
+      $('#tryResult').textContent = r.status+' '+ (r.ok?'OK':'ERR') +' • '+r.ms+'ms • '+r.url+'\n\n'+pretty;
+      log(method+' '+path+' → '+r.status+' ('+r.ms+'ms)', r.ok?'ok':'error');
+    });
+  }
+  $('#btnTryCustom').addEventListener('click', executeTry);
+
+  // Health polling
+  var lastLatency = null;
+  function fetchHealth(){
+    var t0 = performance.now();
+    return fetch(baseUrl + '/api/health', { cache:'no-store' }).then(function(res){
+      var ms = Math.round(performance.now()-t0);
+      lastLatency = ms;
+      if(!res.ok) throw new Error('HTTP '+res.status);
+      return res.json().then(function(data){
+        renderHealth(data, ms, null);
+        return data;
+      });
+    }).catch(function(err){
+      var ms = Math.round(performance.now()-t0);
+      renderHealth(null, ms, err);
+      return null;
+    });
+  }
+  function fetchMeta(){
+    return fetch(baseUrl + '/api/meta', { cache:'no-store' }).then(function(r){ return r.ok ? r.json() : null; }).then(function(data){
+      if(!data) return;
+      els.serviceName.textContent = data.service || 'orl-platform-dems-backend';
+      els.serviceVersion.textContent = 'v'+(data.version||'1.0.0')+' • Node '+ (data.nodeVersion||'—');
+      els.envValue.textContent = data.env || '—';
+      els.envInline.textContent = data.env || '—';
+      els.platformValue.textContent = (data.platform||'—') + ' • ' + (data.arch||'');
+      els.corsValue.textContent = String(data.corsOriginsCount ?? '—');
+      els.corsOrigins.textContent = (data.corsOrigins && data.corsOrigins.length) ? data.corsOrigins.slice(0,2).join(', ') + (data.corsOrigins.length>2 ? ' +' + (data.corsOrigins.length-2) : '') : 'localhost auto';
+      els.mongoDbName.textContent = data.mongoDbName || '—';
+      els.footService.textContent = data.service || '—';
+      els.footEnv.textContent = data.env || '—';
+      if(data.features){
+        var f = [];
+        if(data.features.googleAuth) f.push('Google OAuth: on');
+        else f.push('Google OAuth: off');
+        if(data.features.cloudinary) f.push('Cloudinary: on');
+        else f.push('Cloudinary: off');
+        if(data.features.mailer) f.push('SMTP: on');
+        else f.push('SMTP: off');
+        els.systemEnvDesc.textContent = f.join(' • ') + ' • JWT ' + (data.jwtExpiresIn||'7d');
+      }
+      // uptime fallback if health didn't provide
+      if(data.uptime!=null){
+        els.uptimeHero.textContent = fmtUptime(data.uptime);
+        els.kvUptime.textContent = fmtUptime(data.uptime) + ' ('+Math.floor(data.uptime)+'s)';
+      }
+      if(data.timestamp) {
+        els.timestampHero.textContent = fmtTime(data.timestamp);
+        els.kvTimestamp.textContent = fmtTime(data.timestamp);
+      }
+      if(data.nodeVersion) els.kvNode.textContent = data.nodeVersion;
+    }).catch(function(){});
+  }
+  function renderHealth(data, ms, err){
+    els.healthLatency.textContent = ms + ' ms';
+    els.latencyHero.textContent = ms + ' ms';
+    els.lastCheck.textContent = new Date().toLocaleTimeString();
+    els.footTime.textContent = new Date().toLocaleTimeString();
+    if(err || !data){
+      els.statusPill.classList.add('offline');
+      els.statusText.textContent = 'Hors ligne';
+      els.healthStatus.textContent = 'offline';
+      els.healthStatus.className = 'badge err';
+      els.mongoBadge.textContent = 'indisponible';
+      els.mongoBadge.className = 'badge err';
+      els.mongoValue.textContent = '—';
+      els.healthJson.textContent = 'Erreur: ' + (err && err.message || 'fetch failed');
+      els.kvService.textContent = '—';
+      els.kvMongo.textContent = '—';
+      log('health error: ' + (err && err.message || 'unknown'), 'error');
+      return;
+    }
+    var ok = !!data.ok;
+    els.statusPill.classList.toggle('offline', !ok);
+    els.statusText.textContent = ok ? 'En ligne' : 'Dégradé';
+    els.healthStatus.textContent = ok ? 'ok' : 'degraded';
+    els.healthStatus.className = 'badge ' + (ok ? 'ok' : 'warn');
+    els.healthJson.textContent = JSON.stringify(data, null, 2);
+    els.kvService.textContent = data.service || '—';
+    var mongoConnected = !!data.mongoConnected;
+    els.kvMongo.textContent = mongoConnected ? 'connecté ✓' : 'déconnecté ✗';
+    els.mongoBadge.textContent = mongoConnected ? 'connecté' : 'déconnecté';
+    els.mongoBadge.className = 'badge ' + (mongoConnected ? 'ok' : 'err');
+    els.mongoValue.textContent = mongoConnected ? 'Connecté' : 'Déconnecté';
+    els.mongoLatency.textContent = ms + ' ms';
+    if(data.uptime!=null){
+      els.uptimeHero.textContent = fmtUptime(data.uptime);
+      els.kvUptime.textContent = fmtUptime(data.uptime) + ' ('+Math.floor(data.uptime)+'s)';
+    }
+    if(data.timestamp){
+      els.timestampHero.textContent = fmtTime(data.timestamp);
+      els.kvTimestamp.textContent = fmtTime(data.timestamp);
+    }
+    if(data.service) els.serviceName.textContent = data.service;
+    if(data.version) els.serviceVersion.textContent = 'v'+data.version + (data.nodeVersion ? ' • Node ' + data.nodeVersion : '');
+    if(data.nodeVersion) els.kvNode.textContent = data.nodeVersion;
+    log('GET /api/health → '+(ok?'ok':'degraded')+' mongo='+mongoConnected+' '+ms+'ms', ok?'ok':'error');
+  }
+  $('#btnRefreshHealth').addEventListener('click', function(){ fetchHealth(); fetchMeta(); });
+  $('#btnCopyHealth').addEventListener('click', function(){ copyText(els.healthJson.textContent); });
+
+  // Versions
+  function fetchVersions(){
+    var t0=performance.now();
+    return fetch(baseUrl + '/api/realtime/versions', { cache:'no-store' }).then(function(r){
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      return r.json();
+    }).then(function(data){
+      renderVersions(data, Math.round(performance.now()-t0));
+    }).catch(function(err){
+      els.versionsList.innerHTML = '<div style="padding:12px;color:var(--danger);font-size:13px">Erreur versions: '+ (err && err.message || err) +'</div>';
+      log('versions error: '+(err&&err.message||err),'error');
+    });
+  }
+  function renderVersions(data, ms){
+    var hash = data._hash || '—';
+    var ts = data._ts || Date.now();
+    els.hashValue.textContent = hash;
+    els.realtimeTs.textContent = new Date(ts).toLocaleTimeString() + ' • '+ms+'ms';
+    var cols = ['videos','qcms','openQuestions','clinicalCases','diagrams','users','payments','notifications','supportChats','supportChatMessages','pedagogicalFeedback','clinicalCaseFeedback','appSettings'];
+    var html='';
+    cols.forEach(function(name){
+      var v = data[name] || { count:0, updatedAt:0 };
+      var t = v.updatedAt ? new Date(v.updatedAt).toLocaleString() : '—';
+      var count = v.count!=null ? v.count : '—';
+      html += '<div class="version-item"><div><div class="version-name">'+name+'</div><div class="version-meta"><span>'+t+'</span></div></div><div style="text-align:right"><div style="font-size:18px;font-weight:850;letter-spacing:-.02em">'+count+'</div><div style="font-size:11px;color:var(--muted);font-weight:700">docs</div></div></div>';
+    });
+    els.versionsList.innerHTML = html;
+    // update watched count
+    var total = 0; cols.forEach(function(c){ total += (data[c] && data[c].count) ? Number(data[c].count):0; });
+    // keep original 13 label but also show total docs
+    log('GET /api/realtime/versions → hash '+hash+' '+ms+'ms','ok');
+  }
+  $('#btnRefreshVersions').addEventListener('click', fetchVersions);
+
+  // SSE
+  var es = null;
+  var sseActive = false;
+  $('#btnSse').addEventListener('click', function(){
+    if(sseActive && es){
+      try{ es.close(); }catch(e){}
+      es=null; sseActive=false;
+      this.textContent='● SSE Stream';
+      this.classList.remove('primary');
+      els.sseLog.style.display='none';
+      log('SSE closed','ok');
+      return;
+    }
+    this.textContent='■ Stop SSE';
+    this.classList.add('primary');
+    els.sseLog.style.display='block';
+    els.sseLog.textContent='Connexion SSE…';
+    try{
+      es = new EventSource(baseUrl + '/api/realtime/stream');
+      sseActive=true;
+      es.onmessage = function(e){
+        try{
+          var d = JSON.parse(e.data);
+          var h = d._hash||'—';
+          els.sseLog.textContent = new Date().toLocaleTimeString()+' hash='+h+'\n'+JSON.stringify(d,null,2);
+          renderVersions(d, 0);
+          log('SSE event hash='+h,'ok');
+        }catch(err){
+          els.sseLog.textContent = e.data;
+        }
+      };
+      es.onerror = function(){ log('SSE error','error'); els.sseLog.textContent += '\n[error] connexion interrompue'; };
+      log('SSE connected to /api/realtime/stream','ok');
+    }catch(err){
+      log('SSE failed: '+err.message,'error');
+    }
+  });
+
+  // Polling
+  fetchHealth();
+  fetchMeta();
+  fetchVersions();
+  setInterval(fetchHealth, 5000);
+  setInterval(fetchMeta, 15000);
+  setInterval(fetchVersions, 4000);
+
+  // live clock
+  setInterval(function(){ els.footTime.textContent = new Date().toLocaleTimeString(); }, 1000);
+
+})();
+</script>
+</body>
+</html>
