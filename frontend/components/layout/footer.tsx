@@ -1,8 +1,9 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { useAuth } from '@/components/providers/auth-provider';
-import { Stethoscope, Mail, Phone, MapPin } from 'lucide-react';
+import { Mail, Phone, MapPin } from 'lucide-react';
 
 export function Footer() {
   const { profile } = useAuth();
@@ -18,8 +19,8 @@ export function Footer() {
       <div className="container mx-auto px-4 sm:px-6 relative z-10">
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6 sm:gap-8">
         <div className="flex flex-col gap-4">
-          <Link href="/" className="flex items-center gap-2 text-[color-mix(in_oklab,var(--app-accent)_78%,white_22%)]">
-            <Stethoscope className="h-6 w-6" />
+          <Link href="/" className="flex items-center gap-2">
+            <Image src="/logo.svg" alt="DEMS ENT" width={120} height={72} className="h-9 w-auto footer-logo" />
             <span className="font-bold text-xl tracking-tight text-(--footer-text)">DEMS ENT</span>
           </Link>
           <p className="text-sm leading-relaxed text-(--footer-muted)">

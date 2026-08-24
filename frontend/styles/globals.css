@@ -211,17 +211,30 @@ html[data-theme='light'] {
   --demo-video-thumb-border: color-mix(in oklab, var(--app-deep-text) 86%, transparent);
   --demo-video-thumb-ring: color-mix(in oklab, var(--app-accent) 42%, transparent);
 
-  --footer-bg-start: rgba(255, 250, 242, 0.24);
-  --footer-bg-end: rgba(176, 103, 62, 0.2);
-  --footer-panel: rgba(255, 250, 242, 0.42);
-  --footer-border: rgba(176, 103, 62, 0.28);
-  --footer-text: #4a3a2c;
-  --footer-muted: #6a5848;
-  --footer-link: #503f31;
+  --footer-bg-start: #fffaf2;
+  --footer-bg-end: #f5e0c0;
+  --footer-panel: rgba(255, 250, 242, 0.96);
+  --footer-border: rgba(173, 107, 66, 0.22);
+  --footer-text: #3e2e1e;
+  --footer-muted: #7a5a3a;
+  --footer-link: #5c3a22;
 
   --ring-focus: color-mix(in oklab, var(--app-accent) 42%, transparent);
   --shadow-elevated: 0 18px 52px -26px color-mix(in srgb, #1f1710 38%, transparent);
   --shadow-soft: 0 10px 26px -18px color-mix(in srgb, #1f1710 28%, transparent);
+}
+
+/* Logos : brun #ad6b42 d'origine sur fond clair, blanc sur fond sombre */
+.footer-logo,
+.navbar-logo {
+  filter: none;
+  opacity: 1;
+  transition: filter 220ms ease, opacity 220ms ease;
+}
+html[data-theme='dark'] .footer-logo,
+html[data-theme='dark'] .navbar-logo {
+  filter: brightness(0) invert(1);
+  opacity: 0.92;
 }
 
 html[data-theme='dark'] {

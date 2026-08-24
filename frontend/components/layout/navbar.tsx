@@ -10,7 +10,6 @@ import {
   User,
   Menu,
   X,
-  Stethoscope,
   ShoppingCart,
   ChevronDown,
   LayoutDashboard,
@@ -761,11 +760,9 @@ export function Navbar() {
         <div className="container mx-auto px-3 sm:px-6 lg:px-8 h-16 sm:h-20 lg:h-24 flex items-center justify-between gap-2 relative">
           {/* Logo à gauche */}
           <div className="flex items-center min-w-30">
-            <Link href="/" className="flex items-center gap-2 text-(--app-accent) hover:opacity-85 transition-opacity group">
-              <div className="h-9 w-9 rounded-xl flex items-center justify-center border border-[color-mix(in_oklab,var(--app-accent)_45%,transparent)] bg-[color-mix(in_oklab,var(--app-accent)_16%,transparent)]">
-                <Stethoscope className="h-5 w-5 group-hover:rotate-6 transition-transform" />
-              </div>
-              <span className="font-bold text-xl tracking-tight">DEMS ENT</span>
+            <Link href="/" className="flex items-center gap-2 hover:opacity-90 transition-opacity group">
+              <Image src="/logo.svg" alt="DEMS ENT" width={120} height={72} className="h-9 w-auto sm:h-10 navbar-logo" priority />
+              <span className="font-bold text-xl tracking-tight text-(--app-text) hidden sm:inline">DEMS ENT</span>
             </Link>
           </div>
 
@@ -1075,9 +1072,9 @@ export function Navbar() {
               className="fly-drawer-shell lg:hidden fixed top-0 left-0 bottom-0 z-50 w-full max-w-sm border-r border-(--app-border) shadow-2xl"
             >
             <div className="flex items-center justify-between px-4 py-5 border-b border-(--app-border)">
-              <div className="flex items-center gap-2 text-(--app-accent)">
-                <Stethoscope className="h-5 w-5" />
-                <span className="font-semibold">Navigation</span>
+              <div className="flex items-center gap-2">
+                <Image src="/logo.svg" alt="DEMS ENT" width={80} height={48} className="h-8 w-auto navbar-logo" />
+                <span className="font-semibold text-(--app-text)">Navigation</span>
               </div>
               <button
                 type="button"
