@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { FormEvent, useMemo, useState } from 'react';
 import { KeyRound, Lock } from 'lucide-react';
-import { resetPasswordWithToken } from '@/lib/data/local-data';
+import { resetPasswordWithToken } from '@/lib/api/client';
 
 export default function ResetPasswordPage() {
   const router = useRouter();

@@ -36,7 +36,7 @@ import {
   subscribeToNotificationStorageChanges,
   type NotificationStorageState,
   where,
-} from '@/lib/data/local-data';
+} from '@/lib/api/client';
 import { SearchModal } from '@/components/features/search/search-modal';
 import { AVATAR_FALLBACK_SRC, applyImageFallback } from '@/lib/utils/media-fallback';
 
@@ -129,7 +129,10 @@ export function Navbar() {
       const rawCurrentSlug = router.query.slug;
       const currentSlug = Array.isArray(rawCurrentSlug) ? rawCurrentSlug[0] : rawCurrentSlug;
 
-      return currentPathname === '/specialty-detail' && currentSlug === targetSlug;
+      // Nouveau routing : /specialties/[slug] (+ legacy /specialty-detail?slug=)
+      const isSpecialtyPage =
+        currentPathname === '/specialties/[slug]' || currentPathname === '/specialty-detail';
+      return isSpecialtyPage && currentSlug === targetSlug;
     }
 
     // Planning unifié : /planning et /planner (alias) partagent le même lien

@@ -1,4 +1,58 @@
+# ── Dépendances ──────────────────────────────
 node_modules/
+.pnp/
+.pnp.js
+
+# ── Environnement ────────────────────────────
 .env
+.env.local
+.env.*.local
+.env.development
+.env.production
+
+# ── Build & Output ───────────────────────────
+.next/
+out/
+dist/
+build/
+.next/
 .vercel
+.turbo/
+coverage/
+.nyc_output/
+
+# ── Logs ─────────────────────────────────────
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ── OS ───────────────────────────────────────
 .DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ── IDE ──────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# ── Cache ────────────────────────────────────
+*.tsbuildinfo
+.eslintcache
+.parcel-cache/
+
+# ── Tests ────────────────────────────────────
+coverage/

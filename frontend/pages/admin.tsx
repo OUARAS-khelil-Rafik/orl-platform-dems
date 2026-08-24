@@ -18,7 +18,7 @@ import {
   deleteCloudinaryAsset,
   createAuthAccountByAdmin,
   deleteAuthAccountByUid,
-} from '@/lib/data/local-data';
+} from '@/lib/api/client';
 import { motion } from 'motion/react';
 import Image from 'next/image';
 import {

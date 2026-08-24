@@ -20,7 +20,7 @@ import {
   signOut as localSignOut,
   updateAuthDisplayName,
   type LocalAuthUser,
-} from '@/lib/data/local-data';
+} from '@/lib/api/client';
 import { type SubscriptionApprovalStatus, type UserRole } from '@/lib/security/access-control';
 import { formatFullName, normalizeNameParts, splitFullName } from '@/lib/utils/name-utils';
 

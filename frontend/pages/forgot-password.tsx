@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { FormEvent, useState } from 'react';
 import { KeyRound, Mail } from 'lucide-react';
-import { requestPasswordReset } from '@/lib/data/local-data';
+import { requestPasswordReset } from '@/lib/api/client';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');

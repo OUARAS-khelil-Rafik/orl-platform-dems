@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
-import { startRealtimeSync } from '@/lib/data/local-data';
+import { startRealtimeSync } from '@/lib/api/client';
 
 export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {

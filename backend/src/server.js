@@ -10,8 +10,8 @@ import {
 } from './config/mongodb.js';
 import { env } from './config/env.js';
 import authRoutes from './routes/auth.routes.js';
-import dataRoutes from './routes/data.routes.js';
-import uploadRoutes from './routes/upload.routes.js';
+import collectionsRoutes from './routes/collections.routes.js';
+import uploadsRoutes from './routes/uploads.routes.js';
 import realtimeRoutes from './routes/realtime.routes.js';
 import contactRoutes from './routes/contact.routes.js';
 import { isSmtpMailerConfigured } from './config/mailer.js';
@@ -109,6 +109,20 @@ const isLoopbackOrigin = (origin) => {
   }
 };
 
+const isPrivateNetworkOrigin = (origin) => {
+  try {
+    const parsed = new URL(origin);
+    const hostname = String(parsed.hostname || '').toLowerCase();
+    // Autorise le réseau local (192.168.x.x, 10.x.x.x, 172.16-31.x.x) en dev
+    if (/^192\.168\.\d+\.\d+$/.test(hostname)) return true;
+    if (/^10\.\d+\.\d+\.\d+$/.test(hostname)) return true;
+    if (/^172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+$/.test(hostname)) return true;
+    return false;
+  } catch {
+    return false;
+  }
+};
+
 app.use(
   cors({
     origin(origin, callback) {
@@ -123,6 +137,11 @@ app.use(
       }
 
       if (isLoopbackOrigin(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      if (isPrivateNetworkOrigin(origin)) {
         callback(null, true);
         return;
       }
@@ -186,8 +205,8 @@ app.get('/api/meta', (_req, res) => {
 
 // ── API routes ──────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes);
-app.use('/api/data', dataRoutes);
-app.use('/api/uploads', uploadRoutes);
+app.use('/api/data', collectionsRoutes); // collections = /api/data/:collection (compat)
+app.use('/api/uploads', uploadsRoutes);
 app.use('/api/realtime', realtimeRoutes);
 app.use('/api/contact', contactRoutes);
 

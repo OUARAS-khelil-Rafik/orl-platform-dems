@@ -33,7 +33,7 @@ const makeDocs = (rows: Array<Record<string, unknown>>) =>
     data: () => row,
   }));
 
-vi.mock('@/lib/data/local-data', () => ({
+vi.mock('@/lib/api/client', () => ({
   db: {},
   collection: (_db: unknown, name: string) => ({ name }),
   getDocs: async (source: { name: string }) => {

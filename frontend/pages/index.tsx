@@ -28,7 +28,7 @@ import {
 import Image from 'next/image';
 import { LarynxFlatIcon, NoseFlatIcon } from '@/components/icons/specialty-icons';
 import { useAuth } from '@/components/providers/auth-provider';
-import { collection, db, deleteDoc, doc, getDocs, query, setDoc, updateDoc, where, uploadCloudinaryAsset, deleteCloudinaryAsset } from '@/lib/data/local-data';
+import { collection, db, deleteDoc, doc, getDocs, query, setDoc, updateDoc, where, uploadCloudinaryAsset, deleteCloudinaryAsset } from '@/lib/api/client';
 import { IMAGE_FALLBACK_SRC, VIDEO_FALLBACK_SRC, applyImageFallback } from '@/lib/utils/media-fallback';
 import { SupportChatAttachmentCard } from '@/components/features/support/support-chat-attachment';
 import {

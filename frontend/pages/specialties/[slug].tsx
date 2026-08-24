@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
-import { db, collection, query, where, getDocs, doc, updateDoc, arrayUnion, arrayRemove } from '@/lib/data/local-data';
+import { db, collection, query, where, getDocs, doc, updateDoc, arrayUnion, arrayRemove } from '@/lib/api/client';
 import { useRealtimeRefresh } from '@/lib/hooks/useRealtimeRefresh';
 import { motion } from 'motion/react';
 import { PlayCircle, Lock, Clock3, Search, SlidersHorizontal, ListChecks, Stethoscope, MessageSquare, Network, Heart, BookmarkCheck } from 'lucide-react';

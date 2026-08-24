@@ -4,8 +4,8 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useAuth } from '@/components/providers/auth-provider';
-import { PlanningProgramme } from '@/components/features/planning/PlanningProgramme';
-import { PlannerAgenda } from '@/components/features/planner/PlannerAgenda';
+import { PlanningProgramme } from '@/components/features/planning/programme';
+import { PlannerAgenda } from '@/components/features/planning/agenda';
 import { BookOpen, CalendarDays } from 'lucide-react';
 
 type UnifiedTab = 'programme' | 'agenda';

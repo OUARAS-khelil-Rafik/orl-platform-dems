@@ -26,7 +26,7 @@ import {
   type DiagramImportRowPayload,
   type OpenQuestionImportRowPayload,
   type QcmImportRowPayload,
-} from '@/lib/data/local-data';
+} from '@/lib/api/client';
 import SeamlessPlayer from '@/components/features/video/seamless-player';
 import type {
   CaseQuestionModel,

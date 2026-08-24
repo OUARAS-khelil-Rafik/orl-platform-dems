@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Search, X, PlayCircle, FileText, HelpCircle, Image as ImageIcon, Loader2 } from 'lucide-react';
-import { db, collection, getDocs } from '@/lib/data/local-data';
+import { db, collection, getDocs } from '@/lib/api/client';
 import { useRouter } from 'next/router';
 
 interface SearchResult {

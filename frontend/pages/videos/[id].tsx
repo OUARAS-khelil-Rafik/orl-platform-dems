@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
-import { db, doc, getDoc, collection, query, where, getDocs, addDoc } from '@/lib/data/local-data';
+import { db, doc, getDoc, collection, query, where, getDocs, addDoc } from '@/lib/api/client';
 import { useRealtimeRefresh } from '@/lib/hooks/useRealtimeRefresh';
 import { useAuth } from '@/components/providers/auth-provider';
 import { useCart } from '@/components/providers/cart-provider';

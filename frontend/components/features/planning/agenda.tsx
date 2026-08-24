@@ -12,7 +12,7 @@ import {
   query,
   updateDoc,
   where,
-} from '@/lib/data/local-data';
+} from '@/lib/api/client';
 import { useAuth } from '@/components/providers/auth-provider';
 import {
   Calendar as CalendarIcon,

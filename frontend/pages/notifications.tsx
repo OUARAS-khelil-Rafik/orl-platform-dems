@@ -17,7 +17,7 @@ import {
   subscribeToNotificationStorageChanges,
   updateDoc,
   where,
-} from '@/lib/data/local-data';
+} from '@/lib/api/client';
 
 type UserNotification = {
   id: string;

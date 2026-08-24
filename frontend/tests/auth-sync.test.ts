@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { onAuthStateChanged, auth } from '@/lib/data/local-data';
+import { onAuthStateChanged, auth } from '@/lib/api/client';
 
 const AUTH_KEY = 'dems-auth-session-v1';
 const AUTH_TEMP_KEY = 'dems-auth-session-temp-v1';

@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import { useAuth } from '@/components/providers/auth-provider';
-import { db, collection, addDoc, doc, updateDoc, uploadCloudinaryAsset, buildPaymentReceiptFolder } from '@/lib/data/local-data';
+import { db, collection, addDoc, doc, updateDoc, uploadCloudinaryAsset, buildPaymentReceiptFolder } from '@/lib/api/client';
 import { motion } from 'motion/react';
 import { ShieldCheck, CheckCircle2, AlertCircle, CreditCard, Upload, FileText, X, Copy, Loader2 } from 'lucide-react';
 

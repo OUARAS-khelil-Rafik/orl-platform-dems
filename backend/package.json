@@ -2,6 +2,7 @@
   "name": "orl-platform-dems-backend",
   "version": "1.0.0",
   "private": true,
+  "description": "ORL Platform DEMS — Backend Express + MongoDB (DEMS ENT)",
   "type": "module",
   "main": "src/server.js",
   "engines": {

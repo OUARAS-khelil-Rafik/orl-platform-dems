@@ -1,7 +1,8 @@
 {
-  "name": "ai-studio-applet",
-  "version": "0.1.0",
+  "name": "orl-platform-dems-frontend",
+  "version": "1.0.0",
   "private": true,
+  "description": "ORL Platform DEMS — Frontend Next.js (DEMS ENT)",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

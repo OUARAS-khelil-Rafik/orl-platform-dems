@@ -36,7 +36,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { db, collection, addDoc, getDocs, query, where, getDoc, doc, uploadCloudinaryAsset, buildPaymentReceiptFolder } from '@/lib/data/local-data';
+import { db, collection, addDoc, getDocs, query, where, getDoc, doc, uploadCloudinaryAsset, buildPaymentReceiptFolder } from '@/lib/api/client';
 import { IMAGE_FALLBACK_SRC, VIDEO_FALLBACK_SRC, applyImageFallback } from '@/lib/utils/media-fallback';
 
 type PaymentStatus = 'approved' | 'pending' | 'rejected';

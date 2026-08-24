@@ -46,6 +46,7 @@ const nextConfig: NextConfig = {
   ...(process.env.VERCEL ? {} : { output: 'standalone' as const }),
   transpilePackages: ['motion'],
   turbopack: {},
+  allowedDevOrigins: ['192.168.100.78', '192.168.100.78:3000'],
   async redirects() {
     return [
       {
@@ -71,24 +72,12 @@ const nextConfig: NextConfig = {
     ];
   },
   async rewrites() {
-    return [
-      {
-        source: '/checkout/subscription',
-        destination: '/checkout-subscription',
-      },
-      {
-        source: '/checkout/:type',
-        destination: '/checkout-type?type=:type',
-      },
-      {
-        source: '/specialties/:slug',
-        destination: '/specialty-detail?slug=:slug',
-      },
-      {
-        source: '/videos/:id',
-        destination: '/video-detail?id=:id',
-      },
-    ];
+    // Plus de rewrites nécessaires : routing natif
+    //   /videos/:id       -> pages/videos/[id].tsx
+    //   /specialties/:slug-> pages/specialties/[slug].tsx
+    //   /checkout/:type   -> pages/checkout/[type].tsx
+    //   /checkout/subscription -> pages/checkout/subscription.tsx
+    return [];
   },
   webpack: (config, {dev}) => {
     // HMR is disabled in AI Studio via DISABLE_HMR env var.

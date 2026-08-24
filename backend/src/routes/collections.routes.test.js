@@ -4,7 +4,7 @@ import {
   extractDriveFileIdsFromFolderHtml,
   isDriveFolderUrl,
   normalizeDriveFolderUrl,
-} from './data.routes.js';
+} from './collections.routes.js';
 
 test('extractDriveFileIdsFromFolderHtml should extract file IDs from embedded Drive folder HTML', () => {
   const html = `

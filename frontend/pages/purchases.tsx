@@ -31,7 +31,7 @@ import {
 } from 'lucide-react';
 import Image from 'next/image';
 import { useAuth } from '@/components/providers/auth-provider';
-import { collection, db, doc, getDoc, getDocs, query, where } from '@/lib/data/local-data';
+import { collection, db, doc, getDoc, getDocs, query, where } from '@/lib/api/client';
 import { VIDEO_FALLBACK_SRC, applyImageFallback } from '@/lib/utils/media-fallback';
 import { useRealtimeRefresh } from '@/lib/hooks/useRealtimeRefresh';
 

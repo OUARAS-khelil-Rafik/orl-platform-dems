@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 import type { ImgHTMLAttributes, ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import VideoPage from '@/pages/video-detail';
+import VideoPage from '@/pages/videos/[id]';
 
 vi.mock('next/link', () => ({
   default: ({ href, children, ...props }: { href: string; children: ReactNode }) => (
@@ -72,7 +72,7 @@ const makeDocs = (rows: Array<Record<string, unknown>>) =>
     data: () => row,
   }));
 
-vi.mock('@/lib/data/local-data', () => ({
+vi.mock('@/lib/api/client', () => ({
   db: {},
   doc: (_db: unknown, _coll: string, id: string) => ({ id }),
   getDoc: async (_docRef: { id: string }) => ({

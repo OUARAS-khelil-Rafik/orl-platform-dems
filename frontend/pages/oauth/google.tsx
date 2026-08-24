@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
-import { signInWithOAuthToken } from '@/lib/data/local-data';
+import { signInWithOAuthToken } from '@/lib/api/client';
 import { normalizeGoogleOAuthError } from '@/lib/utils/oauth-error';
 
 const sanitizeNextPath = (rawPath: string | null, fallback = '/dashboard') => {

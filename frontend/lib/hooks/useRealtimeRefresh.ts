@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef } from 'react';
-import { subscribeToDataChanges, type DataChangeEvent } from '@/lib/data/local-data';
+import { subscribeToDataChanges, type DataChangeEvent } from '@/lib/api/client';
 
 type Options = {
   intervalMs?: number; // polling fallback, 0 = disabled

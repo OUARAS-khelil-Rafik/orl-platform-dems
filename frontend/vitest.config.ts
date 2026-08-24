@@ -16,7 +16,7 @@ export default defineConfig({
         'components/features/search/search-modal.tsx',
         'components/layout/navbar.tsx',
         'lib/security/access-control.ts',
-        'pages/video-detail.tsx',
+        'pages/videos/[id].tsx',
       ],
       thresholds: {
         lines: 35,

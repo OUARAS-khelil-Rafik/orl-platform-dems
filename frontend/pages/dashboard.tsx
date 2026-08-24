@@ -39,7 +39,7 @@ import {
   cleanupCloudinaryAssets,
   cleanupCloudinaryAssetsOnPageExit,
   type CloudinaryCleanupAsset,
-} from '@/lib/data/local-data';
+} from '@/lib/api/client';
 import { isSubscriptionActive } from '@/lib/security/access-control';
 import { formatFullName, normalizeNameParts, splitFullName } from '@/lib/utils/name-utils';
 import { AVATAR_FALLBACK_SRC, applyImageFallback } from '@/lib/utils/media-fallback';

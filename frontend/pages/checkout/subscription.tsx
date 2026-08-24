@@ -6,7 +6,7 @@ import { motion } from 'motion/react';
 import { CreditCard, ShieldCheck, Loader2, Star, Check, Upload, FileText, X, Copy, CheckCircle2 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { db, collection, addDoc, doc, updateDoc, uploadCloudinaryAsset, buildPaymentReceiptFolder } from '@/lib/data/local-data';
+import { db, collection, addDoc, doc, updateDoc, uploadCloudinaryAsset, buildPaymentReceiptFolder } from '@/lib/api/client';
 
 export default function SubscriptionCheckoutPage() {
   const { user, profile } = useAuth();
