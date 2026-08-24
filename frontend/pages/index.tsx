@@ -13,9 +13,7 @@ import {
   VolumeX,
   FileText,
   CheckCircle2,
-  Stethoscope,
-  Brain,
-  Activity,
+  Ear,
   Shield,
   Users,
   Clock3,
@@ -28,6 +26,7 @@ import {
   X,
 } from 'lucide-react';
 import Image from 'next/image';
+import { LarynxFlatIcon, NoseFlatIcon } from '@/components/icons/specialty-icons';
 import { useAuth } from '@/components/providers/auth-provider';
 import { collection, db, deleteDoc, doc, getDocs, query, setDoc, updateDoc, where, uploadCloudinaryAsset, deleteCloudinaryAsset } from '@/lib/data/local-data';
 import { IMAGE_FALLBACK_SRC, VIDEO_FALLBACK_SRC, applyImageFallback } from '@/lib/utils/media-fallback';
@@ -1979,25 +1978,22 @@ export default function HomePage() {
     {
       title: 'Otologie',
       desc: "Anatomie de l'oreille, audiométrie, pathologies de l'oreille moyenne et interne.",
-      icon: Activity,
+      icon: Ear,
       gradient: 'from-amber-700 to-orange-500',
-      chip: 'Axe oreille',
       href: '/specialties/otologie',
     },
     {
       title: 'Rhinologie & Sinusologie',
       desc: 'Fosses nasales, sinus de la face, physiologie olfactive et pathologies associées.',
-      icon: Brain,
+      icon: NoseFlatIcon,
       gradient: 'from-amber-700 to-amber-500',
-      chip: 'Axe nez/sinus',
       href: '/specialties/rhinologie',
     },
     {
       title: 'Laryngologie & Cervicologie',
       desc: 'Larynx, pharynx, cou et oncologie cervico-faciale avec approche clinique complète.',
-      icon: Stethoscope,
+      icon: LarynxFlatIcon,
       gradient: 'from-orange-700 to-amber-600',
-      chip: 'Axe voix/cou',
       href: '/specialties/laryngologie',
     },
   ];
@@ -2277,9 +2273,6 @@ export default function HomePage() {
                 className="group relative rounded-2xl sm:rounded-3xl p-6 sm:p-8 border shadow-sm hover:shadow-xl transition-all overflow-hidden border-[color-mix(in_oklab,var(--app-accent)_22%,var(--app-border)_78%)] bg-[linear-gradient(180deg,color-mix(in_oklab,var(--app-surface)_96%,white_4%)_0%,color-mix(in_oklab,var(--app-surface-alt)_82%,var(--app-accent)_18%)_100%)]"
               >
                 <div className={`absolute top-0 left-0 w-full h-1 bg-linear-to-r ${spec.gradient}`} />
-                <span className="inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold mb-4 border-[color-mix(in_oklab,var(--app-accent)_24%,var(--app-border)_76%)] bg-[color-mix(in_oklab,var(--app-accent)_10%,var(--app-surface)_90%)] text-[color-mix(in_oklab,var(--app-accent)_78%,var(--app-text)_22%)]">
-                  {spec.chip}
-                </span>
                 <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform bg-[color-mix(in_oklab,var(--app-accent)_14%,var(--app-surface)_86%)]">
                   <spec.icon className="h-7 w-7 text-[color-mix(in_oklab,var(--app-accent)_80%,var(--app-text)_20%)]" />
                 </div>

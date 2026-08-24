@@ -98,7 +98,6 @@ export function Navbar() {
     { name: 'Rhinologie', href: '/specialties/rhinologie' },
     { name: 'Laryngologie', href: '/specialties/laryngologie' },
     { name: 'Planning', href: '/planning' },
-    { name: 'Planner', href: '/planner' },
     { name: 'Tarifs', href: '/pricing' },
   ];
   const visibleNavLinks = isAdmin ? navLinks.filter((link) => link.name !== 'Tarifs') : navLinks;
@@ -132,6 +131,9 @@ export function Navbar() {
 
       return currentPathname === '/specialty-detail' && currentSlug === targetSlug;
     }
+
+    // Planning unifié : /planning et /planner (alias) partagent le même lien
+    if (targetPath === '/planning' && currentPathname === '/planner') return true;
 
     return currentPathname === targetPath;
   };

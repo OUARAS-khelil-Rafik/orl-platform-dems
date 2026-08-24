@@ -63,6 +63,11 @@ const nextConfig: NextConfig = {
         destination: '/specialties/:slug',
         permanent: true,
       },
+      {
+        source: '/planner',
+        destination: '/planning?tab=agenda',
+        permanent: false,
+      },
     ];
   },
   async rewrites() {

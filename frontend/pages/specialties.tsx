@@ -1,32 +1,30 @@
 import Link from 'next/link';
-import { ArrowRight, Activity, Brain, Stethoscope } from 'lucide-react';
+import { ArrowRight, Ear } from 'lucide-react';
+import { LarynxFlatIcon, NoseFlatIcon } from '@/components/icons/specialty-icons';
 
 const specialties = [
   {
     slug: 'otologie',
     title: 'Otologie',
     description: "Oreille externe, moyenne et interne.",
-    icon: Activity,
+    icon: Ear,
     gradient: 'from-orange-500 to-amber-500',
-    badge: 'Axe oreille',
     chipClass: 'specialty-glow-otology',
   },
   {
     slug: 'rhinologie',
     title: 'Rhinologie',
     description: 'Fosses nasales, sinus et pathologies associées.',
-    icon: Brain,
+    icon: NoseFlatIcon,
     gradient: 'from-cyan-500 to-blue-500',
-    badge: 'Axe nez/sinus',
     chipClass: 'specialty-glow-rhinology',
   },
   {
     slug: 'laryngologie',
     title: 'Laryngologie',
     description: 'Larynx, pharynx, cou et pathologies cervico-faciales.',
-    icon: Stethoscope,
+    icon: LarynxFlatIcon,
     gradient: 'from-rose-500 to-pink-500',
-    badge: 'Axe voix/cou',
     chipClass: 'specialty-glow-laryngology',
   },
 ];
@@ -64,9 +62,6 @@ export default function SpecialtiesIndexPage() {
                 background: 'linear-gradient(180deg, color-mix(in oklab, var(--app-surface) 94%, white 6%) 0%, color-mix(in oklab, var(--app-surface-alt) 72%, var(--app-accent) 28%) 100%)',
               }}
             >
-              <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide mb-4 ${item.chipClass}`}>
-                {item.badge}
-              </span>
               <div
                 className="w-12 h-12 rounded-xl border flex items-center justify-center mb-4 transition-transform duration-300 group-hover:scale-105"
                 style={{
