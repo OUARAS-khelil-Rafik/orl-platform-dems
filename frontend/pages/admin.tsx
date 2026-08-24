@@ -51,6 +51,12 @@ import {
   Loader2,
   Search,
   MessageCircle,
+  Download,
+  History,
+  Receipt,
+  Banknote,
+  TrendingUp,
+  Filter,
 } from 'lucide-react';
 import { useRouter } from 'next/router';
 import { AdminContentManager } from '@/components/features/admin/content-manager';
@@ -203,6 +209,13 @@ export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState<'users' | 'payments' | 'content' | 'discussions' | 'support'>('payments');
   const [payments, setPayments] = useState<AdminPayment[]>([]);
   const [allPayments, setAllPayments] = useState<AdminPayment[]>([]);
+  // --- Historique paiements : filtres & pagination ---
+  const [historySearch, setHistorySearch] = useState('');
+  const [historyStatusFilter, setHistoryStatusFilter] = useState<'all' | 'approved' | 'pending' | 'rejected'>('all');
+  const [historyTypeFilter, setHistoryTypeFilter] = useState<'all' | 'subscription' | 'pack' | 'cart'>('all');
+  const [historyMethodFilter, setHistoryMethodFilter] = useState<string>('all');
+  const [historyPeriodFilter, setHistoryPeriodFilter] = useState<'all' | 'today' | 'week' | 'month' | 'year'>('all');
+  const [historyVisibleCount, setHistoryVisibleCount] = useState(25);
   const [videos, setVideos] = useState<AdminVideo[]>([]);
   const [qcms, setQcms] = useState<AdminQcm[]>([]);
   const [openQuestions, setOpenQuestions] = useState<AdminOpenQuestion[]>([]);
@@ -264,7 +277,7 @@ export default function AdminDashboard() {
 
   const activeTabLabel =
     activeTab === 'payments'
-      ? 'Paiements en attente'
+      ? 'Paiements & Historique'
       : activeTab === 'users'
         ? 'Utilisateurs'
         : activeTab === 'discussions'
@@ -276,6 +289,182 @@ export default function AdminDashboard() {
   const approvedPaymentsCount = allPayments.filter((payment) => payment.status === 'approved').length;
   const blockedUsersCount = users.filter((user) => user.isBlocked).length;
   const pendingApprovalsCount = users.filter((user) => user.subscriptionApprovalStatus === 'pending').length;
+
+  // === Historique paiements : helpers & agrégations ===
+  const totalApprovedRevenue = useMemo(
+    () => allPayments.filter((p) => p.status === 'approved').reduce((sum, p) => sum + Number(p.amount || 0), 0),
+    [allPayments],
+  );
+  const totalPendingRevenue = useMemo(
+    () => allPayments.filter((p) => p.status === 'pending').reduce((sum, p) => sum + Number(p.amount || 0), 0),
+    [allPayments],
+  );
+  const rejectedPaymentsCount = useMemo(() => allPayments.filter((p) => p.status === 'rejected').length, [allPayments]);
+
+  const uniquePaymentMethods = useMemo(() => {
+    const set = new Set<string>();
+    allPayments.forEach((p) => {
+      const m = String(p.method || '').trim().toLowerCase();
+      if (m) set.add(m);
+    });
+    return Array.from(set).sort();
+  }, [allPayments]);
+
+  const historyFilteredPayments = useMemo(() => {
+    const q = historySearch.trim().toLowerCase();
+    const nowMs = Date.now();
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+
+    return allPayments.filter((payment) => {
+      if (historyStatusFilter !== 'all' && (payment.status || 'pending') !== historyStatusFilter) return false;
+      if (historyTypeFilter !== 'all' && payment.type !== historyTypeFilter) return false;
+      if (historyMethodFilter !== 'all' && String(payment.method || '').toLowerCase() !== historyMethodFilter) return false;
+
+      if (historyPeriodFilter !== 'all') {
+        const created = payment.createdAt ? new Date(payment.createdAt).getTime() : 0;
+        if (!created) return false;
+        const diff = nowMs - created;
+        if (historyPeriodFilter === 'today' && created < startOfToday.getTime()) return false;
+        if (historyPeriodFilter === 'week' && diff > 7 * 24 * 60 * 60 * 1000) return false;
+        if (historyPeriodFilter === 'month' && diff > 30 * 24 * 60 * 60 * 1000) return false;
+        if (historyPeriodFilter === 'year' && diff > 365 * 24 * 60 * 60 * 1000) return false;
+      }
+
+      if (!q) return true;
+      const user = users.find((u) => u.id === payment.userId);
+      const split = splitFullName(user?.displayName || '');
+      const fullName = (
+        formatFullName(user?.lastName || split.lastName, user?.firstName || split.firstName) ||
+        user?.displayName ||
+        ''
+      ).toLowerCase();
+      const email = (user?.email || '').toLowerCase();
+      const phone = (user?.phoneNumber || '').toLowerCase();
+      const receipt = (payment.receiptUrl || '').toLowerCase();
+      const type = String(payment.type || '').toLowerCase();
+      const method = String(payment.method || '').toLowerCase();
+      const amount = String(payment.amount || '');
+      const itemsText = Array.isArray(payment.items)
+        ? payment.items.map((i) => `${i.title || ''} ${i.id || ''}`).join(' ').toLowerCase()
+        : '';
+      const target = String(payment.targetId || '').toLowerCase();
+
+      return (
+        fullName.includes(q) ||
+        email.includes(q) ||
+        phone.includes(q) ||
+        receipt.includes(q) ||
+        type.includes(q) ||
+        method.includes(q) ||
+        amount.includes(q) ||
+        itemsText.includes(q) ||
+        target.includes(q) ||
+        payment.id.toLowerCase().includes(q)
+      );
+    }).sort((a, b) => {
+      const at = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const bt = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return bt - at;
+    });
+  }, [allPayments, users, historySearch, historyStatusFilter, historyTypeFilter, historyMethodFilter, historyPeriodFilter]);
+
+  const historyVisiblePayments = useMemo(
+    () => historyFilteredPayments.slice(0, historyVisibleCount),
+    [historyFilteredPayments, historyVisibleCount],
+  );
+
+  const historyFilteredRevenue = useMemo(
+    () => historyFilteredPayments.filter((p) => p.status === 'approved').reduce((sum, p) => sum + Number(p.amount || 0), 0),
+    [historyFilteredPayments],
+  );
+
+  const historyStats = useMemo(() => {
+    const total = historyFilteredPayments.length;
+    const approved = historyFilteredPayments.filter((p) => p.status === 'approved').length;
+    const pending = historyFilteredPayments.filter((p) => p.status === 'pending').length;
+    const rejected = historyFilteredPayments.filter((p) => p.status === 'rejected').length;
+    return { total, approved, pending, rejected };
+  }, [historyFilteredPayments]);
+
+  const handleExportHistoryCsv = useCallback(() => {
+    const rows = historyFilteredPayments;
+    const header = ['Date', 'Utilisateur', 'Email', 'Type', 'Details', 'Montant_DZD', 'Methode', 'Statut', 'Recu', 'ID'];
+    const escape = (v: string) => `"${String(v).replace(/"/g, '""')}"`;
+    const lines = [header.map(escape).join(',')];
+
+    for (const p of rows) {
+      const user = users.find((u) => u.id === p.userId);
+      const split = splitFullName(user?.displayName || '');
+      const fullName =
+        formatFullName(user?.lastName || split.lastName, user?.firstName || split.firstName) ||
+        user?.displayName ||
+        'Inconnu';
+      const details = (() => {
+        if (p.type === 'cart' && Array.isArray(p.items) && p.items.length > 0) {
+          return p.items.map((it) => `${it.title || it.id} (${it.type})`).join(' | ');
+        }
+        if (p.type === 'pack') return `Pack ${p.targetId || ''}`;
+        if (p.type === 'subscription') return `Abonnement ${p.plan || ''}`;
+        return p.targetId || p.type || '';
+      })();
+      const date = p.createdAt ? new Date(p.createdAt).toLocaleString('fr-DZ') : '';
+      lines.push(
+        [
+          escape(date),
+          escape(fullName),
+          escape(user?.email || ''),
+          escape(p.type || ''),
+          escape(details),
+          escape(String(p.amount || 0)),
+          escape(p.method || ''),
+          escape(p.status || 'pending'),
+          escape(p.receiptUrl || ''),
+          escape(p.id),
+        ].join(','),
+      );
+    }
+
+    const csv = lines.join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `historique-paiements-${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, [historyFilteredPayments, users]);
+
+  const getPaymentStatusBadgeClass = (status?: string) => {
+    if (status === 'approved') return 'bg-emerald-100 text-emerald-700 border-emerald-200';
+    if (status === 'rejected') return 'bg-rose-100 text-rose-700 border-rose-200';
+    return 'bg-amber-100 text-amber-700 border-amber-200';
+  };
+
+  const getPaymentStatusLabel = (status?: string) => {
+    if (status === 'approved') return 'Approuvé';
+    if (status === 'rejected') return 'Rejeté';
+    return 'En attente';
+  };
+
+  const getPaymentTypeLabel = (type?: string, targetId?: string, plan?: string, items?: AdminPayment['items']) => {
+    if (type === 'subscription') return `Abonnement ${plan === 'yearly' ? 'Annuel' : plan === 'monthly' ? 'Mensuel' : ''}`.trim();
+    if (type === 'pack') return `Pack ${targetId || ''}`.trim();
+    if (type === 'cart') {
+      if (Array.isArray(items) && items.length > 0) {
+        if (items.length === 1) return String(items[0].title || items[0].id || 'Panier');
+        return `Panier (${items.length} articles)`;
+      }
+      return 'Panier';
+    }
+    return String(type || '-');
+  };
+
+  useEffect(() => {
+    setHistoryVisibleCount(25);
+  }, [historySearch, historyStatusFilter, historyTypeFilter, historyMethodFilter, historyPeriodFilter]);
 
   useEffect(() => {
     if (!authLoading && profile?.role !== 'admin') {
@@ -2070,7 +2259,7 @@ export default function AdminDashboard() {
     icon: typeof CreditCard;
     count?: number;
   }> = [
-    { id: 'payments', label: 'Paiements en attente', icon: CreditCard, count: payments.length },
+    { id: 'payments', label: 'Paiements', icon: CreditCard, count: payments.length },
     { id: 'users', label: 'Utilisateurs', icon: Users },
     { id: 'discussions', label: 'Gestion des Discussions', icon: MessageSquare, count: unreadDiscussionCount },
     { id: 'support', label: 'Problemes Support', icon: Activity, count: openProblemCount },
@@ -2222,87 +2411,373 @@ export default function AdminDashboard() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-10">
             <div className="rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
-              <p className="text-sm uppercase tracking-[0.14em] text-slate-500">Paiements en attente</p>
+              <p className="text-sm uppercase tracking-[0.14em] text-slate-500 flex items-center gap-1.5"><Clock3 className="w-4 h-4" /> Paiements en attente</p>
               <p className="text-3xl font-bold text-slate-900 mt-1">{payments.length}</p>
+              <p className="text-xs text-slate-500 mt-1">{totalPendingRevenue.toLocaleString('fr-DZ')} DZD en attente</p>
             </div>
-            <div className="rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
-              <p className="text-sm uppercase tracking-[0.14em] text-slate-500">Paiements approuvés</p>
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 px-5 py-4 shadow-sm">
+              <p className="text-sm uppercase tracking-[0.14em] text-emerald-700 flex items-center gap-1.5"><Banknote className="w-4 h-4" /> Paiements approuvés</p>
               <p className="text-3xl font-bold text-emerald-700 mt-1">{approvedPaymentsCount}</p>
+              <p className="text-xs font-semibold text-emerald-800 mt-1 flex items-center gap-1"><TrendingUp className="w-3.5 h-3.5" /> {totalApprovedRevenue.toLocaleString('fr-DZ')} DZD encaissés</p>
             </div>
             <div className="rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
               <p className="text-sm uppercase tracking-[0.14em] text-slate-500">Comptes en attente</p>
               <p className="text-3xl font-bold text-amber-700 mt-1">{pendingApprovalsCount}</p>
+              <p className="text-xs text-slate-500 mt-1">{rejectedPaymentsCount} rejetés au total</p>
             </div>
             <div className="rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
               <p className="text-sm uppercase tracking-[0.14em] text-slate-500">Comptes bloqués</p>
               <p className="text-3xl font-bold text-rose-700 mt-1">{blockedUsersCount}</p>
+              <p className="text-xs text-slate-500 mt-1">{allPayments.length} paiements au total</p>
             </div>
           </div>
 
           {activeTab === 'payments' && (
-            <div className="bg-white rounded-2xl shadow-md border border-slate-200 overflow-hidden">
-              {payments.length === 0 ? (
-                <div className="p-10 text-center text-slate-500">Aucun paiement en attente.</div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-medium text-sm">
-                        <th className="p-4">Date</th>
-                        <th className="p-4">Utilisateur</th>
-                        <th className="p-4">Type</th>
-                        <th className="p-4">Montant</th>
-                        <th className="p-4">Méthode</th>
-                        <th className="p-4">Reçu</th>
-                        <th className="p-4 text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-200">
-                      {payments.map((payment) => {
-                        const user = users.find(u => u.id === payment.userId);
-                        const splitName = splitFullName(user?.displayName || '');
-                        const paymentUserName = formatFullName(
-                          user?.lastName || splitName.lastName,
-                          user?.firstName || splitName.firstName,
-                        ) || user?.displayName || 'Inconnu';
-                        return (
-                          <tr key={payment.id} className="hover:bg-slate-50 transition-colors">
-                            <td className="p-4 text-sm text-slate-600">{new Date(payment.createdAt).toLocaleDateString()}</td>
-                            <td className="p-4">
-                              <div className="font-medium text-slate-900">{paymentUserName}</div>
-                              <div className="text-xs text-slate-500">{user?.email}</div>
-                            </td>
-                            <td className="p-4 text-sm font-medium text-slate-700 capitalize">{payment.type}</td>
-                            <td className="p-4 font-bold text-slate-900">{payment.amount} DZD</td>
-                            <td className="p-4 text-sm font-medium text-slate-700 uppercase">{payment.method}</td>
-                            <td className="p-4">
-                              {payment.receiptUrl ? (
-                                <a href={payment.receiptUrl} target="_blank" rel="noreferrer" className="text-medical-600 hover:underline text-sm font-medium">Voir le reçu</a>
-                              ) : (
-                                <span className="text-slate-400 text-sm">Aucun</span>
-                              )}
-                            </td>
-                            <td className="p-4 text-right flex justify-end gap-2">
-                              <button 
-                                onClick={() => handleApprovePayment(payment.id, payment.userId, payment.type, payment.targetId, payment.items, payment.plan)}
-                                className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors" title="Approuver"
-                              >
-                                <CheckCircle className="h-5 w-5" />
-                              </button>
-                              <button 
-                                onClick={() => handleRejectPayment(payment)}
-                                className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Rejeter"
-                              >
-                                <XCircle className="h-5 w-5" />
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+            <div className="space-y-6">
+              {/* ── Paiements en attente ── */}
+              <div className="bg-white rounded-2xl shadow-md border border-slate-200 overflow-hidden">
+                <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-base font-bold text-slate-900 flex items-center gap-2"><CreditCard className="w-5 h-5 text-amber-600" /> Paiements en attente</h2>
+                    <p className="text-xs text-slate-500 mt-0.5">{payments.length} demande(s) à valider • {totalPendingRevenue.toLocaleString('fr-DZ')} DZD</p>
+                  </div>
                 </div>
-              )}
+                {payments.length === 0 ? (
+                  <div className="p-10 text-center text-slate-500">Aucun paiement en attente.</div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-medium text-sm">
+                          <th className="p-4">Date</th>
+                          <th className="p-4">Utilisateur</th>
+                          <th className="p-4">Type</th>
+                          <th className="p-4">Montant</th>
+                          <th className="p-4">Méthode</th>
+                          <th className="p-4">Reçu</th>
+                          <th className="p-4 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200">
+                        {payments.map((payment) => {
+                          const user = users.find(u => u.id === payment.userId);
+                          const splitName = splitFullName(user?.displayName || '');
+                          const paymentUserName = formatFullName(
+                            user?.lastName || splitName.lastName,
+                            user?.firstName || splitName.firstName,
+                          ) || user?.displayName || 'Inconnu';
+                          return (
+                            <tr key={payment.id} className="hover:bg-slate-50 transition-colors">
+                              <td className="p-4 text-sm text-slate-600">{new Date(payment.createdAt).toLocaleDateString('fr-DZ')}</td>
+                              <td className="p-4">
+                                <div className="font-medium text-slate-900">{paymentUserName}</div>
+                                <div className="text-xs text-slate-500">{user?.email}</div>
+                              </td>
+                              <td className="p-4 text-sm font-medium text-slate-700 capitalize">{payment.type}</td>
+                              <td className="p-4 font-bold text-slate-900">{Number(payment.amount).toLocaleString('fr-DZ')} DZD</td>
+                              <td className="p-4 text-sm font-medium text-slate-700 uppercase">{payment.method}</td>
+                              <td className="p-4">
+                                {payment.receiptUrl ? (
+                                  <a href={payment.receiptUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-medical-600 hover:underline text-sm font-medium"><Receipt className="w-4 h-4" /> Voir le reçu</a>
+                                ) : (
+                                  <span className="text-slate-400 text-sm">Aucun</span>
+                                )}
+                              </td>
+                              <td className="p-4 text-right flex justify-end gap-2">
+                                <button 
+                                  onClick={() => handleApprovePayment(payment.id, payment.userId, payment.type, payment.targetId, payment.items, payment.plan)}
+                                  className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors" title="Approuver"
+                                >
+                                  <CheckCircle className="h-5 w-5" />
+                                </button>
+                                <button 
+                                  onClick={() => handleRejectPayment(payment)}
+                                  className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Rejeter"
+                                >
+                                  <XCircle className="h-5 w-5" />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              {/* ── Historique complet des paiements (reçus) ── */}
+              <div className="bg-white rounded-2xl shadow-md border border-slate-200 overflow-hidden">
+                <div className="px-6 py-5 border-b border-slate-200">
+                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                    <div>
+                      <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                        <History className="w-5 h-5 text-medical-600" />
+                        Historique des paiements reçus
+                        <span className="ml-1 inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                          {historyStats.total} paiements
+                        </span>
+                      </h2>
+                      <p className="text-sm text-slate-500 mt-1">
+                        Tous les paiements (approuvés, en attente, rejetés) •{' '}
+                        <span className="font-semibold text-emerald-700">{historyFilteredRevenue.toLocaleString('fr-DZ')} DZD encaissés (filtrés)</span>
+                        {historyFilteredPayments.length !== allPayments.length && (
+                          <span> • {allPayments.length} au total</span>
+                        )}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleExportHistoryCsv}
+                      disabled={historyFilteredPayments.length === 0}
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 text-white text-sm font-semibold hover:bg-slate-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"
+                      title="Exporter l'historique filtré en CSV"
+                    >
+                      <Download className="w-4 h-4" /> Exporter CSV
+                    </button>
+                  </div>
+
+                  {/* Filtres historique */}
+                  <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
+                    <label className="relative block sm:col-span-2">
+                      <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input
+                        type="text"
+                        value={historySearch}
+                        onChange={(e) => setHistorySearch(e.target.value)}
+                        placeholder="Rechercher nom, email, montant, méthode, reçu..."
+                        className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-medical-500 focus:border-medical-500 outline-none"
+                      />
+                    </label>
+
+                    <select
+                      title="Filtrer par statut"
+                      aria-label="Filtrer par statut"
+                      value={historyStatusFilter}
+                      onChange={(e) => setHistoryStatusFilter(e.target.value as any)}
+                      className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-medical-500 outline-none bg-white"
+                    >
+                      <option value="all">Tous statuts</option>
+                      <option value="approved">Approuvés</option>
+                      <option value="pending">En attente</option>
+                      <option value="rejected">Rejetés</option>
+                    </select>
+
+                    <select
+                      title="Filtrer par type"
+                      aria-label="Filtrer par type"
+                      value={historyTypeFilter}
+                      onChange={(e) => setHistoryTypeFilter(e.target.value as any)}
+                      className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-medical-500 outline-none bg-white"
+                    >
+                      <option value="all">Tous types</option>
+                      <option value="subscription">Abonnement</option>
+                      <option value="pack">Pack</option>
+                      <option value="cart">Panier</option>
+                    </select>
+
+                    <select
+                      title="Filtrer par méthode"
+                      aria-label="Filtrer par méthode"
+                      value={historyMethodFilter}
+                      onChange={(e) => setHistoryMethodFilter(e.target.value)}
+                      className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-medical-500 outline-none bg-white capitalize"
+                    >
+                      <option value="all">Toutes méthodes</option>
+                      {uniquePaymentMethods.map((m) => (
+                        <option key={m} value={m}>{m.toUpperCase()}</option>
+                      ))}
+                    </select>
+
+                    <select
+                      title="Filtrer par période"
+                      aria-label="Filtrer par période"
+                      value={historyPeriodFilter}
+                      onChange={(e) => setHistoryPeriodFilter(e.target.value as any)}
+                      className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-medical-500 outline-none bg-white"
+                    >
+                      <option value="all">Toutes périodes</option>
+                      <option value="today">Aujourd&apos;hui</option>
+                      <option value="week">7 derniers jours</option>
+                      <option value="month">30 derniers jours</option>
+                      <option value="year">Cette année</option>
+                    </select>
+                  </div>
+
+                  {(historySearch || historyStatusFilter !== 'all' || historyTypeFilter !== 'all' || historyMethodFilter !== 'all' || historyPeriodFilter !== 'all') && (
+                    <div className="mt-3 flex items-center gap-2">
+                      <span className="text-xs text-slate-500 flex items-center gap-1"><Filter className="w-3.5 h-3.5" /> {historyFilteredPayments.length} résultat(s) filtré(s)</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setHistorySearch('');
+                          setHistoryStatusFilter('all');
+                          setHistoryTypeFilter('all');
+                          setHistoryMethodFilter('all');
+                          setHistoryPeriodFilter('all');
+                        }}
+                        className="text-xs font-semibold text-medical-600 hover:text-medical-700 hover:underline"
+                      >
+                        Effacer les filtres
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Mini stats filtrées */}
+                  <div className="mt-5 grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                      <p className="text-xs uppercase tracking-wide text-slate-500 font-semibold">Total filtré</p>
+                      <p className="text-xl font-bold text-slate-900 mt-1">{historyStats.total}</p>
+                      <p className="text-xs text-slate-500">{historyFilteredRevenue.toLocaleString('fr-DZ')} DZD approuvés</p>
+                    </div>
+                    <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                      <p className="text-xs uppercase tracking-wide text-emerald-700 font-semibold">Approuvés</p>
+                      <p className="text-xl font-bold text-emerald-700 mt-1">{historyStats.approved}</p>
+                      <p className="text-xs text-emerald-700/70">{historyFilteredRevenue.toLocaleString('fr-DZ')} DZD</p>
+                    </div>
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+                      <p className="text-xs uppercase tracking-wide text-amber-700 font-semibold">En attente</p>
+                      <p className="text-xl font-bold text-amber-700 mt-1">{historyStats.pending}</p>
+                      <p className="text-xs text-amber-700/70">{historyFilteredPayments.filter((p) => p.status === 'pending').reduce((s, p) => s + Number(p.amount || 0), 0).toLocaleString('fr-DZ')} DZD</p>
+                    </div>
+                    <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3">
+                      <p className="text-xs uppercase tracking-wide text-rose-700 font-semibold">Rejetés</p>
+                      <p className="text-xl font-bold text-rose-700 mt-1">{historyStats.rejected}</p>
+                      <p className="text-xs text-rose-700/70">{historyFilteredPayments.filter((p) => p.status === 'rejected').reduce((s, p) => s + Number(p.amount || 0), 0).toLocaleString('fr-DZ')} DZD</p>
+                    </div>
+                  </div>
+                </div>
+
+                {historyFilteredPayments.length === 0 ? (
+                  <div className="p-12 text-center">
+                    <div className="mx-auto w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center mb-3"><Receipt className="w-7 h-7 text-slate-400" /></div>
+                    <p className="text-sm font-semibold text-slate-700">{allPayments.length === 0 ? 'Aucun paiement enregistré pour le moment.' : 'Aucun paiement ne correspond aux filtres.'}</p>
+                    <p className="text-xs text-slate-500 mt-1">{allPayments.length === 0 ? 'Les paiements apparaîtront ici dès réception.' : 'Essayez de modifier les filtres ou la recherche.'}</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-medium text-sm">
+                            <th className="p-3 whitespace-nowrap">Date</th>
+                            <th className="p-3 whitespace-nowrap">Utilisateur</th>
+                            <th className="p-3 whitespace-nowrap">Type / Détails</th>
+                            <th className="p-3 whitespace-nowrap text-right">Montant</th>
+                            <th className="p-3 whitespace-nowrap">Méthode</th>
+                            <th className="p-3 whitespace-nowrap">Statut</th>
+                            <th className="p-3 whitespace-nowrap">Reçu</th>
+                            <th className="p-3 whitespace-nowrap text-right">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-200">
+                          {historyVisiblePayments.map((payment) => {
+                            const user = users.find((u) => u.id === payment.userId);
+                            const splitName = splitFullName(user?.displayName || '');
+                            const fullName =
+                              formatFullName(user?.lastName || splitName.lastName, user?.firstName || splitName.firstName) ||
+                              user?.displayName ||
+                              'Inconnu';
+                            const details = getPaymentTypeLabel(payment.type, payment.targetId, payment.plan, payment.items);
+                            const itemsPreview = (() => {
+                              if (payment.type === 'cart' && Array.isArray(payment.items) && payment.items.length > 0) {
+                                const titles = payment.items.map((it) => it.title || it.id).slice(0, 2).join(', ');
+                                return payment.items.length > 2 ? `${titles} +${payment.items.length - 2}` : titles;
+                              }
+                              if (payment.type === 'pack') return `Pack ${payment.targetId}`;
+                              if (payment.type === 'subscription') return payment.plan === 'yearly' ? 'Annuel' : payment.plan === 'monthly' ? 'Mensuel' : '';
+                              return payment.targetId || '';
+                            })();
+                            const isPending = payment.status === 'pending';
+                            return (
+                              <tr key={payment.id} className="hover:bg-slate-50 transition-colors align-top">
+                                <td className="p-3 text-sm text-slate-600 whitespace-nowrap">
+                                  <div className="text-slate-900 font-medium">{payment.createdAt ? new Date(payment.createdAt).toLocaleDateString('fr-DZ') : '-'}</div>
+                                  <div className="text-xs text-slate-500">{payment.createdAt ? new Date(payment.createdAt).toLocaleTimeString('fr-DZ', { hour: '2-digit', minute: '2-digit' }) : ''}</div>
+                                </td>
+                                <td className="p-3">
+                                  <div className="font-medium text-slate-900 text-sm leading-tight">{fullName}</div>
+                                  <div className="text-xs text-slate-500 truncate max-w-[180px]">{user?.email || '-'}</div>
+                                  {user?.phoneNumber && <div className="text-xs text-slate-400">{user.phoneNumber}</div>}
+                                </td>
+                                <td className="p-3">
+                                  <div className="text-sm font-semibold text-slate-800 capitalize">{details}</div>
+                                  {itemsPreview && <div className="text-xs text-slate-500 truncate max-w-[220px]">{itemsPreview}</div>}
+                                  {Array.isArray(payment.items) && payment.items.length > 0 && (
+                                    <div className="text-xs text-slate-400">{payment.items.length} article(s)</div>
+                                  )}
+                                </td>
+                                <td className="p-3 text-right">
+                                  <div className="font-bold text-slate-900 whitespace-nowrap">{Number(payment.amount || 0).toLocaleString('fr-DZ')} <span className="text-xs font-medium text-slate-500">DZD</span></div>
+                                </td>
+                                <td className="p-3 text-sm font-medium text-slate-700 uppercase whitespace-nowrap">
+                                  <span className="inline-flex px-2 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                                    {payment.method || '-'}
+                                  </span>
+                                </td>
+                                <td className="p-3 whitespace-nowrap">
+                                  <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-bold border ${getPaymentStatusBadgeClass(payment.status)}`}>
+                                    {getPaymentStatusLabel(payment.status)}
+                                  </span>
+                                </td>
+                                <td className="p-3 whitespace-nowrap">
+                                  {payment.receiptUrl ? (
+                                    <a href={payment.receiptUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-medical-50 text-medical-700 hover:bg-medical-100 text-xs font-semibold border border-medical-200 transition-colors">
+                                      <Receipt className="w-3.5 h-3.5" /> Voir
+                                    </a>
+                                  ) : (
+                                    <span className="text-slate-400 text-xs">—</span>
+                                  )}
+                                </td>
+                                <td className="p-3 text-right whitespace-nowrap">
+                                  {isPending ? (
+                                    <span className="inline-flex gap-1">
+                                      <button
+                                        onClick={() => handleApprovePayment(payment.id, payment.userId, payment.type as string, payment.targetId, payment.items, payment.plan)}
+                                        className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                                        title="Approuver"
+                                      >
+                                        <CheckCircle className="h-4 w-4" />
+                                      </button>
+                                      <button
+                                        onClick={() => handleRejectPayment(payment)}
+                                        className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                                        title="Rejeter"
+                                      >
+                                        <XCircle className="h-4 w-4" />
+                                      </button>
+                                    </span>
+                                  ) : (
+                                    <span className="text-xs text-slate-400">—</span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                    {historyVisiblePayments.length < historyFilteredPayments.length && (
+                      <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-between bg-slate-50">
+                        <p className="text-sm text-slate-600">
+                          Affichage <span className="font-semibold">{historyVisiblePayments.length}</span> sur <span className="font-semibold">{historyFilteredPayments.length}</span>
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setHistoryVisibleCount((c) => Math.min(c + 25, historyFilteredPayments.length))}
+                          className="px-4 py-2 rounded-xl bg-white border border-slate-300 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors shadow-sm"
+                        >
+                          Voir plus (25)
+                        </button>
+                      </div>
+                    )}
+                    <div className="px-6 py-3 border-t border-slate-200 bg-slate-50/60 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500">
+                      <span>Total filtré : <b className="text-slate-700">{historyFilteredPayments.length}</b> • Approuvés <b className="text-emerald-700">{historyStats.approved}</b> • En attente <b className="text-amber-700">{historyStats.pending}</b> • Rejetés <b className="text-rose-700">{historyStats.rejected}</b></span>
+                      <span>Total encaissé filtré : <b className="text-emerald-700">{historyFilteredRevenue.toLocaleString('fr-DZ')} DZD</b> • Global encaissé : <b className="text-slate-700">{totalApprovedRevenue.toLocaleString('fr-DZ')} DZD</b></span>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           )}
 
