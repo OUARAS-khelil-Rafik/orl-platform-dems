@@ -714,7 +714,8 @@ export const startRealtimeSync = (options: { intervalMs?: number; useSSE?: boole
   if (!isBrowser() || realtimePollingActive) return () => {};
 
   realtimePollingActive = true;
-  realtimePollingIntervalMs = Math.max(2000, options.intervalMs || 3000);
+  // M0 : seuil minimum relevé à 10s au lieu de 2s pour éviter le spam connexions
+  realtimePollingIntervalMs = Math.max(10000, options.intervalMs || 10000);
   const useSSE = options.useSSE !== false;
 
   let sseConnected = false;
@@ -746,11 +747,11 @@ export const startRealtimeSync = (options: { intervalMs?: number; useSSE?: boole
 
   const poll = async () => {
     if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
-      // Pause when tab hidden to save resources, but still check occasionally
+      // Pause quand onglet caché — M0 : on ne poll pas du tout en arrière-plan
       return;
     }
-    // If SSE is connected and working, skip polling to reduce load (poll every 2 intervals as heartbeat)
-    if (sseConnected && Math.random() > 0.33) {
+    // Si SSE connecté, polling = heartbeat rare (90% skip)
+    if (sseConnected && Math.random() > 0.1) {
       return;
     }
     const versions = await fetchRealtimeVersions();

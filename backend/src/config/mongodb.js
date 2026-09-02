@@ -6,15 +6,32 @@ let reconnectTimeout = null;
 let reconnectLoopStarted = false;
 let wasDisconnected = false;
 
+// ── M0-optimised pool ─────────────────────────────────────────────
+// M0 (free) max 500 connections. Avec Vercel + Render + N lambdas,
+// maxPoolSize 25 sature très vite (25 * 20 lambdas = 500).
+// On force un pool minimal et on réutilise la connexion serverless.
+const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+
 const mongoOptions = {
   dbName: env.mongodbDbName,
-  maxPoolSize: 25,
-  minPoolSize: 2,
-  maxIdleTimeMS: 60000,
+  // Vercel serverless : 5 max, Render/long-running : 10 max
+  maxPoolSize: isServerless ? 5 : 10,
+  minPoolSize: isServerless ? 0 : 1,
+  maxIdleTimeMS: 15000,
   serverSelectionTimeoutMS: 5000,
   connectTimeoutMS: 10000,
   socketTimeoutMS: 30000,
+  heartbeatFrequencyMS: 10000,
+  // Éviter création auto d'index en prod (surcharge inutile)
+  autoCreate: false,
 };
+
+// Cache global pour Vercel/serverless : évite N pools par lambda chaude
+// Voir https://mongoosejs.com/docs/lambda.html
+const globalCache = globalThis;
+if (!globalCache._mongooseCache) {
+  globalCache._mongooseCache = { promise: null };
+}
 
 const isMongoBusy = () => {
   const state = mongoose.connection.readyState;
@@ -33,15 +50,33 @@ const clearReconnectTimeout = () => {
 export const isMongoConnected = () => mongoose.connection.readyState === 1;
 
 export const connectMongo = async () => {
-  if (isMongoConnected() || isConnecting || isMongoBusy()) {
+  if (isMongoConnected()) {
+    return;
+  }
+
+  // Serverless : réutiliser la promesse en cours pour éviter N connect() concurrents
+  const cached = globalCache._mongooseCache;
+  if (cached?.promise) {
+    try {
+      await cached.promise;
+      if (isMongoConnected()) return;
+    } catch {
+      cached.promise = null;
+    }
+  }
+
+  if (isConnecting || isMongoBusy()) {
     return;
   }
 
   isConnecting = true;
+  const promise = mongoose.connect(env.mongodbUri, mongoOptions);
+  if (cached) cached.promise = promise;
   try {
-    await mongoose.connect(env.mongodbUri, mongoOptions);
+    await promise;
   } finally {
     isConnecting = false;
+    if (cached) cached.promise = null;
   }
 };
 
@@ -103,6 +138,10 @@ export const ensureMongoReconnectLoop = (retryDelayMs = 10000) => {
     }
 
     wasDisconnected = true;
+    // Nettoyer le cache serverless pour forcer une nouvelle connexion au prochain appel
+    if (globalCache._mongooseCache) {
+      globalCache._mongooseCache.promise = null;
+    }
     scheduleReconnect();
   });
 

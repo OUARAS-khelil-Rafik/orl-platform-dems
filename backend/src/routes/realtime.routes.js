@@ -68,7 +68,9 @@ const getCollectionVersion = async (db, collectionName) => {
 
 let cachedVersions = null;
 let cachedAt = 0;
-const CACHE_TTL_MS = 1500;
+// TTL 10s : évite 26 requêtes Mongo par poll quand N onglets pollent en même temps
+// M0 facturé aux connexions & ops — cache plus long = forte réduction charge
+const CACHE_TTL_MS = 10000;
 
 const buildVersions = async (db) => {
   const now = Date.now();
@@ -150,13 +152,14 @@ router.get('/stream', async (req, res) => {
   // Send initial
   await send();
 
-  const interval = setInterval(send, 3000);
+  // Interval 10s au lieu de 3s : divise par 3 la charge DB/SSE et les connexions tenues ouvertes
+  const interval = setInterval(send, 10000);
 
-  // heartbeat comment to keep connection alive (every 15s)
+  // heartbeat comment to keep connection alive (every 25s)
   const heartbeat = setInterval(() => {
     if (closed) return;
     res.write(': heartbeat\n\n');
-  }, 15000);
+  }, 25000);
 
   req.on('close', () => {
     closed = true;

@@ -514,8 +514,9 @@ export default function HomePage() {
 
     void refreshAdminSupportPresence();
     const timer = window.setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
       void refreshAdminSupportPresence();
-    }, 4_000);
+    }, 15_000);
 
     return () => {
       isDisposed = true;
@@ -1476,7 +1477,7 @@ export default function HomePage() {
           console.error('Error polling support chat:', error);
         }
       })();
-    }, 4000);
+    }, 15000);
 
     return () => {
       window.clearInterval(timer);

@@ -427,6 +427,8 @@ export default function UserDashboard() {
     const timer = window.setInterval(() => {
       void (async () => {
         try {
+          // M0 : polling support réduit à 15s (temps réel via SSE)
+          if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
           const chatsSnap = await getDocs(query(collection(db, 'supportChats'), where('userId', '==', user.uid)));
           const nextChats = chatsSnap.docs
             .map((entry) => {
@@ -453,7 +455,7 @@ export default function UserDashboard() {
           console.error('Error polling support chat:', error);
         }
       })();
-    }, 4000);
+    }, 15000);
 
     return () => {
       window.clearInterval(timer);
@@ -481,7 +483,7 @@ export default function UserDashboard() {
         if (activeSupportChatId) await loadSupportMessagesByChatId(activeSupportChatId);
       } catch {}
     })();
-  }, { intervalMs: 6000 });
+  }, { intervalMs: 30000 });
 
   const buildChatbotIntroByProblemType = (problemType: SupportChat['problemType']) => {
     if (problemType === 'billing') {

@@ -427,12 +427,13 @@ export default function CheckoutPage() {
     void loadPurchasedVideoData();
   }, [loadPurchasedVideoData]);
 
-  // realtime hook placeholder - keep polling via effect
+  // M0 : polling réduit — SSE via RealtimeProvider gère l'actualisation
   useEffect(() => {
     const id = window.setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
       void fetchPayments();
       void loadPurchasedVideoData();
-    }, 6000);
+    }, 30000);
     return () => window.clearInterval(id);
   }, [fetchPayments, loadPurchasedVideoData]);
 

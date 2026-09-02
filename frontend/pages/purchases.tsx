@@ -291,7 +291,7 @@ export default function PurchasesPage() {
       void fetchHistory();
       void loadPurchasedVideoData();
     },
-    { intervalMs: 4000 },
+    { intervalMs: 0 },
   );
 
   const formatVideoDuration = (video: PurchasedVideoData): string => {

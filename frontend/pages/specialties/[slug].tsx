@@ -401,11 +401,11 @@ export default function SpecialtyPage() {
     void fetchCounts();
   }, [fetchCounts]);
 
-  // Temps réel : recharge vidéos + compteurs à chaque modif backend
+  // Temps réel : recharge vidéos + compteurs à chaque modif backend (M0: polling désactivé, SSE suffit)
   useRealtimeRefresh(['videos', 'qcms', 'clinicalCases', 'openQuestions', 'diagrams', 'users', 'payments'], () => {
     void fetchVideos();
     void fetchCounts();
-  }, { intervalMs: 4000 });
+  }, { intervalMs: 0 });
 
   useEffect(() => {
     if (typeof window === 'undefined') {

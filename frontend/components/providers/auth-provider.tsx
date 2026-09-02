@@ -372,11 +372,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     });
 
-    // Polling de secours toutes les 5s (respecte visibilité)
+    // Polling de secours — M0 : 60s max, SSE/RealtimeProvider gère le reste
     const interval = setInterval(() => {
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
       void refreshProfile();
-    }, 5000);
+    }, 60000);
 
     // Revalidation au focus / retour onglet
     const handleFocus = () => void refreshProfile();

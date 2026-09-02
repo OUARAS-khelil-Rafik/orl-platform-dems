@@ -154,8 +154,24 @@ app.use(
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Lazy-connect for serverless / Render: ensure DB ready on every request (no-op if already connected)
-app.use(async (_req, _res, next) => {
+// Lazy-connect for serverless / Render: ensure DB ready on demande (no-op si déjà connecté)
+// Health/meta/dashboard ne forcent pas de connexion -> réduit la pression M0
+const SKIP_DB_CONNECT_PATHS = new Set([
+  '/api/health',
+  '/health',
+  '/api/meta',
+  '/',
+  '/dashboard',
+  '/favicon.ico',
+]);
+
+app.use(async (req, _res, next) => {
+  // Ne jamais bloquer health/dashboard sur la DB
+  if (SKIP_DB_CONNECT_PATHS.has(req.path)) {
+    next();
+    return;
+  }
+
   if (!isMongoConnected()) {
     await connectMongoSafely();
   }

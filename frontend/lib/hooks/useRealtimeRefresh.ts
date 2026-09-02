@@ -21,7 +21,9 @@ export const useRealtimeRefresh = (
   refresh: () => void | Promise<void>,
   options: Options = {}
 ) => {
-  const { intervalMs = 5000, focusRefresh = true, pauseWhenHidden = true } = options;
+  // M0 : fallback polling désactivé par défaut (on s'appuie sur RealtimeProvider/SSE)
+  // Mettre intervalMs > 0 seulement si besoin critique (ex: admin). Minimum 15s.
+  const { intervalMs = 0, focusRefresh = true, pauseWhenHidden = true } = options;
   const refreshRef = useRef(refresh);
   const collectionsRef = useRef(new Set(collections));
 
@@ -52,13 +54,15 @@ export const useRealtimeRefresh = (
       }
     });
 
-    // Polling local de secours (au cas où SSE/polling global rate)
+    // Polling local de secours — désactivé si intervalMs=0 (recommandé M0)
+    // Si activé, clamp minimum 15s pour éviter spam DB
     let timer: ReturnType<typeof setInterval> | null = null;
     if (intervalMs > 0) {
+      const safeInterval = Math.max(15000, intervalMs);
       timer = setInterval(() => {
         if (pauseWhenHidden && typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
         safeRefresh();
-      }, intervalMs);
+      }, safeInterval);
     }
 
     // Focus / visibility

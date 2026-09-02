@@ -587,13 +587,13 @@ export default function AdminDashboard() {
     if (!authLoading) void fetchData();
   }, [authLoading, fetchData]);
 
-  // Temps réel admin : toute modif backend recharge automatiquement (polling + SSE)
+  // Temps réel admin : SSE prioritaire, fallback polling 30s (M0)
   useRealtimeRefresh(
     ['users', 'payments', 'videos', 'qcms', 'openQuestions', 'diagrams', 'clinicalCases', 'pedagogicalFeedback', 'clinicalCaseFeedback', 'supportChats', 'supportChatMessages', 'notifications'],
     () => {
       if (profile?.role === 'admin') void fetchData();
     },
-    { intervalMs: 4000 }
+    { intervalMs: 30000 }
   );
 
   const loadSupportMessagesForChat = useCallback(async (chatId: string) => {
@@ -633,6 +633,7 @@ export default function AdminDashboard() {
     const timer = window.setInterval(() => {
       void (async () => {
         try {
+          if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
           const chatsSnap = await getDocs(collection(db, 'supportChats'));
           const nextChats = chatsSnap.docs
             .map((entry) => {
@@ -688,7 +689,7 @@ export default function AdminDashboard() {
           console.error('Error polling support chats:', error);
         }
       })();
-    }, 4000);
+    }, 15000);
 
     return () => {
       window.clearInterval(timer);
