@@ -40,6 +40,7 @@ import {
 } from 'lucide-react';
 import Image from 'next/image';
 import { IMAGE_FALLBACK_SRC, applyImageFallback } from '@/lib/utils/media-fallback';
+import { StructuredMarkdown } from '@/lib/utils/structured-markdown';
 
 type VideoTab = 'cas' | 'open' | 'qcm' | 'schemas';
 
@@ -837,47 +838,59 @@ export default function VideoPage() {
                           </div>
                           
                           <div className="space-y-3">
-                                  {/* 1. Description du cas clinique */}
+                                  {/* 1. Description du cas clinique — rendu .md structuré (1. / 1.1. / - ) */}
                                   {c.description ? (
                                     <div className="cas-section-item">
-                                      <p className="whitespace-pre-wrap text-[var(--app-muted)] leading-relaxed">{c.description}</p>
+                                      <StructuredMarkdown content={c.description} textClassName="text-[14px] text-[var(--app-muted)]" />
                                     </div>
                                   ) : (
                                     <>
                                       {c.patientHistory && (
                                         <div className="cas-section-item">
                                           <p className="cas-section-label">Histoire du patient</p>
-                                          <p className="whitespace-pre-wrap text-[var(--app-muted)] leading-relaxed mt-1">{c.patientHistory}</p>
+                                          <div className="mt-1">
+                                            <StructuredMarkdown content={c.patientHistory} textClassName="text-[14px] text-[var(--app-muted)]" />
+                                          </div>
                                         </div>
                                       )}
                                       {c.clinicalExamination && (
                                         <div className="cas-section-item">
                                           <p className="cas-section-label">Examen clinique</p>
-                                          <p className="whitespace-pre-wrap text-[var(--app-muted)] leading-relaxed mt-1">{c.clinicalExamination}</p>
+                                          <div className="mt-1">
+                                            <StructuredMarkdown content={c.clinicalExamination} textClassName="text-[14px] text-[var(--app-muted)]" />
+                                          </div>
                                         </div>
                                       )}
                                       {c.additionalTests && (
                                         <div className="cas-section-item">
                                           <p className="cas-section-label">Examens complémentaires</p>
-                                          <p className="whitespace-pre-wrap text-[var(--app-muted)] leading-relaxed mt-1">{c.additionalTests}</p>
+                                          <div className="mt-1">
+                                            <StructuredMarkdown content={c.additionalTests} textClassName="text-[14px] text-[var(--app-muted)]" />
+                                          </div>
                                         </div>
                                       )}
                                       {c.diagnosis && (
                                         <div className="cas-section-item cas-section-item--highlight">
                                           <p className="cas-section-label">Diagnostic</p>
-                                          <p className="whitespace-pre-wrap text-[var(--app-muted)] leading-relaxed mt-1">{c.diagnosis}</p>
+                                          <div className="mt-1">
+                                            <StructuredMarkdown content={c.diagnosis} textClassName="text-[14px] text-[var(--app-muted)]" />
+                                          </div>
                                         </div>
                                       )}
                                       {c.treatment && (
                                         <div className="cas-section-item">
                                           <p className="cas-section-label">Prise en charge</p>
-                                          <p className="whitespace-pre-wrap text-[var(--app-muted)] leading-relaxed mt-1">{c.treatment}</p>
+                                          <div className="mt-1">
+                                            <StructuredMarkdown content={c.treatment} textClassName="text-[14px] text-[var(--app-muted)]" />
+                                          </div>
                                         </div>
                                       )}
                                       {c.discussion && (
                                         <div className="cas-section-item">
                                           <p className="cas-section-label">Discussion</p>
-                                          <p className="whitespace-pre-wrap text-[var(--app-muted)] leading-relaxed mt-1">{c.discussion}</p>
+                                          <div className="mt-1">
+                                            <StructuredMarkdown content={c.discussion} textClassName="text-[14px] text-[var(--app-muted)]" />
+                                          </div>
                                         </div>
                                       )}
                                     </>
@@ -1251,9 +1264,12 @@ export default function VideoPage() {
                                               <div className="cas-explanation-panel rounded-xl border px-4 py-3">
                                                 <div className="flex items-start gap-2">
                                                   <Lightbulb className="lucide lucide-lightbulb w-4 h-4 text-[var(--app-accent)] flex-shrink-0 mt-0.5" />
-                                                  <div>
+                                                  <div className="min-w-0 flex-1">
                                                     <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--app-accent)] mb-1">{kind === 'open' ? 'Réponse' : 'Explication'}</p>
-                                                    <p className="text-lg text-[var(--app-text)] whitespace-pre-wrap leading-relaxed">{kind === 'open' && q.answer ? q.answer : q.explanation}</p>
+                                                    <StructuredMarkdown
+                                                      content={kind === 'open' && q.answer ? q.answer : q.explanation}
+                                                      textClassName="text-[15px]"
+                                                    />
                                                   </div>
                                                 </div>
                                               </div>
@@ -1592,9 +1608,9 @@ export default function VideoPage() {
                                   >
                                     <div className="flex items-start gap-2">
                                       <Lightbulb className="lucide lucide-lightbulb w-4 h-4 text-[var(--app-accent)] flex-shrink-0 mt-0.5" />
-                                      <div>
+                                      <div className="min-w-0 flex-1">
                                         <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--app-accent)] mb-1">Explication</p>
-                                        <p className="text-lg text-[var(--app-text)] whitespace-pre-wrap leading-relaxed">{q.explanation}</p>
+                                        <StructuredMarkdown content={q.explanation} textClassName="text-[15px]" />
                                       </div>
                                     </div>
                                   </motion.div>
@@ -1780,7 +1796,7 @@ export default function VideoPage() {
                                     <Lightbulb className="lucide lucide-lightbulb w-4 h-4 text-[var(--app-accent)] flex-shrink-0 mt-0.5" />
                                     Réponse
                                   </h3>
-                                  <p className="text-lg text-[var(--app-text)] whitespace-pre-wrap">{item.answer}</p>
+                                  <StructuredMarkdown content={item.answer} textClassName="text-[15px]" />
                                 </div>
                               )}
 

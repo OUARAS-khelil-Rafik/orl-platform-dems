@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Video, FileText, HelpCircle, Image as ImageIcon, MessageSquare, Plus, Save, X, Loader2, Trash2, Edit2, Search, Upload } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import { normalizeStructuredMarkdown } from '@/lib/utils/structured-markdown';
 import {
   db,
   collection,
@@ -474,14 +475,17 @@ const MarkdownPreview = ({
   emptyMessage?: string;
   maxHeightClass?: string;
 }) => {
-  const normalized = content?.trim();
-  if (!normalized) {
+  const raw = String(content ?? '').trim();
+  if (!raw) {
     return emptyMessage ? <p className="text-xs text-[var(--app-muted)]">{emptyMessage}</p> : null;
   }
+  // Normalisation automatique 1- → 1. , 2-1- → sous-liste, - → bullet, :- → sous-bullet
+  // Permet aux réponses saisies librement (QROC/QCM) d'être rendues en .md hiérarchique.
+  const normalized = normalizeStructuredMarkdown(raw);
 
   return (
     <div className={`${maxHeightClass} overflow-y-auto content-manager-scroll pr-1`}>
-      <div className={markdownPreviewClassName}>
+      <div className={`${markdownPreviewClassName} structured-markdown`}>
         <ReactMarkdown>{normalized}</ReactMarkdown>
       </div>
     </div>

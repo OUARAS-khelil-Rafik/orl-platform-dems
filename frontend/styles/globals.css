@@ -3131,6 +3131,108 @@ html[data-theme='dark'] .from-slate-900\/60 {
     background: color-mix(in oklab, var(--app-accent) 80%, white 20%);
   }
 
+  /* ── Structured Markdown (QROC / QCM / Cas clinique réponses) ───────────── */
+  .structured-markdown {
+    /* compteur hiérarchique 1. 2.1. 2.2. etc. → correspond à 1- / 2-1- */
+    --sm-ol-gap: 0.45rem;
+  }
+  .structured-markdown ol {
+    counter-reset: sm-counter;
+    list-style: none !important;
+    padding-left: 2.15rem !important;
+    margin: 0.6rem 0;
+  }
+  .structured-markdown ol > li {
+    counter-increment: sm-counter;
+    position: relative;
+    padding-left: 0.45rem;
+    margin: 0.32rem 0;
+  }
+  .structured-markdown ol > li::before {
+    content: counters(sm-counter, ".") ".";
+    position: absolute;
+    left: -2.05rem;
+    min-width: 1.65rem;
+    text-align: right;
+    padding-right: 0.35rem;
+    color: var(--app-accent);
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+  }
+  .structured-markdown ol ol {
+    margin-top: 0.45rem;
+    margin-bottom: 0.2rem;
+  }
+  .structured-markdown ol ol > li::before {
+    color: color-mix(in oklab, var(--app-accent) 72%, var(--app-text) 28%);
+  }
+  .structured-markdown ul {
+    list-style: none !important;
+    padding-left: 1.25rem !important;
+    margin: 0.5rem 0;
+  }
+  .structured-markdown ul > li {
+    position: relative;
+    padding-left: 0.15rem;
+    margin: 0.2rem 0;
+  }
+  .structured-markdown ul > li::before {
+    content: "–";
+    position: absolute;
+    left: -1.05rem;
+    top: 0;
+    color: var(--app-accent);
+    font-weight: 800;
+  }
+  .structured-markdown ul ul > li::before {
+    content: "•";
+    font-size: 0.9em;
+    top: 0.05rem;
+  }
+  /* Arrow row : "- >" ou "->" → rendu "→" (vérifié) */
+  .structured-markdown ul > li.arrow-row::before {
+    content: "→";
+    left: -1.15rem;
+    font-weight: 800;
+    color: var(--app-accent);
+  }
+  .structured-markdown ul > li.arrow-row {
+    padding-left: 0.2rem;
+  }
+  /* Espacement renforcé pour les numéros hiérarchiques 2.1. / 2.2. */
+  .structured-markdown ol ol {
+    padding-left: 2.25rem !important;
+  }
+  .structured-markdown ol ol > li::before {
+    left: -2.25rem;
+    min-width: 1.95rem;
+  }
+  .structured-markdown ol ol ol {
+    padding-left: 2.35rem !important;
+  }
+  .structured-markdown li > p {
+    margin: 0;
+    display: inline;
+  }
+  .structured-markdown p {
+    margin: 0.55rem 0;
+  }
+  .structured-markdown p:first-child {
+    margin-top: 0;
+  }
+  .structured-markdown p:last-child {
+    margin-bottom: 0;
+  }
+  .structured-markdown strong {
+    color: var(--app-text);
+  }
+  .structured-markdown hr {
+    border: none;
+    border-top: 1px solid var(--app-border);
+    margin: 0.9rem 0;
+  }
+
   /* ── End Cas Cliniques QR redesign ─────────────────────────── */
 }
 
