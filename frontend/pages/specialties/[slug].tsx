@@ -5,7 +5,7 @@ import { useRouter } from 'next/router';
 import { db, collection, query, where, getDocs, getDoc, doc, updateDoc, arrayUnion, arrayRemove } from '@/lib/api/client';
 import { useRealtimeRefresh } from '@/lib/hooks/useRealtimeRefresh';
 import { motion } from 'motion/react';
-import { PlayCircle, Lock, Clock3, Clock, AlertTriangle, Search, SlidersHorizontal, ListChecks, Stethoscope, MessageSquare, Network, Heart, BookmarkCheck } from 'lucide-react';
+import { PlayCircle, Lock, Clock3, Clock, AlertTriangle, Search, SlidersHorizontal, ListChecks, Stethoscope, MessageSquare, Network, Heart, BookmarkCheck, ChevronLeft, ChevronRight } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/components/providers/auth-provider';
 import { canAccessVideo } from '@/lib/security/access-control';
@@ -315,6 +315,15 @@ export default function SpecialtyPage() {
   const [videoPaymentStatusById, setVideoPaymentStatusById] = useState<Record<string, VideoPaymentStatus>>({});
   const [loading, setLoading] = useState(true);
 
+  // Pagination
+  const VIDEOS_PER_PAGE = 12;
+  const [currentPage, setCurrentPage] = useState(1);
+
+  // Reset page quand les filtres changent
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [videoNameFilter, sectionFilter, playlistFilter]);
+
   useEffect(() => {
     const normalizedImportant = normalizeUniqueIdList(profile?.importantVideoIds);
     const normalizedFavorites = normalizeUniqueIdList(profile?.favoriteVideoIds);
@@ -391,16 +400,18 @@ export default function SpecialtyPage() {
       const specialtySnap = await getDocs(query(collection(db, 'videos'), where('subspecialty', '==', slug)));
       const specialtyVideos = specialtySnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Video));
 
+      const specialtyVideoIds = new Set(specialtyVideos.map(v => v.id));
+
       // 2. Vidéos sans subspecialty (placeholders créés à l'import) qui ont des contenus associés
-      // dans cette spécialité. On récupère tous les contenus pour trouver les videoId orphelins.
+      // dans cette spécialité. On filtre les contenus par subspecialty pour ne charger que le nécessaire
+      // (au lieu de tout récupérer globalement, ce qui ralentissait le chargement).
       const [qcmSnap, caseSnap, openSnap, diagramSnap] = await Promise.all([
-        getDocs(collection(db, 'qcms')),
-        getDocs(collection(db, 'clinicalCases')),
-        getDocs(collection(db, 'openQuestions')),
-        getDocs(collection(db, 'diagrams')),
+        getDocs(query(collection(db, 'qcms'), where('subspecialty', '==', slug))),
+        getDocs(query(collection(db, 'clinicalCases'), where('subspecialty', '==', slug))),
+        getDocs(query(collection(db, 'openQuestions'), where('subspecialty', '==', slug))),
+        getDocs(query(collection(db, 'diagrams'), where('subspecialty', '==', slug))),
       ]);
 
-      const specialtyVideoIds = new Set(specialtyVideos.map(v => v.id));
       const orphanVideoIds = new Set<string>();
 
       const addOrphanIds = (snap: { docs: Array<{ data: () => any }> }) => {
@@ -426,8 +437,7 @@ export default function SpecialtyPage() {
               const v = { id: vDoc.id, ...vDoc.data() } as Video;
               const vs = String(v.subspecialty || '').trim().toLowerCase();
               // Inclut les vidéos sans subspecialty (orphelines d'import) ou dont le sous-spécialité
-              // correspond à la spécialité courante (casse ignorée) — utile pour les vidéos
-              // importées dont le libellé Excel avait une casse différente (ex: "Otologie").
+              // correspond à la spécialité courante (casse ignorée).
               if (!vs || vs === slug) {
                 orphanVideos.push(v);
               }
@@ -445,33 +455,45 @@ export default function SpecialtyPage() {
     } finally {
       setLoading(false);
     }
-  }, [slug, router.isReady]);
+  }, [slug, router.isReady, db]);
 
   const fetchCounts = useCallback(async () => {
-    if (!videos || videos.length === 0) return;
-    const map: Record<string, { qcm: number; cases: number; open: number; diagrams: number }> = {};
-    await Promise.all(videos.map(async (v) => {
-      try {
-        const [qcmSnap, caseSnap, openSnap, diagramSnap] = await Promise.all([
-          getDocs(query(collection(db, 'qcms'), where('videoId', '==', v.id))),
-          getDocs(query(collection(db, 'clinicalCases'), where('videoId', '==', v.id))),
-          getDocs(query(collection(db, 'openQuestions'), where('videoId', '==', v.id))),
-          getDocs(query(collection(db, 'diagrams'), where('videoId', '==', v.id))),
-        ]);
+    if (!videos || videos.length === 0) {
+      setContentCounts({});
+      return;
+    }
+    const videoIds = videos.map((v) => v.id);
+    const videoIdSet = new Set(videoIds);
 
-        map[v.id] = {
-          qcm: Array.isArray(qcmSnap.docs) ? qcmSnap.docs.length : 0,
-          cases: Array.isArray(caseSnap.docs) ? caseSnap.docs.length : 0,
-          open: Array.isArray(openSnap.docs) ? openSnap.docs.length : 0,
-          diagrams: Array.isArray(diagramSnap.docs) ? diagramSnap.docs.length : 0,
-        };
-      } catch (e) {
-        map[v.id] = { qcm: 0, cases: 0, open: 0, diagrams: 0 };
+    const map: Record<string, { qcm: number; cases: number; open: number; diagrams: number }> = {};
+    videoIds.forEach((id) => { map[id] = { qcm: 0, cases: 0, open: 0, diagrams: 0 }; });
+
+    // Récupère tous les documents de chaque collection et compte par videoId en mémoire.
+    // Évite le problème N+1 (une requête par vidéo par collection).
+    const countForCollection = async (collectionName: string, key: 'qcm' | 'cases' | 'open' | 'diagrams') => {
+      try {
+        const snap = await getDocs(collection(db, collectionName));
+        snap.docs.forEach((doc) => {
+          const data = doc.data();
+          const vid = String(data.videoId || '');
+          if (vid && videoIdSet.has(vid)) {
+            map[vid][key] += 1;
+          }
+        });
+      } catch {
+        // Ignore les erreurs de lecture
       }
-    }));
+    };
+
+    await Promise.all([
+      countForCollection('qcms', 'qcm'),
+      countForCollection('clinicalCases', 'cases'),
+      countForCollection('openQuestions', 'open'),
+      countForCollection('diagrams', 'diagrams'),
+    ]);
 
     setContentCounts(map);
-  }, [videos]);
+  }, [videos, db]);
 
   useEffect(() => {
     void fetchVideos();
@@ -615,6 +637,10 @@ export default function SpecialtyPage() {
     const hasContent = counts.qcm > 0 || counts.cases > 0 || counts.open > 0 || counts.diagrams > 0;
     return !video.url && hasContent;
   }).length;
+
+  const totalPages = Math.max(1, Math.ceil(filteredVideos.length / VIDEOS_PER_PAGE));
+  const safePage = Math.min(Math.max(currentPage, 1), totalPages);
+  const paginatedVideos = filteredVideos.slice((safePage - 1) * VIDEOS_PER_PAGE, safePage * VIDEOS_PER_PAGE);
 
   const withBusyFlag = (videoId: string, isBusy: boolean) => {
     setFavoritesBusyById((prev) => {
@@ -927,37 +953,91 @@ export default function SpecialtyPage() {
                   Aucune vidéo disponible pour le moment.
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-                  {filteredVideos.map((video, i) => (
-                    (() => {
-                      const isInCart = items.some((item) => item.id === video.id);
-                      const action = getLockedVideoAction(video, isInCart);
+                <div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+                    {paginatedVideos.map((video, i) => (
+                      (() => {
+                        const isInCart = items.some((item) => item.id === video.id);
+                        const action = getLockedVideoAction(video, isInCart);
 
-                      return (
-                    <VideoCard
-                      key={video.id}
-                      video={video}
-                      hasAccess={hasAccess(video)}
-                      isViewed={viewedVideoIds.includes(video.id)}
-                      counts={contentCounts[video.id] ?? { qcm: 0, cases: 0, open: 0, diagrams: 0 }}
-                      role={profile?.role}
-                      isInCart={isInCart}
-                      lockActionLabel={action.label}
-                      onUnlock={action.onClick}
-                      isFavorite={favoriteVideoIdSet.has(video.id)}
-                      isImportant={importantVideoIdSet.has(video.id)}
-                      favoriteBusy={Boolean(favoritesBusyById[video.id])}
-                      onToggleFavorite={() => {
-                        void handleToggleFavorite(video.id);
-                      }}
-                      onToggleImportant={() => {
-                        void handleToggleImportant(video.id);
-                      }}
-                      index={i}
-                    />
-                      );
-                    })()
-                  ))}
+                        return (
+                      <VideoCard
+                        key={video.id}
+                        video={video}
+                        hasAccess={hasAccess(video)}
+                        isViewed={viewedVideoIds.includes(video.id)}
+                        counts={contentCounts[video.id] ?? { qcm: 0, cases: 0, open: 0, diagrams: 0 }}
+                        role={profile?.role}
+                        isInCart={isInCart}
+                        lockActionLabel={action.label}
+                        onUnlock={action.onClick}
+                        isFavorite={favoriteVideoIdSet.has(video.id)}
+                        isImportant={importantVideoIdSet.has(video.id)}
+                        favoriteBusy={Boolean(favoritesBusyById[video.id])}
+                        onToggleFavorite={() => {
+                          void handleToggleFavorite(video.id);
+                        }}
+                        onToggleImportant={() => {
+                          void handleToggleImportant(video.id);
+                        }}
+                        index={i}
+                      />
+                        );
+                      })()
+                    ))}
+                  </div>
+
+                  {/* Pagination moderne avec dots (track/center) */}
+                  {totalPages > 1 && (
+                    <div className="mt-10 flex flex-col items-center gap-6">
+                      <div className="inline-flex items-center gap-3">
+                        {/* Previous arrow control */}
+                        <button
+                          type="button"
+                          onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
+                          disabled={safePage <= 1}
+                          className="flex items-center justify-center w-9 h-9 rounded-full text-[var(--app-text)] transition-all disabled:opacity-30 disabled:cursor-not-allowed hover:bg-[var(--app-surface-alt)]"
+                          aria-label="Page précédente"
+                        >
+                          <ChevronLeft className="w-4 h-4" />
+                        </button>
+
+                        {/* Dots track */}
+                        <div className="flex items-center gap-1.5">
+                          {Array.from({ length: totalPages }, (_, idx) => idx + 1).map((pageNum) => (
+                            <button
+                              key={pageNum}
+                              type="button"
+                              onClick={() => setCurrentPage(pageNum)}
+                              className={`w-2.5 h-2.5 rounded-full transition-all duration-200 ${
+                                safePage === pageNum
+                                  ? 'bg-[var(--app-accent)] shadow-[0_0_0_3px_rgba(79,70,229,0.2)]'
+                                  : 'bg-[var(--app-muted)]/40 hover:bg-[var(--app-muted)]/60'
+                              }`}
+                              aria-label={`Page ${pageNum}`}
+                              aria-current={safePage === pageNum ? 'true' : undefined}
+                            />
+                          ))}
+                        </div>
+
+                        {/* Next arrow control */}
+                        <button
+                          type="button"
+                          onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
+                          disabled={safePage >= totalPages}
+                          className="flex items-center justify-center w-9 h-9 rounded-full text-[var(--app-text)] transition-all disabled:opacity-30 disabled:cursor-not-allowed hover:bg-[var(--app-surface-alt)]"
+                          aria-label="Page suivante"
+                        >
+                          <ChevronRight className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      {/* Indicateur de page actif en dessous */}
+                      <span className="text-[11px] text-[var(--app-muted)] font-medium uppercase tracking-wider">
+                        Page {safePage} sur {totalPages}
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
             </section>
