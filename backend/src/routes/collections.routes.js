@@ -255,21 +255,13 @@ const normalizeImportedQcmRow = (row, rowIndex) => {
     };
   }
 
-  if (correctOptionIndexes.length === 0) {
-    return {
-      error: {
-        rowIndex,
-        videoTitle,
-        question,
-        message: 'Aucune bonne réponse détectée.',
-      },
-    };
-  }
-
   const mode = normalizeImportedQcmMode(row.qcmType, correctOptionIndexes);
   const normalizedCorrectOptionIndexes = mode === 'single'
     ? [correctOptionIndexes[0]]
     : correctOptionIndexes;
+
+  // Statut de réponse du QCM : pas encore / en cours / prochainement / termine
+  const qcmStatus = normalizedCorrectOptionIndexes.length > 0 ? 'termine' : 'pas_encore';
 
   return {
     row: {
@@ -279,6 +271,7 @@ const normalizeImportedQcmRow = (row, rowIndex) => {
       mode,
       correctOptionIndexes: normalizedCorrectOptionIndexes,
       correctOptionIndex: normalizedCorrectOptionIndexes[0] || 0,
+      qcmStatus,
       explanation: String(row.explanation || '').trim(),
       reference: String(row.reference || '').trim(),
       qcmNumber: String(row.qcmNumber || '').trim(),
@@ -322,21 +315,18 @@ const normalizeImportedOpenQuestionRow = (row, rowIndex) => {
   }
 
   if (!answer) {
-    return {
-      error: {
-        rowIndex,
-        videoTitle,
-        question,
-        message: 'Réponse manquante.',
-      },
-    };
+    // Réponse vide autorisée : on marque le statut comme "pas_encore" plutôt que de rejeter.
   }
+
+  // Statut de réponse du QROC : pas encore / en cours / prochainement / termine
+  const answerStatus = answer.length > 0 ? 'termine' : 'pas_encore';
 
   return {
     row: {
       videoTitle,
       question,
       answer,
+      answerStatus,
       reference: String(row.reference || '').trim(),
       qrocNumber: String(row.qrocNumber || '').trim(),
       subspecialty: String(row.subspecialty || '').trim(),
@@ -441,49 +431,38 @@ const normalizeImportedClinicalCaseRows = (rows) => {
             .filter((entry) => Number.isInteger(entry) && entry >= 0 && entry < options.length)
         : [];
 
-      if (options.length >= 2 && correctOptionIndexes.length > 0) {
-        const qcmMode = normalizeImportedQcmMode(row.qcmType, correctOptionIndexes);
-        const normalizedIndexes = qcmMode === 'single' ? [correctOptionIndexes[0]] : correctOptionIndexes;
-        clinicalCase.questions.push({
-          id: createImportedQuestionId('qcm', questionCounter += 1),
-          kind: 'qcm',
-          prompt: qcmPrompt,
-          images: splitImportedLinks(row.qcmImageLinks),
-          options,
-          qcmMode,
-          correctOptionIndexes: normalizedIndexes,
-          correctOptionIndex: normalizedIndexes[0] || 0,
-          explanation: String(row.qcmExplanation || '').trim(),
-        });
-      } else {
-        invalidRows.push({
-          rowIndex,
-          videoTitle,
-          question: qcmPrompt,
-          message: 'QCM ignoré: options ou bonnes réponses insuffisantes.',
-        });
-      }
+      // QCM dans cas clinique : on importe même si les options ou bonnes réponses sont manquantes.
+      // Le statut reflète si une réponse est définie ou non.
+      const qcmMode = normalizeImportedQcmMode(row.qcmType, correctOptionIndexes);
+      const normalizedIndexes = qcmMode === 'single' ? [correctOptionIndexes[0]] : correctOptionIndexes;
+      const qcmCaseStatus = normalizedIndexes.length > 0 ? 'termine' : 'pas_encore';
+      clinicalCase.questions.push({
+        id: createImportedQuestionId('qcm', questionCounter += 1),
+        kind: 'qcm',
+        prompt: qcmPrompt,
+        images: splitImportedLinks(row.qcmImageLinks),
+        options,
+        qcmMode,
+        correctOptionIndexes: normalizedIndexes,
+        correctOptionIndex: normalizedIndexes[0] || 0,
+        qcmStatus: qcmCaseStatus,
+        explanation: String(row.qcmExplanation || '').trim(),
+      });
     }
 
     const openPrompt = String(row.openQuestion || '').trim();
     const openAnswer = String(row.openAnswer || '').trim();
     if (openPrompt || openAnswer) {
-      if (openPrompt && openAnswer) {
-        clinicalCase.questions.push({
-          id: createImportedQuestionId('open', questionCounter += 1),
-          kind: 'open',
-          prompt: openPrompt,
-          answer: openAnswer,
-          images: splitImportedLinks(row.openImageLinks),
-        });
-      } else {
-        invalidRows.push({
-          rowIndex,
-          videoTitle,
-          question: openPrompt,
-          message: 'QROC ignoré: énoncé ou réponse manquant.',
-        });
-      }
+      // QROC dans cas clinique : on importe même si la réponse est manquante.
+      const openCaseStatus = openAnswer.length > 0 ? 'termine' : 'pas_encore';
+      clinicalCase.questions.push({
+        id: createImportedQuestionId('open', questionCounter += 1),
+        kind: 'open',
+        prompt: openPrompt,
+        answer: openAnswer,
+        answerStatus: openCaseStatus,
+        images: splitImportedLinks(row.openImageLinks),
+      });
     }
 
     const selectPrompt = String(row.selectQuestion || '').trim();
@@ -496,24 +475,18 @@ const normalizeImportedClinicalCaseRows = (rows) => {
             .filter((entry) => Number.isInteger(entry) && entry >= 0 && entry < selectOptions.length)
         : [];
 
-      if (selectOptions.length >= 2 && correctSelectIndexes.length > 0) {
-        clinicalCase.questions.push({
-          id: createImportedQuestionId('select', questionCounter += 1),
-          kind: 'select',
-          prompt: selectPrompt,
-          images: splitImportedLinks(row.selectImageLinks),
-          options: selectOptions,
-          correctOptionIndex: correctSelectIndexes[0],
-          explanation: String(row.selectExplanation || '').trim(),
-        });
-      } else {
-        invalidRows.push({
-          rowIndex,
-          videoTitle,
-          question: selectPrompt,
-          message: 'Sélecteur ignoré: options ou bonne réponse insuffisantes.',
-        });
-      }
+      // Select dans cas clinique : on importe même si les options ou bonne réponse sont manquantes.
+      const selectCaseStatus = correctSelectIndexes.length > 0 ? 'termine' : 'pas_encore';
+      clinicalCase.questions.push({
+        id: createImportedQuestionId('select', questionCounter += 1),
+        kind: 'select',
+        prompt: selectPrompt,
+        images: splitImportedLinks(row.selectImageLinks),
+        options: selectOptions,
+        correctOptionIndex: correctSelectIndexes[0],
+        qcmStatus: selectCaseStatus,
+        explanation: String(row.selectExplanation || '').trim(),
+      });
     }
   });
 
@@ -1386,6 +1359,7 @@ const sanitizeQcmPayload = (payload) => {
     reference: trimStringIfNeeded(payload?.reference),
     subspecialty: trimStringIfNeeded(payload?.subspecialty),
     section: trimStringIfNeeded(payload?.section),
+    qcmStatus: trimStringIfNeeded(payload?.qcmStatus) || 'pas_encore',
     options: Array.isArray(payload?.options)
       ? payload.options.map((entry) => trimStringIfNeeded(entry))
       : payload?.options,
@@ -1398,6 +1372,7 @@ const sanitizeOpenQuestionPayload = (payload) => {
     videoId: trimStringIfNeeded(payload?.videoId),
     question: trimStringIfNeeded(payload?.question),
     answer: trimStringIfNeeded(payload?.answer),
+    answerStatus: trimStringIfNeeded(payload?.answerStatus) || (payload?.answer ? 'termine' : 'pas_encore'),
     reference: trimStringIfNeeded(payload?.reference),
     subspecialty: trimStringIfNeeded(payload?.subspecialty),
     section: trimStringIfNeeded(payload?.section),
@@ -1409,7 +1384,7 @@ const sanitizeClinicalCaseQuestion = (question) => {
     return null;
   }
 
-  return {
+  const base = {
     ...question,
     id: trimStringIfNeeded(question.id),
     kind: trimStringIfNeeded(question.kind),
@@ -1421,6 +1396,19 @@ const sanitizeClinicalCaseQuestion = (question) => {
       ? question.options.map((entry) => trimStringIfNeeded(entry))
       : question.options,
   };
+
+  // Statuts de réponse selon le type de question
+  if (question.kind === 'qcm' || question.kind === 'select') {
+    base.qcmStatus = trimStringIfNeeded(question.qcmStatus) ||
+      (Array.isArray(question.correctOptionIndexes) && question.correctOptionIndexes.length > 0
+        ? 'termine'
+        : 'pas_encore');
+  } else if (question.kind === 'open') {
+    base.answerStatus = trimStringIfNeeded(question.answerStatus) ||
+      (question.answer && question.answer.length > 0 ? 'termine' : 'pas_encore');
+  }
+
+  return base;
 };
 
 const sanitizeClinicalCasePayload = (payload) => {
@@ -1482,6 +1470,7 @@ const sanitizeDiagramPayload = (payload) => {
     reference: trimStringIfNeeded(payload?.reference),
     subspecialty: trimStringIfNeeded(payload?.subspecialty),
     section: trimStringIfNeeded(payload?.section),
+    diagramStatus: trimStringIfNeeded(payload?.diagramStatus) || 'pas_encore',
   };
 
   if (Array.isArray(payload?.markers)) {

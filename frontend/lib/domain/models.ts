@@ -32,6 +32,8 @@ export interface VideoModel {
   updatedAt?: string;
 }
 
+export type AnswerStatus = 'pas_encore' | 'en_cours' | 'prochainement' | 'termine';
+
 export interface QcmModel {
   id: string;
   videoId: string;
@@ -40,6 +42,7 @@ export interface QcmModel {
   mode?: QcmMode;
   correctOptionIndex?: number;
   correctOptionIndexes?: number[];
+  qcmStatus?: AnswerStatus;
   explanation?: string;
   reference?: string;
   subspecialty?: string;
@@ -63,6 +66,7 @@ export interface CaseQuestionQcm extends CaseQuestionBase {
   qcmMode?: QcmMode;
   correctOptionIndexes?: number[];
   correctOptionIndex?: number;
+  qcmStatus?: AnswerStatus;
   explanation?: string;
 }
 
@@ -70,12 +74,14 @@ export interface CaseQuestionSelect extends CaseQuestionBase {
   kind: 'select';
   options: string[];
   correctOptionIndex?: number;
+  qcmStatus?: AnswerStatus;
   explanation?: string;
 }
 
 export interface CaseQuestionOpen extends CaseQuestionBase {
   kind: 'open';
   answer?: string;
+  answerStatus?: AnswerStatus;
 }
 
 export type CaseQuestionModel = CaseQuestionQcm | CaseQuestionSelect | CaseQuestionOpen;
@@ -105,6 +111,7 @@ export interface OpenQuestionModel {
   videoId: string;
   question: string;
   answer: string;
+  answerStatus?: AnswerStatus;
   reference?: string;
   subspecialty?: string;
   section?: string;

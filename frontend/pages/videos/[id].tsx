@@ -98,6 +98,41 @@ const extractYouTubeVideoId = (url: string) => {
   return null;
 };
 
+const getQcmStatusLabel = (status: string) => {
+  const labels: Record<string, string> = {
+    pas_encore: 'Pas encore',
+    en_cours: 'En cours',
+    prochainement: 'Prochainement',
+    termine: 'Terminé',
+  };
+  return labels[status] || status;
+};
+
+const getQcmStatusBadgeClass = (status: string) => {
+  const base = 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700';
+  if (status === 'termine') {
+    return 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-800';
+  }
+  if (status === 'en_cours') {
+    return 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-800';
+  }
+  if (status === 'prochainement') {
+    return 'bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 border border-amber-100 dark:border-amber-800';
+  }
+  // pas_encore
+  return base;
+};
+
+const getQcmStatusRemark = (status: string) => {
+  const remarks: Record<string, string> = {
+    pas_encore: 'La réponse n’est pas encore définie. Ce QCM est publié en attendant le corrigé.',
+    en_cours: 'La réponse est en cours de rédaction. Ce QCM est publié en attendant le corrigé.',
+    prochainement: 'La réponse sera disponible prochainement. Ce QCM est publié en attendant le corrigé.',
+    termine: '',
+  };
+  return remarks[status] || '';
+};
+
 export default function VideoPage() {
   const router = useRouter();
   const idParam = router.query.id;
@@ -1509,7 +1544,7 @@ export default function VideoPage() {
                       const qcmConfigError =
                         safeOptions.length === 0
                           ? "Ce QCM est indisponible: aucune option n'est configuree."
-                          : !hasValidCorrectIndexes
+                          : !hasValidCorrectIndexes && q.qcmStatus === 'termine'
                             ? "Ce QCM est mal configure: aucune bonne reponse valide n'est definie."
                             : '';
 
@@ -1531,9 +1566,12 @@ export default function VideoPage() {
                         }
 
                         const current = qcmSelections[q.id] ?? [];
-                        const isCorrect =
-                          current.length === correctIndexes.length &&
-                          current.every((idx) => correctIndexes.includes(idx));
+                        // Si aucune bonne réponse n'est définie (statut != termine), on ne peut pas juger juste/faux.
+                        const hasCorrectAnswersDefined = correctIndexes.length > 0;
+                        const isCorrect = hasCorrectAnswersDefined
+                          ? current.length === correctIndexes.length &&
+                            current.every((idx) => correctIndexes.includes(idx))
+                          : null;
                         setQcmResults(prev => ({ ...prev, [q.id]: { selected: current, isCorrect } }));
                         setShowQcmExplanations(prev => ({ ...prev, [q.id]: true }));
                         setQcmFeedbackVisible((prev) => ({ ...prev, [q.id]: true }));
@@ -1556,10 +1594,20 @@ export default function VideoPage() {
                                 <span className="cas-q-type-badge inline-flex mt-0.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold">
                                   {q.mode === 'single' ? 'QCM · Une réponse' : 'QCM · Plusieurs réponses'}
                                 </span>
+                                {q.qcmStatus && (
+                                  <span className={`cas-q-status-badge inline-flex mt-0.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold ${getQcmStatusBadgeClass(q.qcmStatus)}`}>
+                                    {getQcmStatusLabel(q.qcmStatus)}
+                                  </span>
+                                )}
                               </div>
                               {result && (
                                 <div className="ml-auto flex items-center">
-                                  {result.isCorrect ? (
+                                  {result.isCorrect === null ? (
+                                    <span className="inline-flex items-center gap-1 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded-full text-[10px] font-semibold">
+                                      <Clock className="w-3 h-3" />
+                                      En attente
+                                    </span>
+                                  ) : result.isCorrect ? (
                                     <span className="inline-flex items-center gap-1 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded-full text-[10px] font-semibold">
                                       <CircleCheck className="w-3 h-3" />
                                       Correct
@@ -1589,6 +1637,20 @@ export default function VideoPage() {
                               {validationError && (
                                 <div className="video-inline-alert video-inline-alert--error rounded-xl border p-4 text-sm">
                                   {validationError}
+                                </div>
+                              )}
+
+                              {(!result && q.qcmStatus && q.qcmStatus !== 'termine') && (
+                                <div className="video-inline-alert video-inline-alert--info rounded-xl border p-3 text-sm">
+                                  <p className="font-medium text-[var(--app-text)]">{getQcmStatusRemark(q.qcmStatus)}</p>
+                                </div>
+                              )}
+
+                              {(result && q.qcmStatus && q.qcmStatus !== 'termine') && (
+                                <div className="video-inline-alert video-inline-alert--info rounded-xl border p-3 text-sm mt-2">
+                                  <p className="font-medium text-[var(--app-text)]">
+                                    {getQcmStatusRemark(q.qcmStatus)} Vous avez sélectionné {selectedIndices.length} réponse(s).
+                                  </p>
                                 </div>
                               )}
 

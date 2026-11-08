@@ -40,6 +40,7 @@ import type {
   QcmMode,
   VideoPartModel,
   VideoModel,
+  AnswerStatus,
 } from '@/lib/domain/models';
 
 type EditableCaseQuestion = {
@@ -51,8 +52,20 @@ type EditableCaseQuestion = {
   correctOptionIndex?: number;
   correctOptionIndexes?: number[];
   qcmMode?: QcmMode;
+  qcmStatus?: AnswerStatus;
   explanation?: string;
   answer?: string;
+  answerStatus?: AnswerStatus;
+};
+
+const getQcmStatusLabel = (status: string) => {
+  const labels: Record<string, string> = {
+    pas_encore: 'Pas encore',
+    en_cours: 'En cours',
+    prochainement: 'Prochainement',
+    termine: 'Terminé',
+  };
+  return labels[status] || status;
 };
 
 interface VideoFormData {
@@ -74,6 +87,7 @@ interface QcmFormData {
   options: string[];
   mode: QcmMode;
   correctOptionIndexes: number[];
+  qcmStatus: AnswerStatus;
   explanation: string;
   reference: string;
 }
@@ -82,6 +96,7 @@ interface OpenQuestionFormData {
   videoId: string;
   question: string;
   answer: string;
+  answerStatus: AnswerStatus;
   reference: string;
 }
 
@@ -1407,6 +1422,7 @@ export function AdminContentManager() {
     options: getDefaultQcmOptions(),
     mode: 'single' as 'single' | 'multiple',
     correctOptionIndexes: [] as number[],
+    qcmStatus: 'pas_encore' as AnswerStatus,
     explanation: '',
     reference: '',
   });
@@ -1419,6 +1435,7 @@ export function AdminContentManager() {
       options: getDefaultQcmOptions(),
       mode: 'single',
       correctOptionIndexes: [],
+      qcmStatus: 'pas_encore',
       explanation: '',
       reference: '',
     });
@@ -1602,6 +1619,7 @@ export function AdminContentManager() {
         options: getDefaultQcmOptions(),
         mode: 'single',
         correctOptionIndexes: [],
+        qcmStatus: 'pas_encore',
         explanation: '',
         reference: '',
       });
@@ -1632,6 +1650,7 @@ export function AdminContentManager() {
         videoId,
         question: '',
         answer: '',
+        answerStatus: 'pas_encore',
         reference: '',
       });
     }
@@ -1661,10 +1680,7 @@ export function AdminContentManager() {
       setErrorMessage('Veuillez remplir toutes les options.');
       return;
     }
-    if (qcmData.correctOptionIndexes.length === 0) {
-      setErrorMessage('Veuillez sélectionner au moins une bonne réponse.');
-      return;
-    }
+    // Pas de blocage si aucune bonne réponse sélectionnée : le statut qcmStatus indique l'état (pas encore / en cours / prochainement / terminé).
 
     setIsSubmitting(true);
     setErrorMessage('');
@@ -1677,6 +1693,7 @@ export function AdminContentManager() {
         options: qcmData.options,
         mode: qcmData.mode,
         correctOptionIndexes: qcmData.correctOptionIndexes,
+        qcmStatus: qcmData.qcmStatus,
         // pour compatibilité avec l'ancien modèle
         correctOptionIndex:
           qcmData.correctOptionIndexes && qcmData.correctOptionIndexes.length > 0
@@ -1732,6 +1749,7 @@ export function AdminContentManager() {
       options: normalizeQcmOptions(qcm.options),
       mode,
       correctOptionIndexes,
+      qcmStatus: (qcm.qcmStatus || 'pas_encore') as AnswerStatus,
       explanation: qcm.explanation || '',
       reference: qcm.reference || '',
     });
@@ -1774,6 +1792,7 @@ export function AdminContentManager() {
     videoId: '',
     question: '',
     answer: '',
+    answerStatus: 'pas_encore' as AnswerStatus,
     reference: '',
   });
 
@@ -1783,6 +1802,7 @@ export function AdminContentManager() {
       videoId,
       question: '',
       answer: '',
+      answerStatus: 'pas_encore',
       reference: '',
     });
   };
@@ -1903,6 +1923,7 @@ export function AdminContentManager() {
       videoId: item.videoId || '',
       question: item.question || '',
       answer: item.answer || '',
+      answerStatus: (item.answerStatus || 'pas_encore') as AnswerStatus,
       reference: item.reference || '',
     });
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -2324,7 +2345,9 @@ export function AdminContentManager() {
       const base: EditableCaseQuestion = {
         id: createCaseQuestionId(),
         kind,
-        prompt: ''
+        prompt: '',
+        qcmStatus: 'pas_encore' as AnswerStatus,
+        answerStatus: 'pas_encore' as AnswerStatus,
       };
 
       let question: EditableCaseQuestion;
@@ -2395,6 +2418,8 @@ export function AdminContentManager() {
         kind,
         prompt: existing?.prompt || '',
         images: Array.isArray(existing?.images) ? existing.images : [],
+        qcmStatus: existing?.qcmStatus || 'pas_encore',
+        answerStatus: existing?.answerStatus || 'pas_encore',
       };
 
       if (kind === 'open') {
@@ -2870,6 +2895,7 @@ export function AdminContentManager() {
     || qcmData.options.some((option) => option.trim())
     || qcmData.mode !== 'single'
     || qcmData.correctOptionIndexes.length > 0
+    || qcmData.qcmStatus !== 'pas_encore'
     || qcmData.explanation.trim()
     || qcmData.reference.trim(),
   );
@@ -2878,6 +2904,7 @@ export function AdminContentManager() {
     openQuestionData.videoId
     || openQuestionData.question.trim()
     || openQuestionData.answer.trim()
+    || openQuestionData.answerStatus !== 'pas_encore'
     || openQuestionData.reference.trim(),
   );
 
@@ -3778,6 +3805,25 @@ export function AdminContentManager() {
                       </p>
                     </div>
 
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-slate-700">Statut de la réponse</label>
+                      <select
+                        value={qcmData.qcmStatus}
+                        onChange={(e) => setQcmData({ ...qcmData, qcmStatus: e.target.value as AnswerStatus })}
+                        className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all bg-white text-sm"
+                        title="Statut de la réponse"
+                        aria-label="Statut de la réponse du QCM"
+                      >
+                        <option value="pas_encore">Pas encore</option>
+                        <option value="en_cours">En cours</option>
+                        <option value="prochainement">Prochainement</option>
+                        <option value="termine">Terminé</option>
+                      </select>
+                      <p className="text-xs text-slate-500">
+                        Indique si la réponse est déjà définie (terminé) ou à venir (pas encore / en cours / prochainement).
+                      </p>
+                    </div>
+
                     <div className="space-y-4">
                       <div className="flex items-center justify-between">
                         <label className="text-sm font-medium text-slate-700">Options de réponse</label>
@@ -3962,6 +4008,9 @@ export function AdminContentManager() {
                             </span>
                             <span className={existingItemMetaChipClass}>Options: {optionCount}</span>
                             <span className={existingItemMetaChipClass}>Bonnes réponses: {correctCount}</span>
+                            <span className={existingItemMetaChipClass}>
+                              Statut: {getQcmStatusLabel(qcm.qcmStatus || 'pas_encore')}
+                            </span>
                           </div>
                           <MarkdownPreview content={qcm.explanation} maxHeightClass="max-h-20" />
                         </div>
@@ -4088,12 +4137,30 @@ export function AdminContentManager() {
                     <div className="space-y-2">
                       <label className="text-sm font-medium text-slate-700">Réponse</label>
                       <textarea
-                        required
                         value={openQuestionData.answer}
                         onChange={(e) => setOpenQuestionData({ ...openQuestionData, answer: e.target.value })}
                         className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all resize-none overflow-y-auto min-h-[120px]"
-                        placeholder="Saisissez la réponse attendue..."
+                        placeholder="Saisissez la réponse attendue (optionnelle)..."
                       />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-slate-700">Statut de la réponse</label>
+                      <select
+                        value={openQuestionData.answerStatus}
+                        onChange={(e) => setOpenQuestionData({ ...openQuestionData, answerStatus: e.target.value as AnswerStatus })}
+                        className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all bg-white text-sm"
+                        title="Statut de la réponse"
+                        aria-label="Statut de la réponse du QROC"
+                      >
+                        <option value="pas_encore">Pas encore</option>
+                        <option value="en_cours">En cours</option>
+                        <option value="prochainement">Prochainement</option>
+                        <option value="termine">Terminé</option>
+                      </select>
+                      <p className="text-xs text-slate-500">
+                        Indique si la réponse est déjà rédigée (terminé) ou à venir (pas encore / en cours / prochainement).
+                      </p>
                     </div>
                   </div>
                 </section>
@@ -4175,6 +4242,9 @@ export function AdminContentManager() {
                                 Référence incluse
                               </span>
                             )}
+                            <span className={existingItemMetaChipClass}>
+                              Statut: {getQcmStatusLabel(item.answerStatus || 'pas_encore')}
+                            </span>
                           </div>
                           <MarkdownPreview
                             content={item.answer}
@@ -4477,8 +4547,9 @@ export function AdminContentManager() {
                               </div>
 
                               {(kind === 'qcm' || kind === 'select') && (
-                                <div className="space-y-2">
-                                  <div className="flex items-center justify-between gap-3">
+                                <>
+                                  <div className="space-y-2">
+                                    <div className="flex items-center justify-between gap-3">
                                     <label className="text-xs font-medium text-slate-700">Options de réponse</label>
                                     <button
                                       type="button"
@@ -4676,23 +4747,62 @@ export function AdminContentManager() {
                                       : 'Sélectionnez l’option correcte pour la liste déroulante.'} Minimum 2 options.
                                   </p>
                                 </div>
-                              )}
-
-                              {kind === 'open' && (
                                 <div className="space-y-1">
-                                  <label className="text-xs font-medium text-slate-700">Réponse attendue</label>
-                                  <textarea
-                                    value={q.answer || ''}
+                                  <label className="text-xs font-medium text-slate-700">Statut de la réponse</label>
+                                  <select
+                                    value={q.qcmStatus || 'pas_encore'}
                                     onChange={(e) =>
                                       updateCaseQuestion(index, (current) => ({
                                         ...current,
-                                        answer: e.target.value
+                                        qcmStatus: e.target.value as AnswerStatus,
                                       }))
                                     }
-                                    className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all resize-none overflow-y-auto text-sm min-h-[60px]"
-                                    placeholder="Rédigez la réponse ou le corrigé qui pourra être affiché / masqué."
-                                  />
+                                    className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs text-slate-700"
+                                  >
+                                    <option value="pas_encore">Pas encore</option>
+                                    <option value="en_cours">En cours</option>
+                                    <option value="prochainement">Prochainement</option>
+                                    <option value="termine">Terminé</option>
+                                  </select>
                                 </div>
+                                </>
+                              )}
+
+                              {kind === 'open' && (
+                                <>
+                                  <div className="space-y-1">
+                                    <label className="text-xs font-medium text-slate-700">Réponse attendue</label>
+                                    <textarea
+                                      value={q.answer || ''}
+                                      onChange={(e) =>
+                                        updateCaseQuestion(index, (current) => ({
+                                          ...current,
+                                          answer: e.target.value
+                                        }))
+                                      }
+                                      className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-medical-500 focus:border-transparent outline-none transition-all resize-none overflow-y-auto text-sm min-h-[60px]"
+                                      placeholder="Rédigez la réponse ou le corrigé qui pourra être affiché / masqué."
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <label className="text-xs font-medium text-slate-700">Statut de la réponse</label>
+                                    <select
+                                      value={q.answerStatus || 'pas_encore'}
+                                      onChange={(e) =>
+                                        updateCaseQuestion(index, (current) => ({
+                                          ...current,
+                                          answerStatus: e.target.value as AnswerStatus,
+                                        }))
+                                      }
+                                      className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs text-slate-700"
+                                    >
+                                      <option value="pas_encore">Pas encore</option>
+                                      <option value="en_cours">En cours</option>
+                                      <option value="prochainement">Prochainement</option>
+                                      <option value="termine">Terminé</option>
+                                    </select>
+                                  </div>
+                                </>
                               )}
 
                               {(kind === 'qcm' || kind === 'select') && (
@@ -4843,6 +4953,14 @@ export function AdminContentManager() {
                             <span className={existingItemMetaChipClass}>Vidéo: {videoTitle}</span>
                             <span className={existingItemMetaChipClass}>Questions: {questionCount}</span>
                             <span className={existingItemMetaChipClass}>Figures: {imageCount}</span>
+                            {Array.isArray(c.questions) && c.questions.length > 0 && (
+                              <span className={existingItemMetaChipClass}>
+                                {c.questions.filter(
+                                  (q) =>
+                                    (q.kind === 'open' ? q.answerStatus : q.qcmStatus) === 'pas_encore'
+                                ).length} en attente
+                              </span>
+                            )}
                             {c.reference && (
                               <span className="inline-flex items-center rounded-full border border-medical-200 bg-medical-50 px-2 py-1 text-[11px] font-medium text-medical-700">
                                 Référence incluse
