@@ -38,13 +38,6 @@ export default function SeamlessPlayer({
   initialTime = 0,
   onProgress,
 }: SeamlessPlayerProps) {
-  const partsKey = useMemo(() => {
-    if (!Array.isArray(parts) || parts.length === 0) return '';
-    return parts
-      .map((part) => `${String(part?.secureUrl || '').trim()}|${Math.max(0, Number(part?.duration || 0))}`)
-      .join('||');
-  }, [parts]);
-
   const sources: Array<{ secureUrl: string; duration: number }> = useMemo(() => {
     const normalizedParts = Array.isArray(parts)
       ? parts
@@ -65,7 +58,7 @@ export default function SeamlessPlayer({
         duration: Math.max(0, Number(totalDuration || 0)),
       },
     ].filter((part) => part.secureUrl);
-  }, [partsKey, totalDuration, url]);
+  }, [parts, totalDuration, url]);
 
   const offsets = useMemo(() => {
     const arr: number[] = [0];
