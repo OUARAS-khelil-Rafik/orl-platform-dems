@@ -41,3 +41,21 @@ test('normalizeDriveFolderUrl should preserve resourcekey and sharing parameters
   assert.ok(normalized.includes('usp=sharing'));
   assert.ok(normalized.includes('resourcekey=ABC123'));
 });
+
+test('isDriveFolderUrl should detect a Drive folder URL with usp=drive_link', () => {
+  const url = 'https://drive.google.com/drive/folders/1he3ekNZ0OTlWjNyh8Rn519Zzqk-4Lj8x?usp=drive_link';
+  assert.strictEqual(isDriveFolderUrl(url), true);
+});
+
+test('extractDriveFileIdsFromFolderHtml should extract multiple image file IDs from a Drive folder HTML', () => {
+  const html = `
+    <a href="https://drive.google.com/file/d/1ZxYwVuTsRqPoNmLkJiHg/view">Figure 01.jpeg</a>
+    <a href="https://drive.google.com/file/d/1a2b3c4d5e6f7g8h9i0j/view">Figure 02.jpeg</a>
+    <a href="https://drive.google.com/drive/folders/1FolderIdExample1234567890"></a>
+  `;
+
+  const { fileIds, folderIds } = extractDriveFileIdsFromFolderHtml(html, '1FolderIdExample1234567890');
+
+  assert.deepStrictEqual(fileIds.sort(), ['1ZxYwVuTsRqPoNmLkJiHg', '1a2b3c4d5e6f7g8h9i0j'].sort());
+  assert.deepStrictEqual(folderIds, []);
+});

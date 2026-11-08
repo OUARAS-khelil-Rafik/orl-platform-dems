@@ -256,8 +256,12 @@ const normalizeImportedQcmRow = (row, rowIndex) => {
   }
 
   const mode = normalizeImportedQcmMode(row.qcmType, correctOptionIndexes);
+  // Quand aucune bonne réponse n'est définie (toutes les réponses FALSE / vide),
+  // on ne sélectionne AUCUNE option par défaut (pas d'index 0 "piège" / danger).
   const normalizedCorrectOptionIndexes = mode === 'single'
-    ? [correctOptionIndexes[0]]
+    ? correctOptionIndexes.length > 0
+      ? [correctOptionIndexes[0]]
+      : []
     : correctOptionIndexes;
 
   // Statut de réponse du QCM : pas encore / en cours / prochainement / termine
@@ -270,7 +274,7 @@ const normalizeImportedQcmRow = (row, rowIndex) => {
       options,
       mode,
       correctOptionIndexes: normalizedCorrectOptionIndexes,
-      correctOptionIndex: normalizedCorrectOptionIndexes[0] || 0,
+      correctOptionIndex: normalizedCorrectOptionIndexes.length > 0 ? normalizedCorrectOptionIndexes[0] : null,
       qcmStatus,
       explanation: String(row.explanation || '').trim(),
       reference: String(row.reference || '').trim(),
@@ -434,7 +438,12 @@ const normalizeImportedClinicalCaseRows = (rows) => {
       // QCM dans cas clinique : on importe même si les options ou bonnes réponses sont manquantes.
       // Le statut reflète si une réponse est définie ou non.
       const qcmMode = normalizeImportedQcmMode(row.qcmType, correctOptionIndexes);
-      const normalizedIndexes = qcmMode === 'single' ? [correctOptionIndexes[0]] : correctOptionIndexes;
+      // Quand aucune bonne réponse n'est définie, on ne sélectionne aucune option par défaut.
+      const normalizedIndexes = qcmMode === 'single'
+        ? correctOptionIndexes.length > 0
+          ? [correctOptionIndexes[0]]
+          : []
+        : correctOptionIndexes;
       const qcmCaseStatus = normalizedIndexes.length > 0 ? 'termine' : 'pas_encore';
       clinicalCase.questions.push({
         id: createImportedQuestionId('qcm', questionCounter += 1),
@@ -444,7 +453,7 @@ const normalizeImportedClinicalCaseRows = (rows) => {
         options,
         qcmMode,
         correctOptionIndexes: normalizedIndexes,
-        correctOptionIndex: normalizedIndexes[0] || 0,
+        correctOptionIndex: normalizedIndexes.length > 0 ? normalizedIndexes[0] : null,
         qcmStatus: qcmCaseStatus,
         explanation: String(row.qcmExplanation || '').trim(),
       });
@@ -2139,6 +2148,7 @@ router.post('/qcms/import', authOptional, async (req, res) => {
         mode: row.mode,
         correctOptionIndexes: row.correctOptionIndexes,
         correctOptionIndex: row.correctOptionIndex,
+        qcmStatus: row.qcmStatus,
         explanation: row.explanation,
         reference: row.reference,
         qcmNumber: row.qcmNumber,
@@ -2290,6 +2300,7 @@ router.post('/openQuestions/import', authOptional, async (req, res) => {
         videoId,
         question: row.question,
         answer: row.answer,
+        answerStatus: row.answerStatus,
         reference: row.reference,
         qrocNumber: row.qrocNumber,
         subspecialty: row.subspecialty,

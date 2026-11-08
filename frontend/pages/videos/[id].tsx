@@ -1056,12 +1056,17 @@ export default function VideoPage() {
                                       const caseState = caseQuestionAnswers[c.id] || {};
                                       const qState = caseState[questionId] || {};
 
-                                      const correctIndexes: number[] =
-                                        Array.isArray(q.correctOptionIndexes) && q.correctOptionIndexes.length > 0
-                                          ? q.correctOptionIndexes
-                                          : typeof q.correctOptionIndex === 'number'
-                                            ? [q.correctOptionIndex]
-                                            : [];
+                                      // Quand le QCM n'a pas encore de réponse (statut pas_encore),
+                                      // aucune bonne réponse n'est définie : on ne présélectionne
+                                      // surtout pas la première option (index 0) par défaut.
+                                      const isAnswerDefined = q.qcmStatus === 'termine';
+                                      const correctIndexes: number[] = isAnswerDefined
+                                        ? (Array.isArray(q.correctOptionIndexes) && q.correctOptionIndexes.length > 0
+                                            ? q.correctOptionIndexes
+                                            : typeof q.correctOptionIndex === 'number'
+                                              ? [q.correctOptionIndex]
+                                              : [])
+                                        : [];
 
                                       const selectedIndexes: number[] = Array.isArray(qState.selectedIndexes)
                                         ? qState.selectedIndexes
@@ -1532,12 +1537,17 @@ export default function VideoPage() {
                       const validationError = qcmValidationErrors[q.id] || '';
                       const selectedIndices = result?.selected ?? qcmSelections[q.id] ?? [];
                       const safeOptions: string[] = Array.isArray(q.options) ? q.options.filter((opt) => typeof opt === 'string') : [];
-                      const correctIndexes: number[] =
-                        Array.isArray(q.correctOptionIndexes) && q.correctOptionIndexes.length > 0
-                          ? q.correctOptionIndexes
-                          : typeof q.correctOptionIndex === 'number'
-                            ? [q.correctOptionIndex]
-                            : [];
+                      // Quand le QCM n'a pas encore de réponse (statut pas_encore),
+                      // aucune bonne réponse n'est définie : on ne présélectionne
+                      // surtout pas la première option (index 0) par défaut.
+                      const isAnswerDefined = q.qcmStatus === 'termine';
+                      const correctIndexes: number[] = isAnswerDefined
+                        ? (Array.isArray(q.correctOptionIndexes) && q.correctOptionIndexes.length > 0
+                            ? q.correctOptionIndexes
+                            : typeof q.correctOptionIndex === 'number'
+                              ? [q.correctOptionIndex]
+                              : [])
+                        : [];
                       const hasValidCorrectIndexes =
                         correctIndexes.length > 0 &&
                         correctIndexes.every((idx) => idx >= 0 && idx < safeOptions.length);
@@ -1877,6 +1887,11 @@ export default function VideoPage() {
                               <div>
                                 <p className="cas-question-eyebrow">Question {index + 1} sur {openQuestions.length}</p>
                                 <span className="cas-q-type-badge inline-flex mt-0.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold">QROC</span>
+                                {item.answerStatus && (
+                                  <span className={`cas-q-status-badge inline-flex mt-0.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold ${getQcmStatusBadgeClass(item.answerStatus)}`}>
+                                    {getQcmStatusLabel(item.answerStatus)}
+                                  </span>
+                                )}
                               </div>
                             </div>
 
