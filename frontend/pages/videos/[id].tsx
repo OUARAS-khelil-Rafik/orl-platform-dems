@@ -37,6 +37,9 @@ import {
   ChevronRight,
   Lightbulb,
   ClipboardList,
+  Clock,
+  Film,
+  PlayCircle,
 } from 'lucide-react';
 import Image from 'next/image';
 import { IMAGE_FALLBACK_SRC, applyImageFallback } from '@/lib/utils/media-fallback';
@@ -55,6 +58,29 @@ type WatchProgressEntry = {
 };
 
 type LockedVideoPaymentStatus = 'pending' | 'rejected';
+
+const formatSubspecialtyLabel = (sub?: string) => {
+  const s = String(sub || '').trim().toLowerCase();
+  if (s.includes('otolog')) return 'Otologie';
+  if (s.includes('rhino') || s.includes('sinuso')) return 'Rhinologie';
+  if (s.includes('laryngo') || s.includes('cervico')) return 'Laryngologie';
+  return s ? String(sub || '').charAt(0).toUpperCase() + String(sub || '').slice(1) : '-';
+};
+
+const formatSectionLabel = (section: string) => {
+  const s = String(section || '').trim();
+  if (!s) return '';
+  if (s === 'anatomie') return 'Anatomie';
+  if (s === 'pathologie') return 'Pathologie';
+  // Toujours afficher la section liée à la vidéo, jamais "Autre"
+  return s.charAt(0).toUpperCase() + s.slice(1);
+};
+
+const formatVideoPhase = (video: VideoModel) => {
+  const sub = formatSubspecialtyLabel(video.subspecialty);
+  const sec = formatSectionLabel(video.section || '');
+  return `${sub} - ${sec}`;
+};
 
 const extractYouTubeVideoId = (url: string) => {
   const trimmed = url.trim();
@@ -683,27 +709,48 @@ export default function VideoPage() {
   return (
     <div className="video-experience-shell video-page flex-1 text-[var(--app-text)] flex flex-col select-none">
       {/* Video Player Area */}
-      <div className="video-player-shell w-full relative aspect-video max-h-[56vh] sm:max-h-[60vh] lg:max-h-[70vh] flex justify-center">
+      <div className="video-player-shell w-full relative aspect-video max-h-[56vh] sm:max-h-[60vh] lg:max-h-[70vh] flex items-center justify-center">
         {/* Anti-download overlay */}
         <div className="absolute inset-0 z-10 pointer-events-none" />
 
-        {/* Video Element (Simulated with iframe or video tag) */}
-        {youtubeVideoId ? (
-          <iframe
-            src={`https://www.youtube.com/embed/${youtubeVideoId}?rel=0&modestbranding=1&playsinline=1`}
-            title={video.title}
-            className="w-full h-full"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-            allowFullScreen
-          />
+        {video.url ? (
+          <>
+            {/* Video Element (Simulated with iframe or video tag) */}
+            {youtubeVideoId ? (
+              <iframe
+                src={`https://www.youtube.com/embed/${youtubeVideoId}?rel=0&modestbranding=1&playsinline=1`}
+                title={video.title}
+                className="w-full h-full"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+              />
+            ) : (
+              <SeamlessPlayer
+                url={primaryPlaybackUrl || 'https://www.w3schools.com/html/mov_bbb.mp4'}
+                parts={orderedPlaybackParts}
+                totalDuration={totalPlaybackDuration}
+                initialTime={initialPlaybackTime}
+                onProgress={handlePlaybackProgress}
+              />
+            )}
+          </>
         ) : (
-          <SeamlessPlayer
-            url={primaryPlaybackUrl || 'https://www.w3schools.com/html/mov_bbb.mp4'}
-            parts={orderedPlaybackParts}
-            totalDuration={totalPlaybackDuration}
-            initialTime={initialPlaybackTime}
-            onProgress={handlePlaybackProgress}
-          />
+          <div className="coming-soon-shell flex flex-col items-center justify-center h-full w-full p-6 sm:p-8 text-center space-y-5 bg-[var(--app-surface-alt)]">
+            {/* Icône */}
+            <div className="flex items-center justify-center h-16 w-16 rounded-full bg-[var(--app-surface)] border-[var(--app-border)] shadow-sm">
+              <Clock className="h-8 w-8 text-[var(--app-warning)]" />
+            </div>
+
+            {/* Titre de la vidéo */}
+            <h2 className="text-lg sm:text-xl font-bold text-[var(--app-text)] mb-1 break-words leading-tight">
+              {video.title}
+            </h2>
+
+            {/* Message */}
+            <p className="text-sm text-[var(--app-muted)] max-w-xs mx-auto leading-relaxed">
+              Cette vidéo n&apos;est pas disponible pour le moment.
+            </p>
+          </div>
         )}
       </div>
 
@@ -711,6 +758,10 @@ export default function VideoPage() {
       <div className="container mx-auto px-3 sm:px-4 py-6 sm:py-8 flex-1 flex flex-col">
         <div className="mb-6 sm:mb-8">
           <h1 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold text-[var(--app-text)] mb-2 break-words">{video.title}</h1>
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider border text-[var(--app-text)] bg-[var(--app-surface-alt)] border-[var(--app-border)] mb-3">
+            <Film className="h-3 w-3" />
+            <span>{formatVideoPhase(video)}</span>
+          </div>
           <div className="video-status-chip inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider mb-3">
             {purchaseStatusLabel}
           </div>

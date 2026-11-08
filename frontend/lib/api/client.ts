@@ -121,6 +121,8 @@ export interface QcmImportRowPayload {
   correctOptionIndexes: number[];
   explanation?: string;
   reference?: string;
+  subspecialty?: string;
+  section?: string;
 }
 
 export interface QcmImportResponse {
@@ -147,6 +149,8 @@ export interface OpenQuestionImportRowPayload {
   question: string;
   answer: string;
   reference?: string;
+  subspecialty?: string;
+  section?: string;
 }
 
 export interface OpenQuestionImportResponse {
@@ -173,6 +177,8 @@ export interface ClinicalCaseImportRowPayload {
   description?: string;
   imageLinks?: string;
   reference?: string;
+  subspecialty?: string;
+  section?: string;
   qcmNumber?: string;
   qcmQuestion?: string;
   qcmImageLinks?: string;
@@ -223,6 +229,8 @@ export interface DiagramImportRowPayload {
   reference?: string;
   imageLinks?: string;
   annotations?: string;
+  subspecialty?: string;
+  section?: string;
 }
 
 export interface DiagramImportResponse {

@@ -8,6 +8,9 @@ import {
   buildCloudinaryOrganizedFolder,
   sanitizeCloudinaryFolderSegment,
   uploadBufferToCloudinary,
+  destroyCloudinaryAsset,
+  extractCloudinaryPublicId,
+  inferCloudinaryResourceTypeFromUrl,
 } from '../config/cloudinary.js';
 
 const router = express.Router();
@@ -110,6 +113,9 @@ const DUPLICATE_GUARDED_COLLECTIONS = new Set([
   'clinicalCases',
   'diagrams',
 ]);
+
+// Collections liees a une video via le champ videoId. Supprimees en cascade quand la video l'est.
+const RELATED_VIDEO_COLLECTIONS = ['qcms', 'openQuestions', 'clinicalCases', 'diagrams'];
 
 const CONTENT_NOTIFICATION_COLLECTIONS = new Set([
   'videos',
@@ -276,6 +282,8 @@ const normalizeImportedQcmRow = (row, rowIndex) => {
       explanation: String(row.explanation || '').trim(),
       reference: String(row.reference || '').trim(),
       qcmNumber: String(row.qcmNumber || '').trim(),
+      subspecialty: String(row.subspecialty || '').trim(),
+      section: String(row.section || '').trim(),
     },
   };
 };
@@ -331,6 +339,8 @@ const normalizeImportedOpenQuestionRow = (row, rowIndex) => {
       answer,
       reference: String(row.reference || '').trim(),
       qrocNumber: String(row.qrocNumber || '').trim(),
+      subspecialty: String(row.subspecialty || '').trim(),
+      section: String(row.section || '').trim(),
     },
   };
 };
@@ -402,6 +412,8 @@ const normalizeImportedClinicalCaseRows = (rows) => {
         title,
         description,
         reference,
+        subspecialty: String(row.subspecialty || '').trim(),
+        section: String(row.section || '').trim(),
         imageLinks: caseImageLinks,
         questions: [],
       });
@@ -631,6 +643,8 @@ const normalizeImportedDiagramRows = (rows) => {
       diagramNumber,
       title: finalTitle,
       reference,
+      subspecialty: String(row.subspecialty || '').trim(),
+      section: String(row.section || '').trim(),
       imageLinks,
       annotations,
     });
@@ -1122,18 +1136,35 @@ const uploadImportedDriveImages = async ({
   return dedupeStringArray(urls);
 };
 
-const createPlaceholderVideoPayload = (title, now) => ({
+const createPlaceholderVideoPayload = (title, now, subspecialty = '', section = '') => ({
   title,
   description: '',
   url: '',
-  subspecialty: '',
-  section: '',
+  subspecialty: String(subspecialty || '').trim().toLowerCase(),
+  section: String(section || '').trim().toLowerCase(),
   isFreeDemo: false,
   price: 0,
   isPlaceholder: true,
   createdAt: now,
   updatedAt: now,
 });
+
+// Propage les étiquettes SOUS-SPÉCIALITÉ et SECTION d'une vidéo vers tous les contenus liés (QCM, QROC, cas cliniques, schémas).
+const propagateVideoMetadataToRelated = async ({ db, videoId, subspecialty, section }) => {
+  const relatedCollections = ['qcms', 'openQuestions', 'clinicalCases', 'diagrams'];
+  const safeSubspecialty = typeof subspecialty === 'string' ? String(subspecialty).trim().toLowerCase() : '';
+  const safeSection = typeof section === 'string' ? String(section).trim().toLowerCase() : '';
+  for (const relatedCol of relatedCollections) {
+    try {
+      await db.collection(relatedCol).updateMany(
+        { videoId },
+        { $set: { subspecialty: safeSubspecialty, section: safeSection } }
+      );
+    } catch {
+      // Collection inexistante ou erreur : on ignore pour ne pas bloquer la mise à jour de la vidéo.
+    }
+  }
+};
 
 const hasIntersection = (left, right) => {
   for (const value of left) {
@@ -1230,6 +1261,74 @@ const extractCaseImageUrls = (payload) => {
   return urls;
 };
 
+const extractCloudinaryAssetsFromDoc = (collection, doc) => {
+  const assets = [];
+
+  const addAsset = (secureUrl, resourceTypeHint) => {
+    const normalized = String(secureUrl || '').trim();
+    if (!normalized) {
+      return;
+    }
+    const publicId = extractCloudinaryPublicId(normalized);
+    if (!publicId) {
+      return;
+    }
+    const resourceType = inferCloudinaryResourceTypeFromUrl(normalized) || resourceTypeHint || 'image';
+    assets.push({ publicId, secureUrl: normalized, resourceType });
+  };
+
+  if (collection === 'videos') {
+    addAsset(doc?.url, 'video');
+    if (Array.isArray(doc?.parts)) {
+      for (const part of doc.parts) {
+        addAsset(part?.secureUrl, 'video');
+      }
+    }
+  }
+
+  if (collection === 'clinicalCases') {
+    if (Array.isArray(doc?.images)) {
+      for (const url of doc.images) {
+        addAsset(url, 'image');
+      }
+    }
+    if (Array.isArray(doc?.questions)) {
+      for (const question of doc.questions) {
+        if (Array.isArray(question?.images)) {
+          for (const url of question.images) {
+            addAsset(url, 'image');
+          }
+        }
+      }
+    }
+  }
+
+  if (collection === 'diagrams') {
+    addAsset(doc?.imageUrl, 'image');
+  }
+
+  return assets;
+};
+
+const dedupeCloudinaryAssets = (assets = []) => {
+  const seen = new Set();
+  const output = [];
+
+  for (const asset of assets) {
+    if (!asset || !asset.publicId) {
+      continue;
+    }
+    const key = `${asset.publicId}|${asset.resourceType || 'image'}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    output.push(asset);
+  }
+
+  return output;
+};
+
 const sanitizeVideoPayload = (payload) => {
   const next = {
     ...payload,
@@ -1285,6 +1384,8 @@ const sanitizeQcmPayload = (payload) => {
     question: trimStringIfNeeded(payload?.question),
     explanation: trimStringIfNeeded(payload?.explanation),
     reference: trimStringIfNeeded(payload?.reference),
+    subspecialty: trimStringIfNeeded(payload?.subspecialty),
+    section: trimStringIfNeeded(payload?.section),
     options: Array.isArray(payload?.options)
       ? payload.options.map((entry) => trimStringIfNeeded(entry))
       : payload?.options,
@@ -1298,6 +1399,8 @@ const sanitizeOpenQuestionPayload = (payload) => {
     question: trimStringIfNeeded(payload?.question),
     answer: trimStringIfNeeded(payload?.answer),
     reference: trimStringIfNeeded(payload?.reference),
+    subspecialty: trimStringIfNeeded(payload?.subspecialty),
+    section: trimStringIfNeeded(payload?.section),
   };
 };
 
@@ -1333,6 +1436,8 @@ const sanitizeClinicalCasePayload = (payload) => {
     treatment: trimStringIfNeeded(payload?.treatment),
     discussion: trimStringIfNeeded(payload?.discussion),
     reference: trimStringIfNeeded(payload?.reference),
+    subspecialty: trimStringIfNeeded(payload?.subspecialty),
+    section: trimStringIfNeeded(payload?.section),
     images: Array.isArray(payload?.images) ? dedupeStringArray(payload.images) : payload?.images,
   };
 
@@ -1375,6 +1480,8 @@ const sanitizeDiagramPayload = (payload) => {
     title: trimStringIfNeeded(payload?.title),
     imageUrl: trimStringIfNeeded(payload?.imageUrl),
     reference: trimStringIfNeeded(payload?.reference),
+    subspecialty: trimStringIfNeeded(payload?.subspecialty),
+    section: trimStringIfNeeded(payload?.section),
   };
 
   if (Array.isArray(payload?.markers)) {
@@ -1984,7 +2091,7 @@ router.post('/qcms/import', authOptional, async (req, res) => {
 
       const result = await db
         .collection('videos')
-        .insertOne(createPlaceholderVideoPayload(row.videoTitle, now));
+        .insertOne(createPlaceholderVideoPayload(row.videoTitle, now, row.subspecialty, row.section));
 
       videoByTitleKey.set(titleKey, String(result.insertedId));
       createdVideoTitles.push(row.videoTitle);
@@ -2046,9 +2153,22 @@ router.post('/qcms/import', authOptional, async (req, res) => {
         explanation: row.explanation,
         reference: row.reference,
         qcmNumber: row.qcmNumber,
+        subspecialty: row.subspecialty,
+        section: row.section,
         createdAt: now,
         updatedAt: now,
       });
+    }
+
+    // Mettre à jour les vidéos existantes avec les étiquettes de l'import (SOUS-SPÉCIALITÉ / SECTION)
+    for (const row of normalizedRows) {
+      const videoId = videoByTitleKey.get(normalizeComparableText(row.videoTitle));
+      if (videoId && (row.subspecialty || row.section)) {
+        await db.collection('videos').updateOne(
+          { _id: videoId },
+          { $set: { subspecialty: String(row.subspecialty || '').trim().toLowerCase(), section: String(row.section || '').trim().toLowerCase() } }
+        );
+      }
     }
 
     if (qcmsToInsert.length > 0) {
@@ -2125,7 +2245,7 @@ router.post('/openQuestions/import', authOptional, async (req, res) => {
 
       const result = await db
         .collection('videos')
-        .insertOne(createPlaceholderVideoPayload(row.videoTitle, now));
+        .insertOne(createPlaceholderVideoPayload(row.videoTitle, now, row.subspecialty, row.section));
 
       videoByTitleKey.set(titleKey, String(result.insertedId));
       createdVideoTitles.push(row.videoTitle);
@@ -2183,9 +2303,22 @@ router.post('/openQuestions/import', authOptional, async (req, res) => {
         answer: row.answer,
         reference: row.reference,
         qrocNumber: row.qrocNumber,
+        subspecialty: row.subspecialty,
+        section: row.section,
         createdAt: now,
         updatedAt: now,
       });
+    }
+
+    // Mettre à jour les vidéos existantes avec les étiquettes de l'import (SOUS-SPÉCIALITÉ / SECTION)
+    for (const row of normalizedRows) {
+      const videoId = videoByTitleKey.get(normalizeComparableText(row.videoTitle));
+      if (videoId && (row.subspecialty || row.section)) {
+        await db.collection('videos').updateOne(
+          { _id: videoId },
+          { $set: { subspecialty: String(row.subspecialty || '').trim().toLowerCase(), section: String(row.section || '').trim().toLowerCase() } }
+        );
+      }
     }
 
     if (openQuestionsToInsert.length > 0) {
@@ -2259,14 +2392,14 @@ router.post('/clinicalCases/import', authOptional, async (req, res) => {
 
       const result = await db
         .collection('videos')
-        .insertOne(createPlaceholderVideoPayload(clinicalCase.videoTitle, now));
+        .insertOne(createPlaceholderVideoPayload(clinicalCase.videoTitle, now, clinicalCase.subspecialty, clinicalCase.section));
 
       const newId = String(result.insertedId);
       videoByTitleKey.set(titleKey, newId);
       videoInfoByTitleKey.set(titleKey, {
         id: newId,
         title: clinicalCase.videoTitle,
-        subspecialty: '',
+        subspecialty: clinicalCase.subspecialty || '',
       });
       createdVideoTitles.push(clinicalCase.videoTitle);
     }
@@ -2380,12 +2513,25 @@ router.post('/clinicalCases/import', authOptional, async (req, res) => {
         diagnosis: '',
         treatment: '',
         discussion: '',
+        subspecialty: clinicalCase.subspecialty,
+        section: clinicalCase.section,
         images,
         reference: clinicalCase.reference,
         questions,
         createdAt: now,
         updatedAt: now,
       }));
+    }
+
+    // Mettre à jour les vidéos existantes avec les étiquettes de l'import (SOUS-SPÉCIALITÉ / SECTION)
+    for (const clinicalCase of normalized.cases) {
+      const videoId = videoByTitleKey.get(normalizeComparableText(clinicalCase.videoTitle));
+      if (videoId && (clinicalCase.subspecialty || clinicalCase.section)) {
+        await db.collection('videos').updateOne(
+          { _id: videoId },
+          { $set: { subspecialty: String(clinicalCase.subspecialty || '').trim().toLowerCase(), section: String(clinicalCase.section || '').trim().toLowerCase() } }
+        );
+      }
     }
 
     if (casesToInsert.length > 0) {
@@ -2464,14 +2610,14 @@ router.post('/diagrams/import', authOptional, async (req, res) => {
 
       const result = await db
         .collection('videos')
-        .insertOne(createPlaceholderVideoPayload(diagram.videoTitle, now));
+        .insertOne(createPlaceholderVideoPayload(diagram.videoTitle, now, diagram.subspecialty, diagram.section));
 
       const newId = String(result.insertedId);
       videoByTitleKey.set(titleKey, newId);
       videoInfoByTitleKey.set(titleKey, {
         id: newId,
         title: diagram.videoTitle,
-        subspecialty: '',
+        subspecialty: diagram.subspecialty || '',
       });
       createdVideoTitles.push(diagram.videoTitle);
     }
@@ -2560,11 +2706,24 @@ router.post('/diagrams/import', authOptional, async (req, res) => {
         title: diagram.title,
         imageUrl,
         reference: diagram.reference,
+        subspecialty: diagram.subspecialty,
+        section: diagram.section,
         markers,
         diagramNumber: diagram.diagramNumber,
         createdAt: now,
         updatedAt: now,
       }));
+    }
+
+    // Mettre à jour les vidéos existantes avec les étiquettes de l'import (SOUS-SPÉCIALITÉ / SECTION)
+    for (const diagram of normalized.diagrams) {
+      const videoId = videoByTitleKey.get(normalizeComparableText(diagram.videoTitle));
+      if (videoId && (diagram.subspecialty || diagram.section)) {
+        await db.collection('videos').updateOne(
+          { _id: videoId },
+          { $set: { subspecialty: String(diagram.subspecialty || '').trim().toLowerCase(), section: String(diagram.section || '').trim().toLowerCase() } }
+        );
+      }
     }
 
     if (diagramsToInsert.length > 0) {
@@ -2795,12 +2954,28 @@ router.put('/:collection/:id', authOptional, async (req, res) => {
       .updateOne({ _id: id }, { $set: payload }, { upsert: true });
 
     if (setByStringId.matchedCount > 0 || setByStringId.upsertedCount > 0 || !ObjectId.isValid(id)) {
+      if (collection === 'videos') {
+        await propagateVideoMetadataToRelated({
+          db: mongoose.connection.db,
+          videoId: id,
+          subspecialty: payload.subspecialty,
+          section: payload.section,
+        });
+      }
       return res.json({ ok: true });
     }
 
     await mongoose.connection.db
       .collection(collection)
       .updateOne({ _id: new ObjectId(id) }, { $set: payload }, { upsert: true });
+    if (collection === 'videos') {
+      await propagateVideoMetadataToRelated({
+        db: mongoose.connection.db,
+        videoId: id,
+        subspecialty: payload.subspecialty,
+        section: payload.section,
+      });
+    }
     return res.json({ ok: true });
   } catch (error) {
     return handleCollectionWriteError(res, error, 'Unable to set document.');
@@ -2913,6 +3088,15 @@ router.patch('/:collection/:id', authOptional, async (req, res) => {
         return res.status(404).json({ message: `Document ${collection}/${id} does not exist.` });
       }
 
+      if (collection === 'videos') {
+        await propagateVideoMetadataToRelated({
+          db: mongoose.connection.db,
+          videoId: id,
+          subspecialty: payload.subspecialty,
+          section: payload.section,
+        });
+      }
+
       return res.json({ ok: true });
     }
 
@@ -2970,6 +3154,80 @@ router.delete('/:collection/:id', authOptional, async (req, res) => {
     if (isUsersCollection(collection)) {
       const result = await User.deleteOne({ uid: id });
       return res.json({ deleted: result.deletedCount > 0 });
+    }
+
+    // Suppression en cascade : quand une video est supprimee, supprimer aussi tout
+    // le contenu lie a cette video (QCM, questions ouvertes, cas cliniques, schemas),
+    // ainsi que les notifications de contenu pointees vers elle. Nettoyage Cloudinary
+    // inclus pour les fichiers associes (video, images cas cliniques, schemas).
+    if (collection === 'videos') {
+      const videoIdsToMatch = [id];
+      if (ObjectId.isValid(id)) {
+        videoIdsToMatch.push(new ObjectId(id));
+      }
+      const videoFilter = { videoId: { $in: videoIdsToMatch } };
+
+      // 1. Recuperer les documents lies avant suppression pour nettoyer Cloudinary
+      const assetsToClean = [];
+
+      // Assets de la video elle-meme
+      try {
+        let videoDoc = await mongoose.connection.db.collection('videos').findOne({ _id: id });
+        if (!videoDoc && ObjectId.isValid(id)) {
+          videoDoc = await mongoose.connection.db.collection('videos').findOne({ _id: new ObjectId(id) });
+        }
+        if (videoDoc) {
+          assetsToClean.push(...extractCloudinaryAssetsFromDoc('videos', videoDoc));
+        }
+      } catch {
+        // ignore
+      }
+
+      // Assets des contenus lies (qcms n'en ont pas, clinicalCases et diagrams si)
+      for (const relatedCollection of RELATED_VIDEO_COLLECTIONS) {
+        try {
+          const relatedDocs = await mongoose.connection.db.collection(relatedCollection).find(videoFilter).toArray();
+          for (const doc of relatedDocs) {
+            assetsToClean.push(...extractCloudinaryAssetsFromDoc(relatedCollection, doc));
+          }
+        } catch {
+          // Collection inexistante ou erreur ignoree
+        }
+      }
+
+      // 2. Nettoyage Cloudinary des assets collectes (echecs individuelles ignores)
+      const uniqueAssets = dedupeCloudinaryAssets(assetsToClean);
+      for (const asset of uniqueAssets) {
+        try {
+          await destroyCloudinaryAsset({
+            publicId: asset.publicId,
+            resourceType: asset.resourceType || 'image',
+            authUser: req.authUser,
+            configOptions: { preferUserConfig: true, allowGlobalFallback: true },
+          });
+        } catch {
+          // Asset deja supprime ou erreur Cloudinary: on continue
+        }
+      }
+
+      // 3. Suppression en base des contenus lies
+      for (const relatedCollection of RELATED_VIDEO_COLLECTIONS) {
+        try {
+          await mongoose.connection.db.collection(relatedCollection).deleteMany(videoFilter);
+        } catch {
+          // Collection inexistante ou erreur ignoree: on continue la suppression de la video
+        }
+      }
+
+      // 4. Suppression des notifications de contenu liees a cette video
+      try {
+        await mongoose.connection.db.collection('notifications').deleteMany({
+          category: 'new-content',
+          targetHref: `/video-detail?id=${id}`,
+        });
+      } catch {
+        // ignore
+      }
     }
 
     let result = await mongoose.connection.db.collection(collection).deleteOne({ _id: id });

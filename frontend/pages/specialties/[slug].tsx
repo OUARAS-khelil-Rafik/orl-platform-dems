@@ -2,10 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
-import { db, collection, query, where, getDocs, doc, updateDoc, arrayUnion, arrayRemove } from '@/lib/api/client';
+import { db, collection, query, where, getDocs, getDoc, doc, updateDoc, arrayUnion, arrayRemove } from '@/lib/api/client';
 import { useRealtimeRefresh } from '@/lib/hooks/useRealtimeRefresh';
 import { motion } from 'motion/react';
-import { PlayCircle, Lock, Clock3, Search, SlidersHorizontal, ListChecks, Stethoscope, MessageSquare, Network, Heart, BookmarkCheck } from 'lucide-react';
+import { PlayCircle, Lock, Clock3, Clock, AlertTriangle, Search, SlidersHorizontal, ListChecks, Stethoscope, MessageSquare, Network, Heart, BookmarkCheck } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/components/providers/auth-provider';
 import { canAccessVideo } from '@/lib/security/access-control';
@@ -55,19 +55,50 @@ const appendUniqueId = (source: string[], id: string) => {
   return [...source, id];
 };
 
-const formatSectionLabel = (section: string) =>
-  section === 'anatomie' ? 'Anatomie' : section === 'pathologie' ? 'Pathologie' : 'Autre';
+const formatSectionLabel = (section: string) => {
+  const s = String(section || '').trim();
+  if (!s) return '';
+  if (s === 'anatomie') return 'Anatomie';
+  if (s === 'pathologie') return 'Pathologie';
+  // Toujours afficher la section liée à la vidéo, jamais "Autre"
+  return s.charAt(0).toUpperCase() + s.slice(1);
+};
 
 const getSectionBadgeClass = (section: string) => {
-  if (section === 'anatomie') {
+  const s = String(section || '').trim().toLowerCase();
+  if (s === 'anatomie') {
     return 'bg-cyan-500/90 text-white border-cyan-300/80';
   }
 
-  if (section === 'pathologie') {
+  if (s === 'pathologie') {
     return 'bg-amber-500/90 text-white border-amber-300/80';
   }
 
   return 'bg-black/60 text-white border-white/20 backdrop-blur-sm';
+};
+
+const formatSubspecialtyLabel = (subspecialty: string, section?: string) => {
+  const s = String(subspecialty || '').trim().toLowerCase();
+  if (s === 'otologie') return 'Otologie';
+  if (s === 'rhinologie') return 'Rhinologie';
+  if (s === 'laryngologie') return 'Laryngologie';
+  // Pas de sous-spécialité reconnue : on affiche la section (Anatomie / Pathologie) à la place de "Autre"
+  return formatSectionLabel(section || '');
+};
+
+const getSubspecialtyBadgeClass = (subspecialty: string, section?: string) => {
+  const s = String(subspecialty || '').trim().toLowerCase();
+  if (s === 'otologie') {
+    return 'bg-orange-500/90 text-white border-orange-300/80';
+  }
+  if (s === 'rhinologie') {
+    return 'bg-cyan-500/90 text-white border-cyan-300/80';
+  }
+  if (s === 'laryngologie') {
+    return 'bg-rose-500/90 text-white border-rose-300/80';
+  }
+  // Fallback : utiliser la couleur de la section (Anatomie = cyan, Pathologie = ambré)
+  return getSectionBadgeClass(section || '');
 };
 
 const formatMinutesAsHHMM = (totalMinutes: number) => {
@@ -356,12 +387,61 @@ export default function SpecialtyPage() {
   const fetchVideos = useCallback(async () => {
     if (!router.isReady || !slug) return;
     try {
-      const q = query(collection(db, 'videos'), where('subspecialty', '==', slug));
-      const querySnapshot = await getDocs(q);
-      const fetchedVideos = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Video));
-      setVideos(fetchedVideos);
+      // 1. Vidéos de la spécialité courante
+      const specialtySnap = await getDocs(query(collection(db, 'videos'), where('subspecialty', '==', slug)));
+      const specialtyVideos = specialtySnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Video));
+
+      // 2. Vidéos sans subspecialty (placeholders créés à l'import) qui ont des contenus associés
+      // dans cette spécialité. On récupère tous les contenus pour trouver les videoId orphelins.
+      const [qcmSnap, caseSnap, openSnap, diagramSnap] = await Promise.all([
+        getDocs(collection(db, 'qcms')),
+        getDocs(collection(db, 'clinicalCases')),
+        getDocs(collection(db, 'openQuestions')),
+        getDocs(collection(db, 'diagrams')),
+      ]);
+
+      const specialtyVideoIds = new Set(specialtyVideos.map(v => v.id));
+      const orphanVideoIds = new Set<string>();
+
+      const addOrphanIds = (snap: { docs: Array<{ data: () => any }> }) => {
+        snap.docs.forEach((entry) => {
+          const data = entry.data();
+          if (data.videoId && !specialtyVideoIds.has(data.videoId)) {
+            orphanVideoIds.add(data.videoId);
+          }
+        });
+      };
+      addOrphanIds(qcmSnap);
+      addOrphanIds(caseSnap);
+      addOrphanIds(openSnap);
+      addOrphanIds(diagramSnap);
+
+      let orphanVideos: Video[] = [];
+      if (orphanVideoIds.size > 0) {
+        const orphanIds = Array.from(orphanVideoIds);
+        for (const id of orphanIds) {
+          try {
+            const vDoc = await getDoc(doc(db, 'videos', id));
+            if (vDoc.exists()) {
+              const v = { id: vDoc.id, ...vDoc.data() } as Video;
+              const vs = String(v.subspecialty || '').trim().toLowerCase();
+              // Inclut les vidéos sans subspecialty (orphelines d'import) ou dont le sous-spécialité
+              // correspond à la spécialité courante (casse ignorée) — utile pour les vidéos
+              // importées dont le libellé Excel avait une casse différente (ex: "Otologie").
+              if (!vs || vs === slug) {
+                orphanVideos.push(v);
+              }
+            }
+          } catch {
+            // Ignore les erreurs de lecture individuelle
+          }
+        }
+      }
+
+      setVideos([...specialtyVideos, ...orphanVideos]);
     } catch (error) {
       console.error('Error fetching videos:', error);
+      setVideos([]);
     } finally {
       setLoading(false);
     }
@@ -395,7 +475,7 @@ export default function SpecialtyPage() {
 
   useEffect(() => {
     void fetchVideos();
-  }, [fetchVideos]);
+  }, [fetchVideos, profile]);
 
   useEffect(() => {
     void fetchCounts();
@@ -486,6 +566,15 @@ export default function SpecialtyPage() {
   const normalizedFilter = trimmedNameFilter.toLowerCase();
 
   const filteredVideos = videos.filter((video) => {
+    // Les vidéos sans upload (cours "à venir") ne sont visibles que pour Admin et VIP Plus
+    // Après un logout (profile indéfini), elles sont aussi masquées
+    if (!video.url) {
+      const isAuthorized = profile?.role === 'admin' || profile?.role === 'vip_plus';
+      if (!isAuthorized) {
+        return false;
+      }
+    }
+
     if (trimmedNameFilter.length > 0) {
       if (nameRegex) {
         if (!nameRegex.test(video.title)) {
@@ -499,7 +588,7 @@ export default function SpecialtyPage() {
       }
     }
 
-    if (sectionFilter !== 'all' && video.section !== sectionFilter) {
+    if (sectionFilter !== 'all' && String(video.section || '').trim().toLowerCase() !== sectionFilter) {
       return false;
     }
 
@@ -521,6 +610,11 @@ export default function SpecialtyPage() {
   const filteredImportantCount = filteredVideos.filter((video) => importantVideoIdSet.has(video.id)).length;
   const specialtyFavoriteCount = videos.filter((video) => favoriteVideoIdSet.has(video.id)).length;
   const specialtyImportantCount = videos.filter((video) => importantVideoIdSet.has(video.id)).length;
+  const filteredComingSoonCount = filteredVideos.filter((video) => {
+    const counts = contentCounts[video.id] ?? { qcm: 0, cases: 0, open: 0, diagrams: 0 };
+    const hasContent = counts.qcm > 0 || counts.cases > 0 || counts.open > 0 || counts.diagrams > 0;
+    return !video.url && hasContent;
+  }).length;
 
   const withBusyFlag = (videoId: string, isBusy: boolean) => {
     setFavoritesBusyById((prev) => {
@@ -727,6 +821,9 @@ export default function SpecialtyPage() {
               <span className="inline-flex items-center rounded-full border px-3 py-1" style={{ backgroundColor: 'var(--hero-chip-bg)', borderColor: 'var(--hero-chip-border)', color: 'var(--hero-chip-text)' }}>
                 {specialtyImportantCount} importantes
               </span>
+              <span className="inline-flex items-center rounded-full border px-3 py-1" style={{ backgroundColor: 'var(--hero-chip-bg)', borderColor: 'var(--hero-chip-border)', color: 'var(--hero-chip-text)' }}>
+                {filteredComingSoonCount} bientot disponibles
+              </span>
             </motion.div>
           </div>
           
@@ -818,6 +915,9 @@ export default function SpecialtyPage() {
                 <span className="inline-flex items-center rounded-full bg-amber-50 border border-amber-200 px-3 py-1 text-amber-700">
                   {filteredImportantCount} importantes
                 </span>
+                <span className="inline-flex items-center rounded-full bg-amber-100 border border-amber-200 px-3 py-1 text-amber-700">
+                  {filteredComingSoonCount} bientot disponibles
+                </span>
               </div>
             </div>
 
@@ -906,6 +1006,7 @@ function VideoCard({
   const [durationLabel, setDurationLabel] = useState(() => formatVideoDuration(video));
 
   const primaryVideoUrl = String(video.parts?.[0]?.secureUrl || video.url || '').trim();
+  const hasVideo = primaryVideoUrl.length > 0;
   const thumbnailUrl = getVideoThumbnailUrl(primaryVideoUrl, thumbnailSecond);
 
   useEffect(() => {
@@ -967,133 +1068,224 @@ function VideoCard({
       transition={{ delay: index * 0.05 }}
       className="premium-panel rounded-2xl border border-[var(--app-border)] overflow-hidden shadow-sm hover:shadow-md transition-all hover:-translate-y-0.5 group flex flex-col interactive-card"
     >
-      <div
-        className="aspect-video relative bg-[var(--app-deep-surface)] overflow-hidden"
-        onMouseEnter={handlePreviewStart}
-        onMouseLeave={handlePreviewStop}
-        onFocus={handlePreviewStart}
-        onBlur={handlePreviewStop}
-      >
-        <Image
-          src={thumbnailUrl || VIDEO_FALLBACK_SRC}
-          alt={video.title}
-          fill
-          sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
-          className={`object-cover transition-opacity duration-300 ${
-            isPreviewPlaying ? 'opacity-0' : 'opacity-60 group-hover:opacity-80'
-          }`}
-          loading={index === 0 ? 'eager' : 'lazy'}
-          fetchPriority={index === 0 ? 'high' : 'auto'}
-          referrerPolicy="no-referrer"
-          onError={(event) => {
-            if (thumbnailSecond !== 0) {
-              setThumbnailSecond(0);
-              return;
-            }
+      {hasVideo ? (
+        <div
+          className="aspect-video relative bg-[var(--app-deep-surface)] overflow-hidden"
+          onMouseEnter={handlePreviewStart}
+          onMouseLeave={handlePreviewStop}
+          onFocus={handlePreviewStart}
+          onBlur={handlePreviewStop}
+        >
+          <Image
+            src={thumbnailUrl || VIDEO_FALLBACK_SRC}
+            alt={video.title}
+            fill
+            sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
+            className={`object-cover transition-opacity duration-300 ${
+              isPreviewPlaying ? 'opacity-0' : 'opacity-60 group-hover:opacity-80'
+            }`}
+            loading={index === 0 ? 'eager' : 'lazy'}
+            fetchPriority={index === 0 ? 'high' : 'auto'}
+            referrerPolicy="no-referrer"
+            onError={(event) => {
+              if (thumbnailSecond !== 0) {
+                setThumbnailSecond(0);
+                return;
+              }
 
-            applyImageFallback(event, VIDEO_FALLBACK_SRC);
-          }}
-        />
-        {hasInlinePreview && (
-          <video
-            ref={previewRef}
-            src={primaryVideoUrl}
-            muted
-            loop
-            playsInline
-            preload="metadata"
-            onLoadedMetadata={(event) => updateDurationFromMetadata(Number(event.currentTarget.duration))}
-            className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-300 ${
-              isPreviewPlaying ? 'opacity-100' : 'opacity-0'
-            }`}
+              applyImageFallback(event, VIDEO_FALLBACK_SRC);
+            }}
           />
-        )}
-        {durationLabel === EMPTY_DURATION_LABEL && primaryVideoUrl && !/youtube\.com|youtu\.be/i.test(primaryVideoUrl) && !hasInlinePreview && (
-          <video
-            src={primaryVideoUrl}
-            preload="metadata"
-            className="hidden"
-            onLoadedMetadata={(event) => updateDurationFromMetadata(Number(event.currentTarget.duration))}
-          />
-        )}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-transparent" />
-        <div className="absolute top-3 left-3 flex items-center gap-2">
-          <span
-            className={`text-[10px] sm:text-xs font-bold px-2 py-1 rounded-md uppercase tracking-wider backdrop-blur-sm border ${getSectionBadgeClass(video.section)}`}
-          >
-            {formatSectionLabel(video.section)}
-          </span>
-          <span
-            className={`text-[10px] sm:text-xs font-bold px-2 py-1 rounded-md uppercase tracking-wider backdrop-blur-sm border ${
-              isViewed
-                ? 'bg-emerald-500/85 text-white border-emerald-300/70'
-                : 'bg-black/60 text-white border-white/20'
-            }`}
-          >
-            {isViewed ? 'Vue' : 'Non vue'}
-          </span>
-        </div>
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div className="flex items-center gap-2 sm:gap-3">
-            <button
-              type="button"
-              onClick={onToggleFavorite}
-              disabled={arePlaylistActionsDisabled}
-              className={`inline-flex h-10 w-10 sm:h-11 sm:w-11 items-center justify-center rounded-full border backdrop-blur-sm transition-transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-rose-300 disabled:cursor-not-allowed disabled:opacity-60 ${
-                isFavorite
-                  ? 'border-rose-200/80 bg-rose-500/80 text-white'
-                  : 'border-white/45 bg-black/35 text-white hover:bg-black/50'
+          {hasInlinePreview && (
+            <video
+              ref={previewRef}
+              src={primaryVideoUrl}
+              muted
+              loop
+              playsInline
+              preload="metadata"
+              onLoadedMetadata={(event) => updateDurationFromMetadata(Number(event.currentTarget.duration))}
+              className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-300 ${
+                isPreviewPlaying ? 'opacity-100' : 'opacity-0'
               }`}
-              aria-label={isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}
-              title={isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}
+            />
+          )}
+          {durationLabel === EMPTY_DURATION_LABEL && primaryVideoUrl && !/youtube\.com|youtu\.be/i.test(primaryVideoUrl) && !hasInlinePreview && (
+            <video
+              src={primaryVideoUrl}
+              preload="metadata"
+              className="hidden"
+              onLoadedMetadata={(event) => updateDurationFromMetadata(Number(event.currentTarget.duration))}
+            />
+          )}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-transparent" />
+          <div className="absolute top-3 left-3 flex flex-col sm:flex-row gap-2">
+            <span
+              className={`text-[10px] sm:text-xs font-bold px-2 py-1 rounded-md uppercase tracking-wider backdrop-blur-sm border ${getSubspecialtyBadgeClass(video.subspecialty, video.section)}`}
             >
-              <Heart className={`h-5 w-5 ${isFavorite ? 'fill-current' : ''}`} />
-            </button>
-
-            {hasAccess ? (
-              <Link
-                href={`/videos/${video.id}`}
-                aria-label={`Ouvrir le contenu de ${video.title}`}
-                className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-black/35 backdrop-blur-sm border border-white/30 flex items-center justify-center group-hover:scale-110 transition-transform focus:outline-none focus:ring-2 focus:ring-white/70"
+              {formatSubspecialtyLabel(video.subspecialty, video.section)}
+            </span>
+            <span
+              className={`text-[10px] sm:text-xs font-bold px-2 py-1 rounded-md uppercase tracking-wider backdrop-blur-sm border ${getSectionBadgeClass(video.section)}`}
+            >
+              {formatSectionLabel(video.section)}
+            </span>
+            <span
+              className={`text-[10px] sm:text-xs font-bold px-2 py-1 rounded-md uppercase tracking-wider backdrop-blur-sm border ${
+                isViewed
+                  ? 'bg-emerald-500/85 text-white border-emerald-300/70'
+                  : 'bg-black/60 text-white border-white/20'
+              }`}
+            >
+              {isViewed ? 'Vue' : 'Non vue'}
+            </span>
+          </div>
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <button
+                type="button"
+                onClick={onToggleFavorite}
+                disabled={arePlaylistActionsDisabled}
+                className={`inline-flex h-10 w-10 sm:h-11 sm:w-11 items-center justify-center rounded-full border backdrop-blur-sm transition-transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-rose-300 disabled:cursor-not-allowed disabled:opacity-60 ${
+                  isFavorite
+                    ? 'border-rose-200/80 bg-rose-500/80 text-white'
+                    : 'border-white/45 bg-black/35 text-white hover:bg-black/50'
+                }`}
+                aria-label={isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}
+                title={isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}
               >
-                <PlayCircle className="h-7 w-7 sm:h-8 sm:w-8 text-white" />
-              </Link>
-            ) : (
-              <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-black/55 backdrop-blur-sm border border-white/20 flex items-center justify-center">
-                <Lock className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
-              </div>
-            )}
+                <Heart className={`h-5 w-5 ${isFavorite ? 'fill-current' : ''}`} />
+              </button>
 
-            <button
-              type="button"
-              onClick={onToggleImportant}
-              disabled={arePlaylistActionsDisabled}
-              className={`inline-flex h-10 w-10 sm:h-11 sm:w-11 items-center justify-center rounded-full border backdrop-blur-sm transition-transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-amber-300 disabled:cursor-not-allowed disabled:opacity-60 ${
-                isImportant
-                  ? 'border-amber-200/80 bg-amber-500/80 text-white'
-                  : 'border-white/45 bg-black/35 text-white hover:bg-black/50'
-              }`}
-              aria-label={isImportant ? 'Retirer des importantes' : 'Marquer comme importante'}
-              title={isImportant ? 'Retirer des importantes' : 'Marquer comme importante'}
-            >
-              <BookmarkCheck className="h-5 w-5" />
-            </button>
+              {hasAccess ? (
+                <Link
+                  href={`/videos/${video.id}`}
+                  aria-label={`Ouvrir le contenu de ${video.title}`}
+                  className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-black/35 backdrop-blur-sm border border-white/30 flex items-center justify-center group-hover:scale-110 transition-transform focus:outline-none focus:ring-2 focus:ring-white/70"
+                >
+                  <PlayCircle className="h-7 w-7 sm:h-8 sm:w-8 text-white" />
+                </Link>
+              ) : (
+                <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-black/55 backdrop-blur-sm border border-white/20 flex items-center justify-center">
+                  <Lock className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={onToggleImportant}
+                disabled={arePlaylistActionsDisabled}
+                className={`inline-flex h-10 w-10 sm:h-11 sm:w-11 items-center justify-center rounded-full border backdrop-blur-sm transition-transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-amber-300 disabled:cursor-not-allowed disabled:opacity-60 ${
+                  isImportant
+                    ? 'border-amber-200/80 bg-amber-500/80 text-white'
+                    : 'border-white/45 bg-black/35 text-white hover:bg-black/50'
+                }`}
+                aria-label={isImportant ? 'Retirer des importantes' : 'Marquer comme importante'}
+                title={isImportant ? 'Retirer des importantes' : 'Marquer comme importante'}
+              >
+                <BookmarkCheck className="h-5 w-5" />
+              </button>
+            </div>
+          </div>
+          <div
+            className={`absolute top-3 right-3 text-white text-xs font-bold px-2 py-1 rounded-md uppercase tracking-wider ${statusClass}`}
+          >
+            {statusLabel}
           </div>
         </div>
-        <div
-          className={`absolute top-3 right-3 text-white text-xs font-bold px-2 py-1 rounded-md uppercase tracking-wider ${statusClass}`}
-        >
-          {statusLabel}
+      ) : (
+        <div className="aspect-video relative bg-[var(--app-surface-alt)] overflow-hidden flex items-center justify-center">
+          <div className="text-center p-8">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-amber-500/10 border border-amber-200/50 mb-4 text-amber-600">
+              <Clock className="w-8 h-8" />
+            </div>
+            <div className="absolute inset-0 bg-gradient-to-t from-black/5 via-transparent to-transparent" />
+            <div className="absolute top-3 left-3 flex flex-col sm:flex-row gap-2">
+              <span
+                className={`text-[10px] sm:text-xs font-bold px-2 py-1 rounded-md uppercase tracking-wider backdrop-blur-sm border ${getSubspecialtyBadgeClass(video.subspecialty, video.section)}`}
+              >
+                {formatSubspecialtyLabel(video.subspecialty, video.section)}
+              </span>
+              <span
+                className={`text-[10px] sm:text-xs font-bold px-2 py-1 rounded-md uppercase tracking-wider backdrop-blur-sm border ${getSectionBadgeClass(video.section)}`}
+              >
+                {formatSectionLabel(video.section)}
+              </span>
+              <span
+                className={`text-[10px] sm:text-xs font-bold px-2 py-1 rounded-md uppercase tracking-wider backdrop-blur-sm border bg-amber-500/85 text-white border-amber-300/70`}
+              >
+                Bientot
+              </span>
+            </div>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="flex items-center gap-2 sm:gap-3">
+                <button
+                  type="button"
+                  onClick={onToggleFavorite}
+                  disabled={arePlaylistActionsDisabled}
+                  className={`inline-flex h-10 w-10 sm:h-11 sm:w-11 items-center justify-center rounded-full border backdrop-blur-sm transition-transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-rose-300 disabled:cursor-not-allowed disabled:opacity-60 ${
+                    isFavorite
+                      ? 'border-rose-200/80 bg-rose-500/80 text-white'
+                      : 'border-white/45 bg-black/35 text-white hover:bg-black/50'
+                  }`}
+                  aria-label={isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}
+                  title={isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}
+                >
+                  <Heart className={`h-5 w-5 ${isFavorite ? 'fill-current' : ''}`} />
+                </button>
+                <Link
+                  href={`/videos/${video.id}`}
+                  aria-label={`Ouvrir le contenu de ${video.title}`}
+                  className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-black/35 backdrop-blur-sm border border-white/30 flex items-center justify-center group-hover:scale-110 transition-transform focus:outline-none focus:ring-2 focus:ring-white/70"
+                >
+                  <PlayCircle className="h-7 w-7 sm:h-8 sm:w-8 text-white" />
+                </Link>
+                <button
+                  type="button"
+                  onClick={onToggleImportant}
+                  disabled={arePlaylistActionsDisabled}
+                  className={`inline-flex h-10 w-10 sm:h-11 sm:w-11 items-center justify-center rounded-full border backdrop-blur-sm transition-transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-amber-300 disabled:cursor-not-allowed disabled:opacity-60 ${
+                    isImportant
+                      ? 'border-amber-200/80 bg-amber-500/80 text-white'
+                      : 'border-white/45 bg-black/35 text-white hover:bg-black/50'
+                  }`}
+                  aria-label={isImportant ? 'Retirer des importantes' : 'Marquer comme importante'}
+                  title={isImportant ? 'Retirer des importantes' : 'Marquer comme importante'}
+                >
+                  <BookmarkCheck className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+            <div
+              className="absolute top-3 right-3 text-amber-600 text-xs font-bold px-2 py-1 rounded-md uppercase tracking-wider border border-amber-200 bg-amber-50"
+            >
+              Sera disponible
+            </div>
+          </div>
         </div>
-      </div>
+      )}
       <div className="p-4 sm:p-5 flex-1 flex flex-col">
         <h3 className="text-base sm:text-lg font-bold text-[var(--app-text)] mb-2 line-clamp-2 break-words">{video.title}</h3>
-        <p className="text-sm text-[var(--app-muted)] mb-4 line-clamp-2 flex-1 break-words">{video.description}</p>
+        {hasVideo ? (
+          <p className="text-sm text-[var(--app-muted)] mb-4 line-clamp-2 flex-1 break-words">{video.description}</p>
+        ) : (
+          <p className="text-sm text-[color-mix(in_oklab,var(--app-text)_60%,var(--app-muted)_40%)] mb-4 line-clamp-2 flex-1 break-words">
+            Ce cours sera disponible dans le futur. Vous pouvez deja consulter ses ressources pedagogiques ci-dessous.
+          </p>
+        )}
         <div className="mb-4 flex flex-wrap items-center gap-2 text-xs font-semibold text-[var(--app-text)]">
-          <span className="inline-flex items-center gap-2 rounded-full bg-[var(--app-surface-2)] border border-[var(--app-border)] px-2.5 py-1.5">
-            <Clock3 className="h-3.5 w-3.5" />
-            <span>{durationLabel}</span>
-          </span>
+          {!hasVideo && (
+            <span className="inline-flex items-center gap-2 rounded-full bg-amber-50 border border-amber-200 px-2.5 py-1 text-amber-700">
+              <Clock className="h-3.5 w-3.5" />
+              <span>Bientot disponible</span>
+            </span>
+          )}
+          {hasVideo && (
+            <span className="inline-flex items-center gap-2 rounded-full bg-[var(--app-surface-2)] border border-[var(--app-border)] px-2.5 py-1.5">
+              <Clock3 className="h-3.5 w-3.5" />
+              <span>{durationLabel}</span>
+            </span>
+          )}
 
           <span
             className="inline-flex items-center gap-1.5 rounded-full bg-blue-100 text-blue-800 border border-blue-200 px-2.5 py-1"
@@ -1131,8 +1323,17 @@ function VideoCard({
             <strong>{counts.diagrams}</strong>
           </span>
         </div>
-        
-        {hasAccess ? null : (
+
+        {!hasVideo ? (
+          <div className="mt-auto pt-4 border-t border-[var(--app-border)]">
+            <span className="text-xs text-[var(--app-muted)] flex items-center gap-1">
+              <AlertTriangle className="w-3 h-3" />
+              Le contenu video sera ajoute prochainement.
+            </span>
+          </div>
+        ) : null}
+
+        {hasVideo && !hasAccess ? (
           <div className="flex items-center justify-between gap-2">
             <span className="text-lg font-bold text-[var(--app-text)]">{video.price} DZD</span>
             <button
@@ -1144,7 +1345,7 @@ function VideoCard({
               {lockActionLabel}
             </button>
           </div>
-        )}
+        ) : null}
       </div>
     </motion.div>
   );

@@ -945,7 +945,7 @@ export default function UserDashboard() {
               <div className="rounded-2xl p-2 sm:p-4 backdrop-blur-sm">
                 <div className="flex flex-col items-center text-center">
                   <div className="relative mb-4 sm:mb-6">
-                    <div className="relative w-28 h-28 sm:w-36 sm:h-36 md:w-40 md:h-40 rounded-full overflow-hidden bg-slate-100 border-4 border-white shadow-[0_24px_48px_-24px_rgba(0,0,0,0.85)]">
+                    <div className="relative w-28 h-28 sm:w-36 sm:h-36 md:w-40 md:h-40 rounded-full overflow-hidden bg-[var(--app-surface-alt)] border-4 border-white shadow-[0_24px_48px_-24px_rgba(0,0,0,0.85)]">
                       {profile.photoURL ? (
                         <Image
                           src={profile.photoURL}
@@ -996,12 +996,12 @@ export default function UserDashboard() {
                 <p className="text-sm leading-relaxed text-(--hero-body)">Gérez votre profil, votre sécurité et vos accès pédagogiques depuis un seul espace.</p>
 
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-xl border border-white/25 bg-white/10 px-4 py-3">
+                  <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-alt)] px-4 py-3">
                     <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-(--hero-body)">Email</p>
                     <p className="mt-1 text-sm font-medium break-all text-(--hero-title)">{profile.email}</p>
                   </div>
 
-                  <div className="rounded-xl border border-white/25 bg-white/10 px-4 py-3">
+                  <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-alt)] px-4 py-3">
                     <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-(--hero-body)">Role</p>
                     <div className="mt-1">
                       <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${

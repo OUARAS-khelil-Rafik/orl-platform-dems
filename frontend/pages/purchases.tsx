@@ -25,15 +25,17 @@ import {
   CheckCircle2,
   AlertCircle,
   CreditCard,
+  Trash2,
   Library,
   BookmarkCheck,
   Trophy,
 } from 'lucide-react';
 import Image from 'next/image';
 import { useAuth } from '@/components/providers/auth-provider';
-import { collection, db, doc, getDoc, getDocs, query, where } from '@/lib/api/client';
+import { collection, db, doc, getDoc, getDocs, query, where, deleteDoc } from '@/lib/api/client';
 import { VIDEO_FALLBACK_SRC, applyImageFallback } from '@/lib/utils/media-fallback';
 import { useRealtimeRefresh } from '@/lib/hooks/useRealtimeRefresh';
+import { ConfirmModal } from '@/components/ui/confirm-modal';
 
 type PaymentStatus = 'approved' | 'pending' | 'rejected';
 
@@ -177,6 +179,11 @@ export default function PurchasesPage() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'packs' | 'videos' | 'history'>('packs');
   const [videoSearch, setVideoSearch] = useState('');
+
+  // Suppression historique paiements
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [confirmDeleteTarget, setConfirmDeleteTarget] = useState<'all' | string>('all');
+  const [isDeletingPayment, setIsDeletingPayment] = useState(false);
 
   const isLightMode = themeMode === 'light';
   const subtleText = 'color-mix(in oklab, var(--app-text) 68%, var(--app-muted) 32%)';
@@ -402,7 +409,16 @@ export default function PurchasesPage() {
         })();
         const createdAtText = typeof payment?.createdAt === 'string' ? new Date(payment.createdAt).toLocaleString('fr-FR') : 'Date inconnue';
         const methodRaw = String(payment?.method || '').toLowerCase();
-        const methodLabel = methodRaw === 'virement' ? 'Virement' : methodRaw === 'baridimob' ? 'BaridiMob' : methodRaw ? methodRaw : 'Non précisée';
+        const methodLabel =
+          methodRaw === 'chargily'
+            ? 'Non précisée'
+            : methodRaw === 'virement'
+              ? 'Virement'
+              : methodRaw === 'baridimob'
+                ? 'BaridiMob'
+                : methodRaw
+                  ? methodRaw
+                  : 'Non précisée';
         return {
           id: String(payment?.id || `${createdAtText}-${description}`),
           status,
@@ -425,6 +441,48 @@ export default function PurchasesPage() {
     }),
     [paymentRequests],
   );
+
+  // ─────────────────────────────────────────
+  // Suppression historique paiements
+  // ─────────────────────────────────────────
+  const handleDeletePayment = async (paymentId: string) => {
+    if (!user) return;
+    const confirmed = window.confirm('Voulez-vous vraiment supprimer cet élément de l\'historique ?');
+    if (!confirmed) return;
+
+    setIsDeletingPayment(true);
+    try {
+      await deleteDoc(doc(db, 'payments', paymentId));
+      setPayments((prev) => prev.filter((p) => p.id !== paymentId));
+    } catch (error) {
+      console.error('Error deleting payment:', error);
+      alert('Erreur lors de la suppression du paiement.');
+    } finally {
+      setIsDeletingPayment(false);
+    }
+  };
+
+  const handleDeleteAllPayments = async () => {
+    if (!user) return;
+    setConfirmDeleteTarget('all');
+    setConfirmDeleteOpen(true);
+  };
+
+  const executeDeleteAllPayments = async () => {
+    if (!user) return;
+    setIsDeletingPayment(true);
+    try {
+      const paymentsSnap = await getDocs(query(collection(db, 'payments'), where('userId', '==', user.uid)));
+      await Promise.all(paymentsSnap.docs.map((docSnap) => deleteDoc(doc(db, 'payments', docSnap.id))));
+      setPayments([]);
+      setConfirmDeleteOpen(false);
+    } catch (error) {
+      console.error('Error deleting all payments:', error);
+      alert('Erreur lors de la suppression de l\'historique.');
+    } finally {
+      setIsDeletingPayment(false);
+    }
+  };
 
   const filteredVideoIds = useMemo(() => {
     if (!videoSearch.trim()) return effectivePurchasedVideoIds;
@@ -454,8 +512,9 @@ export default function PurchasesPage() {
   const libraryProgress = totalLibraryItems > 0 ? 100 : 0; // placeholder for future progress
 
   return (
-    <div className="flex-1 min-h-screen py-6 sm:py-8" style={{ background: pageBackground }}>
-      <div className="max-w-[1160px] mx-auto px-4 sm:px-6">
+    <>
+      <div className="flex-1 min-h-screen py-6 sm:py-8" style={{ background: pageBackground }}>
+        <div className="max-w-[1160px] mx-auto px-4 sm:px-6">
         {/* ── Hero ── */}
         <motion.div
           initial={{ opacity: 0, y: 12 }}
@@ -757,6 +816,21 @@ export default function PurchasesPage() {
                 <motion.div key="history" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }}>
                   {paymentRequests.length > 0 ? (
                     <div className="space-y-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="inline-flex items-center rounded-full border border-[var(--app-border)] bg-[var(--app-surface)] px-2.5 py-1 text-xs font-semibold text-[var(--app-text)]">
+                          {paymentRequests.length} paiement{paymentRequests.length > 1 ? 's' : ''}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleDeleteAllPayments}
+                          disabled={isDeletingPayment}
+                          className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-medium border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 hover:border-red-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          title="Supprimer tout l'historique"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          <span>Supprimer tout</span>
+                        </button>
+                      </div>
                       {paymentRequests.map((payment) => (
                         <div key={payment.id} className="group rounded-2xl border p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:shadow-sm hover:-translate-y-px transition-all" style={{ background: 'var(--app-surface)', borderColor: 'color-mix(in oklab, var(--app-border) 70%, transparent)' }}>
                           <div className="min-w-0 flex-1">
@@ -778,6 +852,15 @@ export default function PurchasesPage() {
                             <span className="hidden sm:inline-flex w-8 h-8 rounded-xl items-center justify-center border" style={{ background: payment.tone.bg, borderColor: payment.tone.border, color: payment.tone.text }}>
                               {payment.status === 'approved' ? <CheckCircle2 className="w-4 h-4" /> : payment.status === 'rejected' ? <X className="w-4 h-4" /> : <Clock3 className="w-4 h-4" />}
                             </span>
+                            <button
+                              type="button"
+                              onClick={() => handleDeletePayment(payment.id)}
+                              disabled={isDeletingPayment}
+                              className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              title="Supprimer ce paiement de l'historique"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
                           </div>
                         </div>
                       ))}
@@ -836,5 +919,17 @@ export default function PurchasesPage() {
         </div>
       </div>
     </div>
+
+    <ConfirmModal
+      isOpen={confirmDeleteOpen}
+      title="Supprimer tout l'historique de paiement"
+      message="Cette action supprimera définitivement tous vos paiements de l'historique. Cette opération est irréversible."
+      confirmLabel="Supprimer tout"
+      cancelLabel="Annuler"
+      onConfirm={executeDeleteAllPayments}
+      onCancel={() => setConfirmDeleteOpen(false)}
+      isConfirming={isDeletingPayment}
+    />
+  </>
   );
 }

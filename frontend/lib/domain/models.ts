@@ -42,6 +42,8 @@ export interface QcmModel {
   correctOptionIndexes?: number[];
   explanation?: string;
   reference?: string;
+  subspecialty?: string;
+  section?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -91,6 +93,8 @@ export interface ClinicalCaseModel {
   discussion?: string;
   images?: string[];
   reference?: string;
+  subspecialty?: string;
+  section?: string;
   questions?: CaseQuestionModel[];
   createdAt?: string;
   updatedAt?: string;
@@ -102,6 +106,8 @@ export interface OpenQuestionModel {
   question: string;
   answer: string;
   reference?: string;
+  subspecialty?: string;
+  section?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -122,6 +128,8 @@ export interface DiagramModel {
   markers: DiagramMarkerModel[];
   description?: string;
   reference?: string;
+  subspecialty?: string;
+  section?: string;
   createdAt?: string;
   updatedAt?: string;
 }

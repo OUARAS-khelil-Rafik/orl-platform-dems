@@ -327,6 +327,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await localSignOut(auth);
     setUser(null);
     setProfile(null);
+
+    // Recharger la page pour réinitialiser toutes les données (filtrage des vidéos, etc.)
+    if (typeof window !== 'undefined') {
+      window.location.reload();
+    }
   };
 
   useEffect(() => {

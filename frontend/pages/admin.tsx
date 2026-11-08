@@ -21,6 +21,7 @@ import {
 } from '@/lib/api/client';
 import { motion } from 'motion/react';
 import Image from 'next/image';
+import { ConfirmModal } from '@/components/ui/confirm-modal';
 import {
   Users,
   CreditCard,
@@ -57,6 +58,8 @@ import {
   Banknote,
   TrendingUp,
   Filter,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { useRouter } from 'next/router';
 import { AdminContentManager } from '@/components/features/admin/content-manager';
@@ -215,7 +218,13 @@ export default function AdminDashboard() {
   const [historyTypeFilter, setHistoryTypeFilter] = useState<'all' | 'subscription' | 'pack' | 'cart'>('all');
   const [historyMethodFilter, setHistoryMethodFilter] = useState<string>('all');
   const [historyPeriodFilter, setHistoryPeriodFilter] = useState<'all' | 'today' | 'week' | 'month' | 'year'>('all');
-  const [historyVisibleCount, setHistoryVisibleCount] = useState(25);
+  const [historyPage, setHistoryPage] = useState(1);
+  const HISTORY_PAGE_SIZE = 10;
+
+  // Suppression historique paiements (admin)
+  const [confirmDeletePaymentOpen, setConfirmDeletePaymentOpen] = useState(false);
+  const [confirmDeletePaymentTarget, setConfirmDeletePaymentTarget] = useState<'all' | string>('all');
+  const [isDeletingPayment, setIsDeletingPayment] = useState(false);
   const [videos, setVideos] = useState<AdminVideo[]>([]);
   const [qcms, setQcms] = useState<AdminQcm[]>([]);
   const [openQuestions, setOpenQuestions] = useState<AdminOpenQuestion[]>([]);
@@ -305,7 +314,7 @@ export default function AdminDashboard() {
     const set = new Set<string>();
     allPayments.forEach((p) => {
       const m = String(p.method || '').trim().toLowerCase();
-      if (m) set.add(m);
+      if (m && m !== 'chargily') set.add(m);
     });
     return Array.from(set).sort();
   }, [allPayments]);
@@ -370,8 +379,11 @@ export default function AdminDashboard() {
   }, [allPayments, users, historySearch, historyStatusFilter, historyTypeFilter, historyMethodFilter, historyPeriodFilter]);
 
   const historyVisiblePayments = useMemo(
-    () => historyFilteredPayments.slice(0, historyVisibleCount),
-    [historyFilteredPayments, historyVisibleCount],
+    () => {
+      const start = (historyPage - 1) * HISTORY_PAGE_SIZE;
+      return historyFilteredPayments.slice(start, start + HISTORY_PAGE_SIZE);
+    },
+    [historyFilteredPayments, historyPage],
   );
 
   const historyFilteredRevenue = useMemo(
@@ -449,6 +461,14 @@ export default function AdminDashboard() {
     return 'En attente';
   };
 
+  const getPaymentMethodLabel = (method?: string) => {
+    const m = String(method || '').trim().toLowerCase();
+    if (m === 'chargily') return 'Non précisée';
+    if (m === 'virement') return 'Virement';
+    if (m === 'baridimob') return 'BaridiMob';
+    return m || 'Non précisée';
+  };
+
   const getPaymentTypeLabel = (type?: string, targetId?: string, plan?: string, items?: AdminPayment['items']) => {
     if (type === 'subscription') return `Abonnement ${plan === 'yearly' ? 'Annuel' : plan === 'monthly' ? 'Mensuel' : ''}`.trim();
     if (type === 'pack') return `Pack ${targetId || ''}`.trim();
@@ -463,7 +483,7 @@ export default function AdminDashboard() {
   };
 
   useEffect(() => {
-    setHistoryVisibleCount(25);
+    setHistoryPage(1);
   }, [historySearch, historyStatusFilter, historyTypeFilter, historyMethodFilter, historyPeriodFilter]);
 
   useEffect(() => {
@@ -1188,6 +1208,47 @@ export default function AdminDashboard() {
       alert('Paiement rejeté.');
     } catch (error) {
       console.error('Error rejecting payment:', error);
+    }
+  };
+
+  // ─────────────────────────────────────────
+  // Suppression historique paiements (admin)
+  // ─────────────────────────────────────────
+  const handleDeletePayment = async (paymentId: string) => {
+    const confirmed = window.confirm('Voulez-vous vraiment supprimer ce paiement de l\'historique ?');
+    if (!confirmed) return;
+
+    setIsDeletingPayment(true);
+    try {
+      await deleteDoc(doc(db, 'payments', paymentId));
+      setPayments((prev) => prev.filter((p) => p.id !== paymentId));
+      setAllPayments((prev) => prev.filter((p) => p.id !== paymentId));
+    } catch (error) {
+      console.error('Error deleting payment:', error);
+      alert('Erreur lors de la suppression du paiement.');
+    } finally {
+      setIsDeletingPayment(false);
+    }
+  };
+
+  const handleDeleteAllPayments = () => {
+    setConfirmDeletePaymentTarget('all');
+    setConfirmDeletePaymentOpen(true);
+  };
+
+  const executeDeleteAllPayments = async () => {
+    setIsDeletingPayment(true);
+    try {
+      const paymentsSnap = await getDocs(collection(db, 'payments'));
+      await Promise.all(paymentsSnap.docs.map((docSnap) => deleteDoc(doc(db, 'payments', docSnap.id))));
+      setPayments([]);
+      setAllPayments([]);
+      setConfirmDeletePaymentOpen(false);
+    } catch (error) {
+      console.error('Error deleting all payments:', error);
+      alert('Erreur lors de la suppression de l\'historique.');
+    } finally {
+      setIsDeletingPayment(false);
     }
   };
 
@@ -2416,40 +2477,40 @@ export default function AdminDashboard() {
               <p className="text-3xl font-bold text-slate-900 mt-1">{payments.length}</p>
               <p className="text-xs text-slate-500 mt-1">{totalPendingRevenue.toLocaleString('fr-DZ')} DZD en attente</p>
             </div>
-            <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 px-5 py-4 shadow-sm">
-              <p className="text-sm uppercase tracking-[0.14em] text-emerald-700 flex items-center gap-1.5"><Banknote className="w-4 h-4" /> Paiements approuvés</p>
-              <p className="text-3xl font-bold text-emerald-700 mt-1">{approvedPaymentsCount}</p>
-              <p className="text-xs font-semibold text-emerald-800 mt-1 flex items-center gap-1"><TrendingUp className="w-3.5 h-3.5" /> {totalApprovedRevenue.toLocaleString('fr-DZ')} DZD encaissés</p>
+            <div className="rounded-2xl border border-[color-mix(in_oklab,var(--app-success)_56%,var(--app-border)_44%)] bg-[color-mix(in_oklab,var(--app-success)_20%,var(--app-surface)_80%)] px-5 py-4 shadow-sm">
+              <p className="text-sm uppercase tracking-[0.14em] text-[var(--app-success)] flex items-center gap-1.5"><Banknote className="w-4 h-4" /> Paiements approuvés</p>
+              <p className="text-3xl font-bold text-[var(--app-success)] mt-1">{approvedPaymentsCount}</p>
+              <p className="text-xs font-semibold text-[color-mix(in_oklab,var(--app-success)_78%,var(--app-text)_22%)] mt-1 flex items-center gap-1"><TrendingUp className="w-3.5 h-3.5" /> {totalApprovedRevenue.toLocaleString('fr-DZ')} DZD encaissés</p>
             </div>
-            <div className="rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
-              <p className="text-sm uppercase tracking-[0.14em] text-slate-500">Comptes en attente</p>
-              <p className="text-3xl font-bold text-amber-700 mt-1">{pendingApprovalsCount}</p>
-              <p className="text-xs text-slate-500 mt-1">{rejectedPaymentsCount} rejetés au total</p>
+            <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface-alt)] px-5 py-4 shadow-sm">
+              <p className="text-sm uppercase tracking-[0.14em] text-[var(--app-muted)]">Comptes en attente</p>
+              <p className="text-3xl font-bold text-[var(--app-warning)] mt-1">{pendingApprovalsCount}</p>
+              <p className="text-xs text-[var(--app-muted)] mt-1">{rejectedPaymentsCount} rejetés au total</p>
             </div>
-            <div className="rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
-              <p className="text-sm uppercase tracking-[0.14em] text-slate-500">Comptes bloqués</p>
-              <p className="text-3xl font-bold text-rose-700 mt-1">{blockedUsersCount}</p>
-              <p className="text-xs text-slate-500 mt-1">{allPayments.length} paiements au total</p>
+            <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface-alt)] px-5 py-4 shadow-sm">
+              <p className="text-sm uppercase tracking-[0.14em] text-[var(--app-muted)]">Comptes bloqués</p>
+              <p className="text-3xl font-bold text-[var(--app-danger)] mt-1">{blockedUsersCount}</p>
+              <p className="text-xs text-[var(--app-muted)] mt-1">{allPayments.length} paiements au total</p>
             </div>
           </div>
 
           {activeTab === 'payments' && (
             <div className="space-y-6">
               {/* ── Paiements en attente ── */}
-              <div className="bg-white rounded-2xl shadow-md border border-slate-200 overflow-hidden">
-                <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between gap-3">
+              <div className="bg-[var(--app-surface)] rounded-2xl shadow-md border border-[var(--app-border)] overflow-hidden">
+                <div className="px-6 py-4 border-b border-[var(--app-border)] flex items-center justify-between gap-3">
                   <div>
-                    <h2 className="text-base font-bold text-slate-900 flex items-center gap-2"><CreditCard className="w-5 h-5 text-amber-600" /> Paiements en attente</h2>
-                    <p className="text-xs text-slate-500 mt-0.5">{payments.length} demande(s) à valider • {totalPendingRevenue.toLocaleString('fr-DZ')} DZD</p>
+                    <h2 className="text-base font-bold text-[var(--app-text)] flex items-center gap-2"><CreditCard className="w-5 h-5 text-[var(--app-warning)]" /> Paiements en attente</h2>
+                    <p className="text-xs text-[var(--app-muted)] mt-0.5">{payments.length} demande(s) à valider • {totalPendingRevenue.toLocaleString('fr-DZ')} DZD</p>
                   </div>
                 </div>
                 {payments.length === 0 ? (
-                  <div className="p-10 text-center text-slate-500">Aucun paiement en attente.</div>
+                  <div className="p-10 text-center text-[var(--app-muted)]">Aucun paiement en attente.</div>
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse">
                       <thead>
-                        <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-medium text-sm">
+                        <tr className="bg-[var(--app-surface-alt)] border-b border-[var(--app-border)] text-[color-mix(in_oklab,var(--app-text)_70%,var(--app-muted)_30%)] font-medium text-sm">
                           <th className="p-4">Date</th>
                           <th className="p-4">Utilisateur</th>
                           <th className="p-4">Type</th>
@@ -2459,7 +2520,7 @@ export default function AdminDashboard() {
                           <th className="p-4 text-right">Actions</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-200">
+                      <tbody className="divide-[var(--app-border)]">
                         {payments.map((payment) => {
                           const user = users.find(u => u.id === payment.userId);
                           const splitName = splitFullName(user?.displayName || '');
@@ -2468,32 +2529,32 @@ export default function AdminDashboard() {
                             user?.firstName || splitName.firstName,
                           ) || user?.displayName || 'Inconnu';
                           return (
-                            <tr key={payment.id} className="hover:bg-slate-50 transition-colors">
-                              <td className="p-4 text-sm text-slate-600">{new Date(payment.createdAt).toLocaleDateString('fr-DZ')}</td>
+                            <tr key={payment.id} className="hover:bg-[color-mix(in_oklab,var(--app-surface-alt)_10%,var(--app-bg)_90%)] transition-colors">
+                              <td className="p-4 text-sm text-[color-mix(in_oklab,var(--app-text)_70%,var(--app-muted)_30%)]">{new Date(payment.createdAt).toLocaleDateString('fr-DZ')}</td>
                               <td className="p-4">
-                                <div className="font-medium text-slate-900">{paymentUserName}</div>
-                                <div className="text-xs text-slate-500">{user?.email}</div>
+                                <div className="font-medium text-[var(--app-text)]">{paymentUserName}</div>
+                                <div className="text-xs text-[var(--app-muted)]">{user?.email}</div>
                               </td>
-                              <td className="p-4 text-sm font-medium text-slate-700 capitalize">{payment.type}</td>
-                              <td className="p-4 font-bold text-slate-900">{Number(payment.amount).toLocaleString('fr-DZ')} DZD</td>
-                              <td className="p-4 text-sm font-medium text-slate-700 uppercase">{payment.method}</td>
+                              <td className="p-4 text-sm font-medium text-[var(--app-text)] capitalize">{payment.type}</td>
+                              <td className="p-4 font-bold text-[var(--app-text)]">{Number(payment.amount).toLocaleString('fr-DZ')} DZD</td>
+                              <td className="p-4 text-sm font-medium text-[var(--app-text)] uppercase">{payment.method}</td>
                               <td className="p-4">
                                 {payment.receiptUrl ? (
-                                  <a href={payment.receiptUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-medical-600 hover:underline text-sm font-medium"><Receipt className="w-4 h-4" /> Voir le reçu</a>
+                                  <a href={payment.receiptUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[var(--app-medical)] hover:underline text-sm font-medium"><Receipt className="w-4 h-4" /> Voir le reçu</a>
                                 ) : (
-                                  <span className="text-slate-400 text-sm">Aucun</span>
+                                  <span className="text-[color-mix(in_oklab,var(--app-text)_50%,var(--app-muted)_50%)] text-sm">Aucun</span>
                                 )}
                               </td>
                               <td className="p-4 text-right flex justify-end gap-2">
                                 <button 
                                   onClick={() => handleApprovePayment(payment.id, payment.userId, payment.type, payment.targetId, payment.items, payment.plan)}
-                                  className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors" title="Approuver"
+                                  className="p-2 text-[var(--app-success)] hover:bg-[color-mix(in_oklab,var(--app-success)_20%,var(--app-surface)_80%)] rounded-lg transition-colors" title="Approuver"
                                 >
                                   <CheckCircle className="h-5 w-5" />
                                 </button>
                                 <button 
                                   onClick={() => handleRejectPayment(payment)}
-                                  className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Rejeter"
+                                  className="p-2 text-[var(--app-danger)] hover:bg-[color-mix(in_oklab,var(--app-danger)_20%,var(--app-surface)_80%)] rounded-lg transition-colors" title="Rejeter"
                                 >
                                   <XCircle className="h-5 w-5" />
                                 </button>
@@ -2508,46 +2569,58 @@ export default function AdminDashboard() {
               </div>
 
               {/* ── Historique complet des paiements (reçus) ── */}
-              <div className="bg-white rounded-2xl shadow-md border border-slate-200 overflow-hidden">
-                <div className="px-6 py-5 border-b border-slate-200">
+              <div className="bg-[var(--app-surface)] rounded-2xl shadow-md border border-[var(--app-border)] overflow-hidden">
+                <div className="px-6 py-5 border-b border-[var(--app-border)]">
                   <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                     <div>
-                      <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                        <History className="w-5 h-5 text-medical-600" />
+                      <h2 className="text-lg font-bold text-[var(--app-text)] flex items-center gap-2">
+                        <History className="w-5 h-5 text-[var(--app-medical)]" />
                         Historique des paiements reçus
-                        <span className="ml-1 inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                        <span className="ml-1 inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-[var(--app-surface-alt)] text-[var(--app-text)] border border-[var(--app-border)]">
                           {historyStats.total} paiements
                         </span>
                       </h2>
-                      <p className="text-sm text-slate-500 mt-1">
+                      <p className="text-sm text-[var(--app-muted)] mt-1">
                         Tous les paiements (approuvés, en attente, rejetés) •{' '}
-                        <span className="font-semibold text-emerald-700">{historyFilteredRevenue.toLocaleString('fr-DZ')} DZD encaissés (filtrés)</span>
+                        <span className="font-semibold text-[var(--app-success)]">{historyFilteredRevenue.toLocaleString('fr-DZ')} DZD encaissés (filtrés)</span>
                         {historyFilteredPayments.length !== allPayments.length && (
                           <span> • {allPayments.length} au total</span>
                         )}
                       </p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={handleExportHistoryCsv}
-                      disabled={historyFilteredPayments.length === 0}
-                      className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 text-white text-sm font-semibold hover:bg-slate-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"
-                      title="Exporter l'historique filtré en CSV"
-                    >
-                      <Download className="w-4 h-4" /> Exporter CSV
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={handleExportHistoryCsv}
+                        disabled={historyFilteredPayments.length === 0}
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] text-[var(--app-text)] text-sm font-semibold hover:bg-[var(--app-surface-2)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"
+                        title="Exporter l'historique filtré en CSV"
+                      >
+                        <Download className="w-4 h-4" /> Exporter CSV
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleDeleteAllPayments}
+                        disabled={isDeletingPayment || historyFilteredPayments.length === 0}
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-[color-mix(in_oklab,var(--app-danger)_36%,var(--app-border)_64%)] bg-[color-mix(in_oklab,var(--app-danger)_12%,var(--app-surface)_88%)] text-[var(--app-danger)] text-sm font-semibold hover:bg-[color-mix(in_oklab,var(--app-danger)_20%,var(--app-surface)_80%)] hover:border-[var(--app-danger)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                        title="Supprimer tout l'historique des paiements"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        Supprimer tout
+                      </button>
+                    </div>
                   </div>
 
                   {/* Filtres historique */}
                   <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
                     <label className="relative block sm:col-span-2">
-                      <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--app-muted)]" />
                       <input
                         type="text"
                         value={historySearch}
                         onChange={(e) => setHistorySearch(e.target.value)}
                         placeholder="Rechercher nom, email, montant, méthode, reçu..."
-                        className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-medical-500 focus:border-medical-500 outline-none"
+                        className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] text-[var(--app-text)] placeholder:text-[var(--app-muted)] focus:ring-2 focus:ring-[var(--app-accent)] focus:border-[var(--app-accent)] outline-none transition-all"
                       />
                     </label>
 
@@ -2556,7 +2629,7 @@ export default function AdminDashboard() {
                       aria-label="Filtrer par statut"
                       value={historyStatusFilter}
                       onChange={(e) => setHistoryStatusFilter(e.target.value as any)}
-                      className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-medical-500 outline-none bg-white"
+                      className="w-full px-3 py-2.5 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] text-[var(--app-text)] text-sm focus:ring-2 focus:ring-[var(--app-accent)] focus:border-[var(--app-accent)] outline-none"
                     >
                       <option value="all">Tous statuts</option>
                       <option value="approved">Approuvés</option>
@@ -2569,7 +2642,7 @@ export default function AdminDashboard() {
                       aria-label="Filtrer par type"
                       value={historyTypeFilter}
                       onChange={(e) => setHistoryTypeFilter(e.target.value as any)}
-                      className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-medical-500 outline-none bg-white"
+                      className="w-full px-3 py-2.5 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] text-[var(--app-text)] text-sm focus:ring-2 focus:ring-[var(--app-accent)] focus:border-[var(--app-accent)] outline-none"
                     >
                       <option value="all">Tous types</option>
                       <option value="subscription">Abonnement</option>
@@ -2582,7 +2655,7 @@ export default function AdminDashboard() {
                       aria-label="Filtrer par méthode"
                       value={historyMethodFilter}
                       onChange={(e) => setHistoryMethodFilter(e.target.value)}
-                      className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-medical-500 outline-none bg-white capitalize"
+                      className="w-full px-3 py-2.5 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] text-[var(--app-text)] text-sm focus:ring-2 focus:ring-[var(--app-accent)] focus:border-[var(--app-accent)] outline-none capitalize"
                     >
                       <option value="all">Toutes méthodes</option>
                       {uniquePaymentMethods.map((m) => (
@@ -2595,7 +2668,7 @@ export default function AdminDashboard() {
                       aria-label="Filtrer par période"
                       value={historyPeriodFilter}
                       onChange={(e) => setHistoryPeriodFilter(e.target.value as any)}
-                      className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-medical-500 outline-none bg-white"
+                      className="w-full px-3 py-2.5 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] text-[var(--app-text)] text-sm focus:ring-2 focus:ring-[var(--app-accent)] focus:border-[var(--app-accent)] outline-none"
                     >
                       <option value="all">Toutes périodes</option>
                       <option value="today">Aujourd&apos;hui</option>
@@ -2607,7 +2680,7 @@ export default function AdminDashboard() {
 
                   {(historySearch || historyStatusFilter !== 'all' || historyTypeFilter !== 'all' || historyMethodFilter !== 'all' || historyPeriodFilter !== 'all') && (
                     <div className="mt-3 flex items-center gap-2">
-                      <span className="text-xs text-slate-500 flex items-center gap-1"><Filter className="w-3.5 h-3.5" /> {historyFilteredPayments.length} résultat(s) filtré(s)</span>
+                      <span className="text-xs text-[var(--app-muted)] flex items-center gap-1"><Filter className="w-3.5 h-3.5" /> {historyFilteredPayments.length} résultat(s) filtré(s)</span>
                       <button
                         type="button"
                         onClick={() => {
@@ -2626,41 +2699,41 @@ export default function AdminDashboard() {
 
                   {/* Mini stats filtrées */}
                   <div className="mt-5 grid grid-cols-2 lg:grid-cols-4 gap-3">
-                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-                      <p className="text-xs uppercase tracking-wide text-slate-500 font-semibold">Total filtré</p>
-                      <p className="text-xl font-bold text-slate-900 mt-1">{historyStats.total}</p>
-                      <p className="text-xs text-slate-500">{historyFilteredRevenue.toLocaleString('fr-DZ')} DZD approuvés</p>
+                    <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-alt)] px-4 py-3">
+                      <p className="text-xs uppercase tracking-wide text-[var(--app-muted)] font-semibold">Total filtré</p>
+                      <p className="text-xl font-bold text-[var(--app-text)] mt-1">{historyStats.total}</p>
+                      <p className="text-xs text-[var(--app-muted)]">{historyFilteredRevenue.toLocaleString('fr-DZ')} DZD approuvés</p>
                     </div>
-                    <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
-                      <p className="text-xs uppercase tracking-wide text-emerald-700 font-semibold">Approuvés</p>
-                      <p className="text-xl font-bold text-emerald-700 mt-1">{historyStats.approved}</p>
-                      <p className="text-xs text-emerald-700/70">{historyFilteredRevenue.toLocaleString('fr-DZ')} DZD</p>
+                    <div className="rounded-xl border border-[color-mix(in_oklab,var(--app-success)_56%,var(--app-border)_44%)] bg-[color-mix(in_oklab,var(--app-success)_20%,var(--app-surface)_80%)] px-4 py-3">
+                      <p className="text-xs uppercase tracking-wide text-[color-mix(in_oklab,var(--app-success)_78%,var(--app-text)_22%)] font-semibold">Approuvés</p>
+                      <p className="text-xl font-bold text-[var(--app-success)] mt-1">{historyStats.approved}</p>
+                      <p className="text-xs text-[color-mix(in_oklab,var(--app-success)_78%,var(--app-text)_22%)]">{historyFilteredRevenue.toLocaleString('fr-DZ')} DZD</p>
                     </div>
-                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-                      <p className="text-xs uppercase tracking-wide text-amber-700 font-semibold">En attente</p>
-                      <p className="text-xl font-bold text-amber-700 mt-1">{historyStats.pending}</p>
-                      <p className="text-xs text-amber-700/70">{historyFilteredPayments.filter((p) => p.status === 'pending').reduce((s, p) => s + Number(p.amount || 0), 0).toLocaleString('fr-DZ')} DZD</p>
+                    <div className="rounded-xl border border-[color-mix(in_oklab,var(--app-warning)_52%,var(--app-border)_48%)] bg-[color-mix(in_oklab,var(--app-warning)_16%,var(--app-surface)_84%)] px-4 py-3">
+                      <p className="text-xs uppercase tracking-wide text-[color-mix(in_oklab,var(--app-warning)_78%,var(--app-text)_22%)] font-semibold">En attente</p>
+                      <p className="text-xl font-bold text-[var(--app-warning)] mt-1">{historyStats.pending}</p>
+                      <p className="text-xs text-[color-mix(in_oklab,var(--app-warning)_78%,var(--app-text)_22%)]">{historyFilteredPayments.filter((p) => p.status === 'pending').reduce((s, p) => s + Number(p.amount || 0), 0).toLocaleString('fr-DZ')} DZD</p>
                     </div>
-                    <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3">
-                      <p className="text-xs uppercase tracking-wide text-rose-700 font-semibold">Rejetés</p>
-                      <p className="text-xl font-bold text-rose-700 mt-1">{historyStats.rejected}</p>
-                      <p className="text-xs text-rose-700/70">{historyFilteredPayments.filter((p) => p.status === 'rejected').reduce((s, p) => s + Number(p.amount || 0), 0).toLocaleString('fr-DZ')} DZD</p>
+                    <div className="rounded-xl border border-[color-mix(in_oklab,var(--app-danger)_56%,var(--app-border)_44%)] bg-[color-mix(in_oklab,var(--app-danger)_20%,var(--app-surface)_80%)] px-4 py-3">
+                      <p className="text-xs uppercase tracking-wide text-[color-mix(in_oklab,var(--app-danger)_78%,var(--app-text)_22%)] font-semibold">Rejetés</p>
+                      <p className="text-xl font-bold text-[var(--app-danger)] mt-1">{historyStats.rejected}</p>
+                      <p className="text-xs text-[color-mix(in_oklab,var(--app-danger)_78%,var(--app-text)_22%)]">{historyFilteredPayments.filter((p) => p.status === 'rejected').reduce((s, p) => s + Number(p.amount || 0), 0).toLocaleString('fr-DZ')} DZD</p>
                     </div>
                   </div>
                 </div>
 
                 {historyFilteredPayments.length === 0 ? (
                   <div className="p-12 text-center">
-                    <div className="mx-auto w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center mb-3"><Receipt className="w-7 h-7 text-slate-400" /></div>
-                    <p className="text-sm font-semibold text-slate-700">{allPayments.length === 0 ? 'Aucun paiement enregistré pour le moment.' : 'Aucun paiement ne correspond aux filtres.'}</p>
-                    <p className="text-xs text-slate-500 mt-1">{allPayments.length === 0 ? 'Les paiements apparaîtront ici dès réception.' : 'Essayez de modifier les filtres ou la recherche.'}</p>
+                    <div className="mx-auto w-14 h-14 rounded-2xl bg-[var(--app-surface-alt)] flex items-center justify-center mb-3"><Receipt className="w-7 h-7 text-[var(--app-muted)]" /></div>
+                    <p className="text-sm font-semibold text-[var(--app-text)]">{allPayments.length === 0 ? 'Aucun paiement enregistré pour le moment.' : 'Aucun paiement ne correspond aux filtres.'}</p>
+                    <p className="text-xs text-[var(--app-muted)] mt-1">{allPayments.length === 0 ? 'Les paiements apparaîtront ici dès réception.' : 'Essayez de modifier les filtres ou la recherche.'}</p>
                   </div>
                 ) : (
                   <>
                     <div className="overflow-x-auto">
                       <table className="w-full text-left border-collapse">
                         <thead>
-                          <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-medium text-sm">
+                          <tr className="bg-[var(--app-surface-alt)] border-b border-[var(--app-border)] text-[color-mix(in_oklab,var(--app-text)_70%,var(--app-muted)_30%)] font-medium text-sm">
                             <th className="p-3 whitespace-nowrap">Date</th>
                             <th className="p-3 whitespace-nowrap">Utilisateur</th>
                             <th className="p-3 whitespace-nowrap">Type / Détails</th>
@@ -2691,29 +2764,29 @@ export default function AdminDashboard() {
                             })();
                             const isPending = payment.status === 'pending';
                             return (
-                              <tr key={payment.id} className="hover:bg-slate-50 transition-colors align-top">
-                                <td className="p-3 text-sm text-slate-600 whitespace-nowrap">
-                                  <div className="text-slate-900 font-medium">{payment.createdAt ? new Date(payment.createdAt).toLocaleDateString('fr-DZ') : '-'}</div>
-                                  <div className="text-xs text-slate-500">{payment.createdAt ? new Date(payment.createdAt).toLocaleTimeString('fr-DZ', { hour: '2-digit', minute: '2-digit' }) : ''}</div>
+                              <tr key={payment.id} className="hover:bg-[color-mix(in_oklab,var(--app-surface-alt)_10%,var(--app-bg)_90%)] transition-colors align-top">
+                                <td className="p-3 text-sm text-[color-mix(in_oklab,var(--app-text)_70%,var(--app-muted)_30%)] whitespace-nowrap">
+                                  <div className="text-[var(--app-text)] font-medium">{payment.createdAt ? new Date(payment.createdAt).toLocaleDateString('fr-DZ') : '-'}</div>
+                                  <div className="text-xs text-[var(--app-muted)]">{payment.createdAt ? new Date(payment.createdAt).toLocaleTimeString('fr-DZ', { hour: '2-digit', minute: '2-digit' }) : ''}</div>
                                 </td>
                                 <td className="p-3">
-                                  <div className="font-medium text-slate-900 text-sm leading-tight">{fullName}</div>
-                                  <div className="text-xs text-slate-500 truncate max-w-[180px]">{user?.email || '-'}</div>
-                                  {user?.phoneNumber && <div className="text-xs text-slate-400">{user.phoneNumber}</div>}
+                                  <div className="font-medium text-[var(--app-text)] text-sm leading-tight">{fullName}</div>
+                                  <div className="text-xs text-[var(--app-muted)] truncate max-w-[180px]">{user?.email || '-'}</div>
+                                  {user?.phoneNumber && <div className="text-xs text-[color-mix(in_oklab,var(--app-text)_50%,var(--app-muted)_50%)]">{user.phoneNumber}</div>}
                                 </td>
                                 <td className="p-3">
-                                  <div className="text-sm font-semibold text-slate-800 capitalize">{details}</div>
-                                  {itemsPreview && <div className="text-xs text-slate-500 truncate max-w-[220px]">{itemsPreview}</div>}
+                                  <div className="text-sm font-semibold text-[var(--app-text)] capitalize">{details}</div>
+                                  {itemsPreview && <div className="text-xs text-[var(--app-muted)] truncate max-w-[220px]">{itemsPreview}</div>}
                                   {Array.isArray(payment.items) && payment.items.length > 0 && (
-                                    <div className="text-xs text-slate-400">{payment.items.length} article(s)</div>
+                                    <div className="text-xs text-[color-mix(in_oklab,var(--app-text)_50%,var(--app-muted)_50%)]">{payment.items.length} article(s)</div>
                                   )}
                                 </td>
                                 <td className="p-3 text-right">
-                                  <div className="font-bold text-slate-900 whitespace-nowrap">{Number(payment.amount || 0).toLocaleString('fr-DZ')} <span className="text-xs font-medium text-slate-500">DZD</span></div>
+                                  <div className="font-bold text-[var(--app-text)] whitespace-nowrap">{Number(payment.amount || 0).toLocaleString('fr-DZ')} <span className="text-xs font-medium text-[var(--app-muted)]">DZD</span></div>
                                 </td>
-                                <td className="p-3 text-sm font-medium text-slate-700 uppercase whitespace-nowrap">
-                                  <span className="inline-flex px-2 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
-                                    {payment.method || '-'}
+                                <td className="p-3 text-sm font-medium text-[var(--app-text)] uppercase whitespace-nowrap">
+                                  <span className="inline-flex px-2 py-1 rounded-full text-xs font-semibold bg-[var(--app-surface-alt)] text-[var(--app-text)] border border-[var(--app-border)]">
+                                    {getPaymentMethodLabel(payment.method)}
                                   </span>
                                 </td>
                                 <td className="p-3 whitespace-nowrap">
@@ -2723,34 +2796,44 @@ export default function AdminDashboard() {
                                 </td>
                                 <td className="p-3 whitespace-nowrap">
                                   {payment.receiptUrl ? (
-                                    <a href={payment.receiptUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-medical-50 text-medical-700 hover:bg-medical-100 text-xs font-semibold border border-medical-200 transition-colors">
+                                    <a href={payment.receiptUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[color-mix(in_oklab,var(--app-medical)_20%,var(--app-surface)_80%)] text-[var(--app-medical)] hover:bg-[color-mix(in_oklab,var(--app-medical)_30%,var(--app-surface)_70%)] text-xs font-semibold border border-[color-mix(in_oklab,var(--app-medical)_56%,var(--app-border)_44%)] transition-colors">
                                       <Receipt className="w-3.5 h-3.5" /> Voir
                                     </a>
                                   ) : (
-                                    <span className="text-slate-400 text-xs">—</span>
+                                    <span className="text-[color-mix(in_oklab,var(--app-text)_50%,var(--app-muted)_50%)] text-xs">—</span>
                                   )}
                                 </td>
                                 <td className="p-3 text-right whitespace-nowrap">
-                                  {isPending ? (
-                                    <span className="inline-flex gap-1">
-                                      <button
-                                        onClick={() => handleApprovePayment(payment.id, payment.userId, payment.type as string, payment.targetId, payment.items, payment.plan)}
-                                        className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
-                                        title="Approuver"
-                                      >
-                                        <CheckCircle className="h-4 w-4" />
-                                      </button>
-                                      <button
-                                        onClick={() => handleRejectPayment(payment)}
-                                        className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                                        title="Rejeter"
-                                      >
-                                        <XCircle className="h-4 w-4" />
-                                      </button>
-                                    </span>
-                                  ) : (
-                                    <span className="text-xs text-slate-400">—</span>
-                                  )}
+                                  <div className="inline-flex gap-1">
+                                    {isPending ? (
+                                      <>
+                                        <button
+                                          onClick={() => handleApprovePayment(payment.id, payment.userId, payment.type as string, payment.targetId, payment.items, payment.plan)}
+                                          className="p-1.5 text-emerald-600 hover:bg-[color-mix(in_oklab,var(--app-success)_20%,var(--app-surface)_80%)] rounded-lg transition-colors"
+                                          title="Approuver"
+                                        >
+                                          <CheckCircle className="h-4 w-4" />
+                                        </button>
+                                        <button
+                                          onClick={() => handleRejectPayment(payment)}
+                                          className="p-1.5 text-rose-600 hover:bg-[color-mix(in_oklab,var(--app-danger)_20%,var(--app-surface)_80%)] rounded-lg transition-colors"
+                                          title="Rejeter"
+                                        >
+                                          <XCircle className="h-4 w-4" />
+                                        </button>
+                                      </>
+                                    ) : (
+                                      <span className="text-xs text-[color-mix(in_oklab,var(--app-text)_50%,var(--app-muted)_50%)]">—</span>
+                                    )}
+                                    <button
+                                      onClick={() => handleDeletePayment(payment.id)}
+                                      disabled={isDeletingPayment}
+                                      className="p-1.5 text-[var(--app-danger)] hover:bg-[color-mix(in_oklab,var(--app-danger)_12%,var(--app-surface)_88%)] rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                      title="Supprimer ce paiement"
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </button>
+                                  </div>
                                 </td>
                               </tr>
                             );
@@ -2758,23 +2841,49 @@ export default function AdminDashboard() {
                         </tbody>
                       </table>
                     </div>
-                    {historyVisiblePayments.length < historyFilteredPayments.length && (
-                      <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-between bg-slate-50">
-                        <p className="text-sm text-slate-600">
-                          Affichage <span className="font-semibold">{historyVisiblePayments.length}</span> sur <span className="font-semibold">{historyFilteredPayments.length}</span>
+                    {historyFilteredPayments.length > 0 && (
+                      <div className="px-6 py-4 border-t border-[var(--app-border)] flex items-center justify-between bg-[var(--app-surface-alt)]">
+                        <p className="text-sm text-[color-mix(in_oklab,var(--app-text)_70%,var(--app-muted)_30%)]">
+                          Maximum {HISTORY_PAGE_SIZE} historiques par page :{' '}
+                          <span className="font-semibold text-[var(--app-text)]">
+                            {Math.min(historyPage * HISTORY_PAGE_SIZE, historyFilteredPayments.length)}
+                          </span>{' '}
+                          sur <span className="font-semibold text-[var(--app-text)]">{historyFilteredPayments.length}</span>
                         </p>
-                        <button
-                          type="button"
-                          onClick={() => setHistoryVisibleCount((c) => Math.min(c + 25, historyFilteredPayments.length))}
-                          className="px-4 py-2 rounded-xl bg-white border border-slate-300 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors shadow-sm"
-                        >
-                          Voir plus (25)
-                        </button>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setHistoryPage((p) => Math.max(p - 1, 1))}
+                            disabled={historyPage === 1}
+                            className="px-3 py-2 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] text-[var(--app-text)] text-sm font-semibold hover:bg-[var(--app-surface-2)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            title="Page précédente"
+                          >
+                            <ChevronLeft className="w-4 h-4" />
+                          </button>
+                          <span className="px-2 py-1 text-xs font-semibold text-[var(--app-muted)]">
+                            {historyPage}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setHistoryPage((p) =>
+                                Math.min(p + 1, Math.ceil(historyFilteredPayments.length / HISTORY_PAGE_SIZE)),
+                              )
+                            }
+                            disabled={
+                              historyPage >= Math.ceil(historyFilteredPayments.length / HISTORY_PAGE_SIZE)
+                            }
+                            className="px-3 py-2 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] text-[var(--app-text)] text-sm font-semibold hover:bg-[var(--app-surface-2)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            title="Page suivante"
+                          >
+                            <ChevronRight className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
                     )}
-                    <div className="px-6 py-3 border-t border-slate-200 bg-slate-50/60 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500">
-                      <span>Total filtré : <b className="text-slate-700">{historyFilteredPayments.length}</b> • Approuvés <b className="text-emerald-700">{historyStats.approved}</b> • En attente <b className="text-amber-700">{historyStats.pending}</b> • Rejetés <b className="text-rose-700">{historyStats.rejected}</b></span>
-                      <span>Total encaissé filtré : <b className="text-emerald-700">{historyFilteredRevenue.toLocaleString('fr-DZ')} DZD</b> • Global encaissé : <b className="text-slate-700">{totalApprovedRevenue.toLocaleString('fr-DZ')} DZD</b></span>
+                    <div className="px-6 py-3 border-t border-[var(--app-border)] bg-[color-mix(in_oklab,var(--app-surface-alt)_60%,var(--app-bg)_40%)] flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-[var(--app-muted)]">
+                      <span>Total filtré : <b className="text-[var(--app-text)]">{historyFilteredPayments.length}</b> • Approuvés <b className="text-[var(--app-success)]">{historyStats.approved}</b> • En attente <b className="text-[var(--app-warning)]">{historyStats.pending}</b> • Rejetés <b className="text-[var(--app-danger)]">{historyStats.rejected}</b></span>
+                      <span>Total encaissé filtré : <b className="text-[var(--app-success)]">{historyFilteredRevenue.toLocaleString('fr-DZ')} DZD</b> • Global encaissé : <b className="text-[var(--app-text)]">{totalApprovedRevenue.toLocaleString('fr-DZ')} DZD</b></span>
                     </div>
                   </>
                 )}
@@ -3738,6 +3847,18 @@ export default function AdminDashboard() {
 
         </div>
       </main>
+
+      <ConfirmModal
+        isOpen={confirmDeletePaymentOpen}
+        title="Supprimer tout l'historique des paiements"
+        message="Cette action supprimera définitivement tous les paiements de l'historique. Cette opération est irréversible."
+        confirmLabel="Supprimer tout"
+        cancelLabel="Annuler"
+        onConfirm={executeDeleteAllPayments}
+        onCancel={() => setConfirmDeletePaymentOpen(false)}
+        isConfirming={isDeletingPayment}
+      />
+
     </div>
   );
 }

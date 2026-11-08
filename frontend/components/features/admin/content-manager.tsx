@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { Video, FileText, HelpCircle, Image as ImageIcon, MessageSquare, Plus, Save, X, Loader2, Trash2, Edit2, Search, Upload } from 'lucide-react';
+import { Video, FileText, HelpCircle, Image as ImageIcon, MessageSquare, Plus, Save, X, Loader2, Trash2, Edit2, Search, Upload, Clock, Film, PlayCircle } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { normalizeStructuredMarkdown } from '@/lib/utils/structured-markdown';
 import {
@@ -29,6 +29,7 @@ import {
   type QcmImportRowPayload,
 } from '@/lib/api/client';
 import SeamlessPlayer from '@/components/features/video/seamless-player';
+import { ConfirmModal } from '@/components/ui/confirm-modal';
 import type {
   CaseQuestionModel,
   ClinicalCaseModel,
@@ -492,7 +493,7 @@ const MarkdownPreview = ({
   );
 };
 
-const logAdminAction = (action: 'create' | 'update' | 'delete', entity: string, payload: Record<string, unknown>) => {
+const logAdminAction = (action: 'create' | 'update' | 'delete' | 'deleteAll', entity: string, payload: Record<string, unknown>) => {
   console.info('[admin-action]', {
     action,
     entity,
@@ -658,6 +659,8 @@ const mapImportedQcmObject = (row: Record<string, SpreadsheetCell>): QcmImportRo
     correctOptionIndexes,
     explanation: normalizeImportValue(getImportFieldValue(row, ['COMMENTAIRE', 'CORRIGE', 'CORRIGÉ', 'EXPLICATION', 'explanation'])),
     reference: normalizeImportValue(getImportFieldValue(row, ['REFERENCES', 'RÉFÉRENCES', 'REFERENCE', 'RÉFÉRENCE', 'reference'])),
+    subspecialty: normalizeImportValue(getImportFieldValue(row, ['SOUS-SPECIALITE', 'SOUS-SPÉCIALITÉ', 'SOUS SPECIALITE', 'SUBSPECIALITE', 'subspecialty'])),
+    section: normalizeImportValue(getImportFieldValue(row, ['SECTION', 'section'])),
   };
 
   if (!payload.videoTitle && !payload.question && payload.options.length === 0) {
@@ -674,6 +677,8 @@ const mapImportedOpenQuestionObject = (row: Record<string, SpreadsheetCell>): Op
     question: normalizeImportValue(getImportFieldValue(row, ['ENONCE', 'ÉNONCÉ', 'QUESTION', 'question'])),
     answer: normalizeImportValue(getImportFieldValue(row, ['REPONSE', 'RÉPONSE', 'ANSWER', 'CORRIGE', 'CORRIGÉ', 'answer'])),
     reference: normalizeImportValue(getImportFieldValue(row, ['REFERENCES', 'RÉFÉRENCES', 'REFERENCE', 'RÉFÉRENCE', 'reference'])),
+    subspecialty: normalizeImportValue(getImportFieldValue(row, ['SOUS-SPECIALITE', 'SOUS-SPÉCIALITÉ', 'SOUS SPECIALITE', 'SUBSPECIALITE', 'subspecialty'])),
+    section: normalizeImportValue(getImportFieldValue(row, ['SECTION', 'section'])),
   };
 
   if (!payload.videoTitle && !payload.question && !payload.answer) {
@@ -710,6 +715,8 @@ const mapImportedClinicalCaseObject = (row: Record<string, SpreadsheetCell>): Cl
     description: normalizeImportValue(getImportFieldValue(row, ['ENONCE (CAS CLINIQUE)', 'ÉNONCÉ (CAS CLINIQUE)', 'ENONCE CAS CLINIQUE', 'CAS CLINIQUE', 'description'])),
     imageLinks: normalizeImportValue(getImportFieldValue(row, ['LIEN IMAGES (CAS CLINIQUE)', 'LIENS IMAGES (CAS CLINIQUE)', 'IMAGE CAS CLINIQUE', 'imageLinks'])),
     reference: normalizeImportValue(getImportFieldValue(row, ['REFERENCES (CAS CLINIQUE)', 'RÉFÉRENCES (CAS CLINIQUE)', 'REFERENCES', 'RÉFÉRENCES', 'reference'])),
+    subspecialty: normalizeImportValue(getImportFieldValue(row, ['SOUS-SPECIALITE (CAS CLINIQUE)', 'SOUS-SPÉCIALITÉ (CAS CLINIQUE)', 'SOUS SPECIALITE (CAS CLINIQUE)', 'SUBSPECIALITE (CAS CLINIQUE)', 'SOUS-SPECIALITE', 'SOUS-SPÉCIALITÉ', 'SOUS SPECIALITE', 'SUBSPECIALITE', 'subspecialty'])),
+    section: normalizeImportValue(getImportFieldValue(row, ['SECTION (CAS CLINIQUE)', 'SECTION', 'section'])),
     qcmNumber: normalizeImportValue(getImportFieldValue(row, ['N QCM', 'N° QCM', 'qcmNumber'])),
     qcmQuestion: normalizeImportValue(getImportFieldValue(row, ['ENONCE (QCM)', 'ÉNONCÉ (QCM)', 'ENONCE QCM', 'qcmQuestion'])),
     qcmImageLinks: normalizeImportValue(getImportFieldValue(row, ['LIEN IMAGES (QCM) (Optionnelle)', 'LIEN IMAGES (QCM)', 'IMAGES QCM', 'qcmImageLinks'])),
@@ -789,6 +796,8 @@ const mapImportedDiagramObject = (row: Record<string, SpreadsheetCell>): Diagram
     reference: normalizeImportValue(getImportFieldValue(row, ['REFERENCE', 'RÉFÉRENCE', 'REFERENCES', 'RÉFÉRENCES', 'reference'])),
     imageLinks: normalizeImportValue(getImportFieldValue(row, ['LIEN DE SCHEMA (IMAGE)', 'LIEN DE SCHÉMA (IMAGE)', 'LIEN DE SCHEMA', 'LIEN DE SCHÉMA', 'LIEN SCHEMA', 'LIEN SCHÉMA', 'LIEN IMAGE', 'LIEN IMAGES', 'IMAGE', 'IMAGES', 'imageLinks', 'imageUrl'])),
     annotations: normalizeImportValue(getImportFieldValue(row, ['ANNOTATIONS', 'ANNOTATION', 'LEGENDE', 'LÉGENDE', 'LEGENDES', 'LÉGENDES', 'MARQUEURS', 'annotations'])),
+    subspecialty: normalizeImportValue(getImportFieldValue(row, ['SOUS-SPECIALITE (SCHEMA)', 'SOUS-SPÉCIALITÉ (SCHÉMA)', 'SOUS SPECIALITE (SCHEMA)', 'SUBSPECIALITE (SCHEMA)', 'SOUS-SPECIALITE', 'SOUS-SPÉCIALITÉ', 'SOUS SPECIALITE', 'SUBSPECIALITE', 'subspecialty'])),
+    section: normalizeImportValue(getImportFieldValue(row, ['SECTION (SCHEMA)', 'SECTION (SCHÉMA)', 'SECTION', 'section'])),
   };
 
   if (!payload.videoTitle && !payload.diagramNumber && !payload.title && !payload.imageLinks && !payload.annotations) {
@@ -846,6 +855,11 @@ export function AdminContentManager() {
     checkedAt: number;
   } | null>(null);
 
+  // Supprimer tout — confirmation
+  const [confirmDeleteAllOpen, setConfirmDeleteAllOpen] = useState(false);
+  const [confirmDeleteAllTarget, setConfirmDeleteAllTarget] = useState<'videos' | 'qcms' | 'clinicalCases' | 'openQuestions' | 'diagrams'>('videos');
+  const [isDeletingAll, setIsDeletingAll] = useState(false);
+
   const editorGridClass = 'grid gap-6';
   const formPanelClass = 'order-2 space-y-6 rounded-3xl border border-[var(--app-border)] bg-[var(--app-surface)] p-6 shadow-sm';
   const listPanelClass = 'order-1 rounded-3xl border border-[var(--app-border)] bg-[var(--app-surface-alt)] p-5 shadow-sm max-h-[58vh] overflow-y-auto content-manager-scroll';
@@ -857,6 +871,40 @@ export function AdminContentManager() {
   const packGridClass = 'grid gap-4 md:grid-cols-2 xl:grid-cols-3';
   const sectionTitleClass = 'text-sm font-semibold text-[var(--app-text)]';
   const sectionHintClass = 'text-xs text-[var(--app-muted)]';
+
+  // ─────────────────────────────────────────
+  // Composant réutilisable : bouton "Supprimer tout"
+  // ─────────────────────────────────────────
+  function DeleteAllButton({
+    collectionName,
+    count,
+    isDeleting,
+    label,
+  }: {
+    collectionName: 'videos' | 'qcms' | 'clinicalCases' | 'openQuestions' | 'diagrams';
+    count: number;
+    isDeleting: boolean;
+    label: string;
+  }) {
+    const disabled = count === 0 || isDeleting;
+    return (
+      <div className="flex items-center gap-3">
+        <span className="inline-flex items-center rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700">
+          {count} élément{count > 1 ? 's' : ''}
+        </span>
+        <button
+          type="button"
+          onClick={() => handleDeleteAll(collectionName)}
+          disabled={disabled}
+          className="inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 hover:border-red-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          title={`Supprimer tous les ${label.toLowerCase()}`}
+        >
+          <Trash2 className="h-4 w-4" />
+          <span>Supprimer tout</span>
+        </button>
+      </div>
+    );
+  }
 
   const fetchData = async () => {
     try {
@@ -1048,6 +1096,56 @@ export function AdminContentManager() {
     } catch (error: unknown) {
       console.error('Error deleting document:', error);
       setErrorMessage(`Echec de suppression (${collectionName}). ${getErrorMessage(error, 'Cause inconnue')}`);
+    }
+  };
+
+  // ─────────────────────────────────────────
+  // Supprimer tout — action rapide par collection
+  // ─────────────────────────────────────────
+  const handleDeleteAll = (collectionName: 'videos' | 'qcms' | 'clinicalCases' | 'openQuestions' | 'diagrams') => {
+    setConfirmDeleteAllTarget(collectionName);
+    setConfirmDeleteAllOpen(true);
+  };
+
+  const collectionLabels: Record<string, string> = {
+    videos: 'Bibliothèque Vidéos',
+    qcms: 'QCMs',
+    clinicalCases: 'Cas cliniques',
+    openQuestions: 'QROC',
+    diagrams: 'Schémas',
+  };
+
+  const executeDeleteAll = async () => {
+    const collectionName = confirmDeleteAllTarget;
+    setIsDeletingAll(true);
+
+    try {
+      const snap = await getDocs(collection(db, collectionName));
+
+      // Collecte des assets Cloudinary à nettoyer (vidéos, images de cas, schémas)
+      const allAssets: CloudinaryCleanupAsset[] = [];
+      for (const docSnap of snap.docs) {
+        const assets = getCollectionCleanupAssets(collectionName, docSnap.id);
+        allAssets.push(...assets);
+      }
+
+      // Suppression de tous les documents Firestore
+      await Promise.all(snap.docs.map((docSnap) => deleteDoc(doc(db, collectionName, docSnap.id))));
+
+      // Nettoyage Cloudinary
+      if (allAssets.length > 0) {
+        await runCloudinaryCleanup(allAssets, `deleteAll:${collectionName}`, { silent: true });
+      }
+
+      setSuccessMessage(`Tous les contenus de "${collectionLabels[collectionName]}" ont été supprimés avec succès (${snap.docs.length} élément(s)).`);
+      logAdminAction('deleteAll', collectionName, { count: snap.docs.length });
+      fetchData();
+    } catch (error: unknown) {
+      console.error('Error deleting all documents:', error);
+      setErrorMessage(`Echec de suppression complète (${collectionName}). ${getErrorMessage(error, 'Cause inconnue')}`);
+    } finally {
+      setIsDeletingAll(false);
+      setConfirmDeleteAllOpen(false);
     }
   };
 
@@ -1901,22 +1999,33 @@ export function AdminContentManager() {
       setSuccessMessage(
         `Import cas cliniques terminé: ${result.imported} cas ajouté(s).${createdVideosText}${skippedText}${imageText}${imageFailureText}${invalidText}`,
       );
-      setCaseImportSummary(
-        [
-          result.createdVideoTitles.length > 0
-            ? `Vidéos préparées: ${result.createdVideoTitles.slice(0, 5).join(', ')}${result.createdVideoTitles.length > 5 ? '…' : ''}`
-            : '',
-          result.duplicateRows.length > 0
-            ? `Doublons ignorés: ${result.duplicateRows.slice(0, 3).map((row) => row.caseNumber ? `Cas ${row.caseNumber}` : row.title).join(', ')}${result.duplicateRows.length > 3 ? '…' : ''}`
-            : '',
-          imageFailureCount > 0
-            ? `Images non récupérées: ${result.imageFailures.slice(0, 3).map((entry) => entry.reason).join(', ')}${imageFailureCount > 3 ? '…' : ''}`
-            : '',
-          invalidCount > 0
-            ? `Lignes/questions ignorées: ${result.invalidRows.slice(0, 3).map((row) => row.rowIndex ? `ligne ${row.rowIndex} (${row.message})` : row.message).join(', ')}${invalidCount > 3 ? '…' : ''}`
-            : '',
-        ].filter(Boolean).join(' · '),
-      );
+      const caseSummaryParts: string[] = [];
+
+      if (result.createdVideoTitles.length > 0) {
+        caseSummaryParts.push(
+          `Vidéos préparées (${result.createdVideoTitles.length}): ${result.createdVideoTitles.slice(0, 5).join(', ')}${result.createdVideoTitles.length > 5 ? ' …' : ''}`,
+        );
+      }
+
+      if (result.duplicateRows.length > 0) {
+        caseSummaryParts.push(
+          `Doublons ignorés (${result.duplicateRows.length}): ${result.duplicateRows.slice(0, 3).map((row) => row.caseNumber ? `Cas ${row.caseNumber}` : row.title).join(', ')}${result.duplicateRows.length > 3 ? ' …' : ''}`,
+        );
+      }
+
+      if (imageFailureCount > 0) {
+        caseSummaryParts.push(
+          `Images non récupérées (${imageFailureCount}): ${result.imageFailures.slice(0, 3).map((entry) => entry.reason).join(', ')}${imageFailureCount > 3 ? ' …' : ''}`,
+        );
+      }
+
+      if (invalidCount > 0) {
+        caseSummaryParts.push(
+          `Lignes/questions ignorées (${invalidCount}): ${result.invalidRows.slice(0, 3).map((row) => row.rowIndex ? `ligne ${row.rowIndex} (${row.message})` : row.message).join(', ')}${invalidCount > 3 ? ' …' : ''}`,
+        );
+      }
+
+      setCaseImportSummary(caseSummaryParts.join('\n'));
       logAdminAction('create', 'clinicalCases-import', {
         imported: result.imported,
         skippedDuplicates: result.skippedDuplicates,
@@ -3019,15 +3128,96 @@ export function AdminContentManager() {
                     <h3 className="text-lg font-bold text-[var(--app-text)]">Vue consolidée par vidéo</h3>
                     <p className="text-sm text-[var(--app-muted)]">Consultez votre bibliothèque vidéo, les extensions associées et les actions rapides de gestion.</p>
                   </div>
-                  <span className="inline-flex items-center rounded-full border border-[var(--app-border)] bg-[var(--app-surface)] px-2.5 py-1 text-xs font-semibold text-[var(--app-text)]">
-                    {filteredVideos.length} vidéo{filteredVideos.length > 1 ? 's' : ''}
-                  </span>
+                  <DeleteAllButton
+                    collectionName="videos"
+                    count={filteredVideos.length}
+                    isDeleting={isDeletingAll}
+                    label="Vidéos"
+                  />
                 </div>
 
                 {filteredVideos.length > 0 ? (
                   <div className="grid gap-4 lg:grid-cols-2">
                     {filteredVideos.map((video) => {
                       const stats = getVideoExtensionStats(video.id);
+                      const hasUrl = Boolean(video.url);
+
+                      const availableContents: string[] = [];
+                      if (stats.caseCount > 0) availableContents.push('Cas cliniques');
+                      if (stats.qcmCount > 0) availableContents.push('QCMs');
+                      if (stats.openQuestionCount > 0) availableContents.push('QROC');
+                      if (stats.diagramCount > 0) availableContents.push('Schémas');
+
+                      const videoActions = (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => openCreationFromVideo('case', video.id)}
+                            className="rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-xs font-medium text-[var(--app-text)] transition-colors hover:bg-[var(--app-surface-2)]"
+                          >
+                            Ajouter cas
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openCreationFromVideo('qcm', video.id)}
+                            className="rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-xs font-medium text-[var(--app-text)] transition-colors hover:bg-[var(--app-surface-2)]"
+                          >
+                            Ajouter QCM
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openCreationFromVideo('openQuestion', video.id)}
+                            className="rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-xs font-medium text-[var(--app-text)] transition-colors hover:bg-[var(--app-surface-2)]"
+                          >
+                            Ajouter QROC
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openCreationFromVideo('diagram', video.id)}
+                            className="rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-xs font-medium text-[var(--app-text)] transition-colors hover:bg-[var(--app-surface-2)]"
+                          >
+                            Ajouter schéma
+                          </button>
+                        </>
+                      );
+
+                      const statsCards = (
+                        <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                          <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-alt)] p-2 text-center">
+                            <p className="text-[11px] font-medium text-[var(--app-muted)]">Cas</p>
+                            <p className="text-lg font-bold text-[var(--app-text)]">{stats.caseCount}</p>
+                          </div>
+                          <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-alt)] p-2 text-center">
+                            <p className="text-[11px] font-medium text-[var(--app-muted)]">QCM</p>
+                            <p className="text-lg font-bold text-[var(--app-text)]">{stats.qcmCount}</p>
+                          </div>
+                          <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-alt)] p-2 text-center">
+                            <p className="text-[11px] font-medium text-[var(--app-muted)]">QROC</p>
+                            <p className="text-lg font-bold text-[var(--app-text)]">{stats.openQuestionCount}</p>
+                          </div>
+                          <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-alt)] p-2 text-center">
+                            <p className="text-[11px] font-medium text-[var(--app-muted)]">Schémas</p>
+                            <p className="text-lg font-bold text-[var(--app-text)]">{stats.diagramCount}</p>
+                          </div>
+                        </div>
+                      );
+
+                      const availableContentCard = (
+                        <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-alt)] p-4">
+                          <p className="text-[11px] font-medium text-[var(--app-muted)] mb-3">Contenu déjà préparé :</p>
+                          <div className="flex flex-wrap gap-2">
+                            {availableContents.map((content) => (
+                              <span
+                                key={content}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-[var(--app-border)] bg-[var(--app-surface)] text-[var(--app-text)]"
+                              >
+                                <PlayCircle className="h-3 w-3 text-[var(--app-medical)]" />
+                                {content}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      );
 
                       return (
                         <div key={`overview-${video.id}`} className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface)] p-4 shadow-sm space-y-4">
@@ -3057,66 +3247,55 @@ export function AdminContentManager() {
                             </div>
                           </div>
 
-                          <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-                            <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-alt)] p-2 text-center">
-                              <p className="text-[11px] font-medium text-[var(--app-muted)]">Cas</p>
-                              <p className="text-lg font-bold text-[var(--app-text)]">{stats.caseCount}</p>
-                            </div>
-                            <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-alt)] p-2 text-center">
-                              <p className="text-[11px] font-medium text-[var(--app-muted)]">QCM</p>
-                              <p className="text-lg font-bold text-[var(--app-text)]">{stats.qcmCount}</p>
-                            </div>
-                            <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-alt)] p-2 text-center">
-                              <p className="text-[11px] font-medium text-[var(--app-muted)]">QROC</p>
-                              <p className="text-lg font-bold text-[var(--app-text)]">{stats.openQuestionCount}</p>
-                            </div>
-                            <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-alt)] p-2 text-center">
-                              <p className="text-[11px] font-medium text-[var(--app-muted)]">Schémas</p>
-                              <p className="text-lg font-bold text-[var(--app-text)]">{stats.diagramCount}</p>
-                            </div>
-                          </div>
+                          {hasUrl
+                            ? (
+                              <div className="space-y-4">
+                                {statsCards}
+                                <div className="grid grid-cols-2 gap-2">{videoActions}</div>
+                                <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-alt)] p-3 space-y-3">
+                                  <AdminVideoPreviewCard
+                                    label="Cliquer sur la vidéo pour ouvrir le détail"
+                                    url={video.url || ''}
+                                    isMultipart={video.isMultipart}
+                                    parts={video.parts}
+                                    totalParts={video.totalParts}
+                                    videoId={video.id}
+                                  />
+                                </div>
+                              </div>
+                            )
+                            : (
+                              <div className="space-y-4">
+                                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border text-[var(--app-warning)] bg-[color-mix(in_oklab,var(--app-warning)_15%,var(--app-surface)_85%)] border-[color-mix(in_oklab,var(--app-warning)_30%,var(--app-border)_70%)] mb-3">
+                                  <Clock className="h-3 w-3" />
+                                  À venir
+                                </div>
 
-                          <div className="grid grid-cols-2 gap-2">
-                            <button
-                              type="button"
-                              onClick={() => openCreationFromVideo('case', video.id)}
-                              className="rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-xs font-medium text-[var(--app-text)] transition-colors hover:bg-[var(--app-surface-2)]"
-                            >
-                              Ajouter cas
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => openCreationFromVideo('qcm', video.id)}
-                              className="rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-xs font-medium text-[var(--app-text)] transition-colors hover:bg-[var(--app-surface-2)]"
-                            >
-                              Ajouter QCM
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => openCreationFromVideo('openQuestion', video.id)}
-                              className="rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-xs font-medium text-[var(--app-text)] transition-colors hover:bg-[var(--app-surface-2)]"
-                            >
-                              Ajouter QROC
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => openCreationFromVideo('diagram', video.id)}
-                              className="rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-xs font-medium text-[var(--app-text)] transition-colors hover:bg-[var(--app-surface-2)]"
-                            >
-                              Ajouter schéma
-                            </button>
-                          </div>
+                                <p className="text-xs text-[color-mix(in_oklab,var(--app-text)_60%,var(--app-muted)_40%)] mt-1 mb-4">
+                                  Sera disponible dans le futur
+                                </p>
 
-                          <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-alt)] p-3 space-y-3">
-                            <AdminVideoPreviewCard
-                              label="Cliquer sur la vidéo pour ouvrir le détail"
-                              url={video.url || ''}
-                              isMultipart={video.isMultipart}
-                              parts={video.parts}
-                              totalParts={video.totalParts}
-                              videoId={video.id}
-                            />
-                          </div>
+                                {availableContents.length > 0 ? availableContentCard : (
+                                  <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-alt)] p-4 text-center">
+                                    <p className="text-[11px] text-[color-mix(in_oklab,var(--app-text)_50%,var(--app-muted)_50%)]">
+                                      Aucun contenu associé pour le moment.
+                                    </p>
+                                  </div>
+                                )}
+
+                                <div className="mt-4 rounded-xl border-2 border-dashed border-[var(--app-border)] bg-[var(--app-surface-alt)] p-8 text-center flex flex-col items-center justify-center gap-3">
+                                  <Film className="h-8 w-8 text-[color-mix(in_oklab,var(--app-text)_30%,var(--app-muted)_70%)]" />
+                                  <p className="text-xs text-[color-mix(in_oklab,var(--app-text)_50%,var(--app-muted)_50%)] font-medium">
+                                    Vidéo à uploader
+                                  </p>
+                                  <p className="text-[10px] text-[color-mix(in_oklab,var(--app-text)_40%,var(--app-muted)_60%)]">
+                                    Le fichier vidéo sera ajouté ultérieurement
+                                  </p>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-2">{videoActions}</div>
+                              </div>
+                            )}
                         </div>
                       );
                     })}
@@ -3750,9 +3929,12 @@ export function AdminContentManager() {
                       <h3 className="text-lg font-bold text-slate-900">QCMs existants</h3>
                       <p className="text-xs text-slate-500">Vue organisée par libellé pour simplifier la maintenance pédagogique.</p>
                     </div>
-                    <span className="inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
-                      {qcmListStats.total}
-                    </span>
+                    <DeleteAllButton
+                      collectionName="qcms"
+                      count={qcmListStats.total}
+                      isDeleting={isDeletingAll}
+                      label="QCMs"
+                    />
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2 text-xs">
                     <span className={existingItemMetaChipClass}>Vidéos liées: {qcmListStats.videosLinked}</span>
@@ -3962,9 +4144,12 @@ export function AdminContentManager() {
                       <h3 className="text-lg font-bold text-slate-900">QROC existants</h3>
                       <p className="text-xs text-slate-500">Organisation par question pour retrouver rapidement les contenus rédactionnels.</p>
                     </div>
-                    <span className="inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
-                      {openQuestionListStats.total}
-                    </span>
+                    <DeleteAllButton
+                      collectionName="openQuestions"
+                      count={openQuestionListStats.total}
+                      isDeleting={isDeletingAll}
+                      label="QROC"
+                    />
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2 text-xs">
                     <span className={existingItemMetaChipClass}>Vidéos liées: {openQuestionListStats.videosLinked}</span>
@@ -4063,7 +4248,7 @@ export function AdminContentManager() {
                 </div>
               </div>
               {caseImportSummary && (
-                <div className="rounded-xl border border-medical-200 bg-medical-50 px-4 py-3 text-xs text-medical-800">
+                <div className="rounded-xl border border-medical-200 bg-medical-50 px-4 py-3 text-xs text-medical-800 whitespace-pre-line">
                   {caseImportSummary}
                 </div>
               )}
@@ -4628,9 +4813,12 @@ export function AdminContentManager() {
                       <h3 className="text-lg font-bold text-slate-900">Cas cliniques existants</h3>
                       <p className="text-xs text-slate-500">Réorganisation orientée pratique clinique et supports disponibles.</p>
                     </div>
-                    <span className="inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
-                      {caseListStats.total}
-                    </span>
+                    <DeleteAllButton
+                      collectionName="clinicalCases"
+                      count={caseListStats.total}
+                      isDeleting={isDeletingAll}
+                      label="Cas cliniques"
+                    />
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2 text-xs">
                     <span className={existingItemMetaChipClass}>Avec questions: {caseListStats.withQuestions}</span>
@@ -5015,9 +5203,12 @@ export function AdminContentManager() {
                       <h3 className="text-lg font-bold text-slate-900">Schémas existants</h3>
                       <p className="text-xs text-slate-500">Catalogue visuel organisé par titre avec aperçu et densité d’annotations.</p>
                     </div>
-                    <span className="inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
-                      {diagramListStats.total}
-                    </span>
+                    <DeleteAllButton
+                      collectionName="diagrams"
+                      count={diagramListStats.total}
+                      isDeleting={isDeletingAll}
+                      label="Schémas"
+                    />
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2 text-xs">
                     <span className={existingItemMetaChipClass}>Avec image: {diagramListStats.withImage}</span>
@@ -5094,6 +5285,26 @@ export function AdminContentManager() {
           </div>
         )}
       </div>
+
+      <ConfirmModal
+        isOpen={confirmDeleteAllOpen}
+        title={`Supprimer tout — ${collectionLabels[confirmDeleteAllTarget]}`}
+        message={
+          confirmDeleteAllTarget === 'videos'
+            ? 'Cette action supprimera définitivement toutes les vidéos de la bibliothèque, ainsi que leurs fichiers Cloudinary associés. Cette opération est irréversible.'
+            : confirmDeleteAllTarget === 'clinicalCases'
+              ? 'Cette action supprimera définitivement tous les cas cliniques et leurs figures associées. Cette opération est irréversible.'
+              : confirmDeleteAllTarget === 'diagrams'
+                ? 'Cette action supprimera définitivement tous les schémas et leurs images associées. Cette opération est irréversible.'
+                : `Cette action supprimera définitivement tous les éléments de "${collectionLabels[confirmDeleteAllTarget]}". Cette opération est irréversible.`
+        }
+        confirmLabel="Supprimer tout"
+        cancelLabel="Annuler"
+        onConfirm={executeDeleteAll}
+        onCancel={() => setConfirmDeleteAllOpen(false)}
+        isConfirming={isDeletingAll}
+      />
+
     </div>
   );
 }
