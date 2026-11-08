@@ -10,6 +10,8 @@ import SeamlessPlayer from '@/components/features/video/seamless-player';
 import { canAccessVideo } from '@/lib/security/access-control';
 import type {
   CaseQuestionModel,
+  CaseQuestionQcm,
+  CaseQuestionSelect,
   CaseQuestionUiState,
   ClinicalCaseModel,
   DiagramModel,
@@ -1059,7 +1061,10 @@ export default function VideoPage() {
                                       // Quand le QCM n'a pas encore de réponse (statut pas_encore),
                                       // aucune bonne réponse n'est définie : on ne présélectionne
                                       // surtout pas la première option (index 0) par défaut.
-                                      const isAnswerDefined = q.qcmStatus === 'termine';
+                                      const isQcmOrSelect = q.kind === 'qcm' || q.kind === 'select';
+                                      const isAnswerDefined =
+                                        isQcmOrSelect &&
+                                        (q as CaseQuestionQcm | CaseQuestionSelect).qcmStatus === 'termine';
                                       const correctIndexes: number[] = isAnswerDefined
                                         ? (Array.isArray(q.correctOptionIndexes) && q.correctOptionIndexes.length > 0
                                             ? q.correctOptionIndexes
