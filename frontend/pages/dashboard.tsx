@@ -40,7 +40,6 @@ import {
   cleanupCloudinaryAssetsOnPageExit,
   type CloudinaryCleanupAsset,
 } from '@/lib/api/client';
-import { isSubscriptionActive } from '@/lib/security/access-control';
 import { formatFullName, normalizeNameParts, splitFullName } from '@/lib/utils/name-utils';
 import { AVATAR_FALLBACK_SRC, applyImageFallback } from '@/lib/utils/media-fallback';
 import { normalizeGoogleOAuthError } from '@/lib/utils/oauth-error';
@@ -927,7 +926,7 @@ export default function UserDashboard() {
 
   if (!profile) return null;
 
-  const isVipPlus = isSubscriptionActive(profile);
+  const isVipPlus = profile.role === 'vip_plus';
   const accountLevelLabel = isVipPlus ? 'VIP Plus' : profile.role === 'vip' ? 'VIP' : profile.role === 'admin' ? 'Admin' : 'Demo';
   const activeSupportChat = supportChats.find((chat) => chat.id === activeSupportChatId) || null;
   const isActiveSupportChatResolved = activeSupportChat?.status === 'resolved';

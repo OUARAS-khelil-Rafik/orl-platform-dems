@@ -61,7 +61,8 @@ export const canAccessVideo = (
     return true;
   }
 
-  if (profile.role === 'vip_plus') {
+  // VIP Plus users have every video unlocked.
+  if (isVipPlus(profile)) {
     return true;
   }
 
@@ -80,4 +81,22 @@ export const hasPendingSubscriptionApproval = (
   profile: Pick<UserProfileLike, 'subscriptionApprovalStatus' | 'role'>,
 ): boolean => {
   return profile.role === 'vip_plus' && profile.subscriptionApprovalStatus === 'pending';
+};
+
+export const isVipPlus = (
+  profile: Pick<UserProfileLike, 'role'> | null | undefined,
+): boolean => {
+  return profile?.role === 'vip_plus';
+};
+
+export const isVipPlusActive = (
+  profile: Pick<UserProfileLike, 'role' | 'subscriptionEndDate' | 'subscriptionApprovalStatus'> | null | undefined,
+): boolean => {
+  if (!profile) return false;
+  if (profile.role !== 'vip_plus') return false;
+  if (profile.subscriptionApprovalStatus === 'rejected' || profile.subscriptionApprovalStatus === 'pending') {
+    return false;
+  }
+  if (!profile.subscriptionEndDate) return false;
+  return new Date(profile.subscriptionEndDate) > new Date();
 };

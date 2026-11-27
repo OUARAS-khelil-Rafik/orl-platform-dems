@@ -25,6 +25,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import Image from 'next/image';
+import { isVipPlus } from '@/lib/security/access-control';
 import {
   db,
   collection,
@@ -83,6 +84,7 @@ export function Navbar() {
   const notificationMobileRef = useRef<HTMLDivElement | null>(null);
 
   const isAdmin = profile?.role === 'admin';
+  const vipPlusActive = isVipPlus(profile);
 
   const handleSignOut = async () => {
     try {
@@ -100,7 +102,7 @@ export function Navbar() {
     { name: 'Planning', href: '/planning' },
     { name: 'Tarifs', href: '/pricing' },
   ];
-  const visibleNavLinks = isAdmin ? navLinks.filter((link) => link.name !== 'Tarifs') : navLinks;
+  const visibleNavLinks = (isAdmin || vipPlusActive) ? navLinks.filter((link) => link.name !== 'Tarifs') : navLinks;
 
   const normalizePath = (value: string) => {
     const [pathOnly] = value.split('?');

@@ -3052,7 +3052,11 @@ export default function AdminDashboard() {
 
                                   const roleUpdate: Record<string, unknown> = { role: nextRole };
 
-                                  if (nextRole !== 'vip_plus') {
+                                  if (nextRole === 'vip_plus') {
+                                    // Promoting a member to VIP Plus marks the subscription as approved
+                                    // so the role change is reflected for the user.
+                                    roleUpdate.subscriptionApprovalStatus = 'approved';
+                                  } else {
                                     roleUpdate.subscriptionApprovalStatus = 'none';
                                   }
 
@@ -3064,9 +3068,9 @@ export default function AdminDashboard() {
                                             ...entry,
                                             role: nextRole,
                                             subscriptionApprovalStatus:
-                                              nextRole !== 'vip_plus'
-                                                ? 'none'
-                                                : entry.subscriptionApprovalStatus,
+                                              nextRole === 'vip_plus'
+                                                ? 'approved'
+                                                : 'none',
                                           }
                                         : entry,
                                     ),

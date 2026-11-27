@@ -3,11 +3,13 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { useAuth } from '@/components/providers/auth-provider';
+import { isVipPlus } from '@/lib/security/access-control';
 import { Mail, Phone, MapPin } from 'lucide-react';
 
 export function Footer() {
   const { profile } = useAuth();
   const isAdmin = profile?.role === 'admin';
+  const vipPlusActive = isVipPlus(profile);
 
   return (
     <footer
@@ -41,7 +43,7 @@ export function Footer() {
           <h3 className="font-semibold mb-4 text-(--footer-text)">Liens Utiles</h3>
           <ul className="space-y-2 text-sm">
             <li><Link href="/planning" className="transition-opacity hover:opacity-80 text-(--footer-link)">Planning</Link></li>
-            {!isAdmin && (
+            {!isAdmin && !vipPlusActive && (
               <li><Link href="/pricing" className="transition-opacity hover:opacity-80 text-(--footer-link)">Tarifs & Abonnements</Link></li>
             )}
             <li>

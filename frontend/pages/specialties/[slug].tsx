@@ -1413,7 +1413,7 @@ function VideoCard({
           </div>
         ) : null}
 
-        {hasVideo && !hasAccess ? (
+        {hasVideo && !hasAccess && role !== 'vip_plus' ? (
           <div className="flex items-center justify-between gap-2">
             <span className="text-lg font-bold text-[var(--app-text)]">{video.price} DZD</span>
             <button

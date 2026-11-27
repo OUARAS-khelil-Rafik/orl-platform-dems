@@ -7,7 +7,7 @@ import { useRealtimeRefresh } from '@/lib/hooks/useRealtimeRefresh';
 import { useAuth } from '@/components/providers/auth-provider';
 import { useCart } from '@/components/providers/cart-provider';
 import SeamlessPlayer from '@/components/features/video/seamless-player';
-import { canAccessVideo } from '@/lib/security/access-control';
+import { canAccessVideo, isVipPlus } from '@/lib/security/access-control';
 import type {
   CaseQuestionModel,
   CaseQuestionQcm,
@@ -605,7 +605,9 @@ export default function VideoPage() {
           <div className="video-status-chip inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider mb-4">
             {purchaseStatusLabel}
           </div>
-          <div className="text-3xl font-bold text-medical-400 mb-8">{video.price} DZD</div>
+          {!isVipPlus(profile) && (
+            <div className="text-3xl font-bold text-medical-400 mb-8">{video.price} DZD</div>
+          )}
           
           <button
             onClick={lockedAction.onClick}

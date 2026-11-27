@@ -1,10 +1,38 @@
 'use client';
 
+import { useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Check, X, Shield, Zap, Star } from 'lucide-react';
 import Link from 'next/link';
+import { useRouter } from 'next/router';
+import { useAuth } from '@/components/providers/auth-provider';
+import { isVipPlus } from '@/lib/security/access-control';
 
 export default function PricingPage() {
+  const router = useRouter();
+  const { profile, loading } = useAuth();
+  const vipPlusActive = isVipPlus(profile);
+
+  // VIP Plus users neither see the pricing page nor any prices.
+  useEffect(() => {
+    if (!loading && vipPlusActive) {
+      router.replace('/dashboard');
+    }
+  }, [loading, vipPlusActive, router]);
+
+  if (loading) {
+    return (
+      <div className="flex-1 flex items-center justify-center py-20">
+        <div className="w-12 h-12 border-4 border-[var(--app-border)] border-t-medical-500 rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  // VIP Plus users don't see the pricing page.
+  if (vipPlusActive) {
+    return null;
+  }
+
   return (
     <div
       className="flex-1 py-20"
@@ -22,7 +50,7 @@ export default function PricingPage() {
           <div className="absolute -top-16 -right-16 w-48 h-48 sm:w-64 sm:h-64 rounded-full blur-3xl" style={{ background: 'color-mix(in oklab, var(--app-accent) 36%, transparent)' }} />
           <div className="absolute -bottom-20 -left-10 w-48 h-48 sm:w-64 sm:h-64 rounded-full blur-3xl" style={{ background: 'color-mix(in oklab, var(--app-accent) 24%, transparent)' }} />
           <div className="relative z-10 text-center max-w-3xl mx-auto">
-          <motion.h1 
+          <motion.h1
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             className="text-3xl sm:text-4xl md:text-5xl font-bold mb-4 sm:mb-6 break-words"
@@ -30,7 +58,7 @@ export default function PricingPage() {
           >
             Investissez dans votre réussite
           </motion.h1>
-          <motion.p 
+          <motion.p
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
@@ -44,7 +72,7 @@ export default function PricingPage() {
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8 max-w-6xl mx-auto">
           {/* Free Tier */}
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
@@ -79,8 +107,8 @@ export default function PricingPage() {
                 </li>
               ))}
             </ul>
-            <Link 
-              href="/sign-up" 
+            <Link
+              href="/sign-up"
               className="w-full py-3 sm:py-4 rounded-xl font-medium text-center border-2 transition-colors text-sm sm:text-base"
               style={{ borderColor: 'color-mix(in oklab, var(--app-accent) 30%, var(--app-border) 70%)', color: 'color-mix(in oklab, var(--app-accent) 76%, var(--app-text) 24%)' }}
             >
@@ -89,7 +117,7 @@ export default function PricingPage() {
           </motion.div>
 
           {/* VIP (Packs) */}
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3 }}
@@ -128,8 +156,8 @@ export default function PricingPage() {
                 </li>
               ))}
             </ul>
-            <Link 
-              href="/specialties" 
+            <Link
+              href="/specialties"
               className="w-full py-3 sm:py-4 rounded-xl font-medium text-center text-white transition-colors shadow-lg text-sm sm:text-base"
               style={{ background: 'linear-gradient(90deg, color-mix(in oklab, var(--app-accent) 76%, #5b402f 24%), color-mix(in oklab, var(--app-accent) 90%, #37271c 10%))' }}
             >
@@ -138,7 +166,7 @@ export default function PricingPage() {
           </motion.div>
 
           {/* VIP Plus (Subscription) */}
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.4 }}
@@ -171,8 +199,8 @@ export default function PricingPage() {
                 </li>
               ))}
             </ul>
-            <Link 
-              href="/checkout/subscription" 
+            <Link
+              href="/checkout/subscription"
               className="w-full py-3 sm:py-4 rounded-xl font-medium text-center text-white transition-colors shadow-lg text-sm sm:text-base"
               style={{ background: 'linear-gradient(90deg, color-mix(in oklab, var(--app-accent) 76%, #5b402f 24%), color-mix(in oklab, var(--app-accent) 90%, #37271c 10%))' }}
             >
