@@ -425,8 +425,12 @@ export default function VideoPage() {
     fetchLockedVideoPaymentStatus();
   }, [user, id]);
 
-  // Prevent right click and copy
+  // Prevent right click and copy (admin exempté : autorisé à tout faire)
   useEffect(() => {
+    if (profile?.role === 'admin') {
+      return;
+    }
+
     const handleContextMenu = (e: MouseEvent) => e.preventDefault();
     const handleCopy = (e: ClipboardEvent) => e.preventDefault();
     
@@ -437,7 +441,7 @@ export default function VideoPage() {
       document.removeEventListener('contextmenu', handleContextMenu);
       document.removeEventListener('copy', handleCopy);
     };
-  }, []);
+  }, [profile?.role]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || !video?.id || !hasAccess) {

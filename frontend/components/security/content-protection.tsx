@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useAuth } from '@/components/providers/auth-provider';
 
 const SHIELD_IDLE_MESSAGE = 'Contenu protégé';
 const PRINT_BLOCKED_MESSAGE = 'Impression désactivée pour protéger le contenu.';
@@ -57,7 +58,22 @@ const isScreenshotShortcut = (event: KeyboardEvent) => {
   );
 };
 
-export function ContentProtection() {
+interface ContentProtectionProps {
+  /** Quand true, l'utilisateur est exempté de toute restriction (admin : captures, copie-coller, clic droit, impression, drag autorisés). */
+  isAdmin?: boolean;
+}
+
+export function ContentProtection({ isAdmin: isAdminProp }: ContentProtectionProps = {}) {
+  const { profile } = useAuth();
+
+  // L'administrateur est exempté de toute restriction : captures d'écran,
+  // copier-coller, clic droit, impression et glisser-déposer lui sont autorisés.
+  const isAdmin = isAdminProp ?? profile?.role === 'admin';
+
+  if (isAdmin) {
+    return null;
+  }
+
   const [shieldMessage, setShieldMessage] = useState(SHIELD_IDLE_MESSAGE);
   const [isShieldVisible, setIsShieldVisible] = useState(false);
   const timeoutRef = useRef<number | null>(null);

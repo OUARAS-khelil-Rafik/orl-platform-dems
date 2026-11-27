@@ -42,4 +42,45 @@ describe('ContentProtection', () => {
 
     expect(fireEvent.paste(screen.getByLabelText('Email'))).toBe(true);
   });
+
+  it('exempts admin from all restrictions (no class, copy/print allowed)', () => {
+    const { unmount } = render(<ContentProtection isAdmin />);
+
+    expect(document.body).not.toHaveClass('content-protection-enabled');
+
+    // Copy and print shortcuts are not blocked for admin
+    expect(fireEvent.copy(document)).toBe(true);
+    expect(fireEvent.keyDown(window, { key: 'p', ctrlKey: true })).toBe(true);
+
+    unmount();
+    expect(document.body).not.toHaveClass('content-protection-enabled');
+  });
+
+  it('admin: Ctrl+A and mouse selection are allowed', () => {
+    const { unmount } = render(<ContentProtection isAdmin />);
+
+    expect(document.body).not.toHaveClass('content-protection-enabled');
+
+    // Ctrl+A not intercepted for admin
+    expect(fireEvent.keyDown(window, { key: 'a', ctrlKey: true })).toBe(true);
+
+    // Mouse selection (selectstart) not intercepted for admin
+    const adminSelectStart = new Event('selectstart', { bubbles: true, cancelable: true });
+    expect(document.body.dispatchEvent(adminSelectStart)).toBe(true);
+
+    unmount();
+  });
+
+  it('non-admin: Ctrl+A and mouse selection are blocked', () => {
+    render(<ContentProtection />);
+
+    // Ctrl+A is intercepted for non-admin
+    expect(fireEvent.keyDown(window, { key: 'a', ctrlKey: true })).toBe(false);
+
+    // Mouse selection (selectstart) is intercepted outside editable fields
+    const selectStartEvent = new Event('selectstart', { bubbles: true, cancelable: true });
+    expect(document.body.dispatchEvent(selectStartEvent)).toBe(false);
+
+    expect(screen.getByText('Copie et collage désactivés sur cette plateforme.')).toBeInTheDocument();
+  });
 });
