@@ -20,12 +20,12 @@ const specialties = [
     chipClass: 'specialty-glow-rhinology',
   },
   {
-    slug: 'laryngologie',
-    title: 'Laryngologie',
+    slug: 'cervicologie',
+    title: 'Cervicologie',
     description: 'Larynx, pharynx, cou et pathologies cervico-faciales.',
     icon: LarynxFlatIcon,
     gradient: 'from-rose-500 to-pink-500',
-    chipClass: 'specialty-glow-laryngology',
+    chipClass: 'specialty-glow-cervicology',
   },
 ];
 

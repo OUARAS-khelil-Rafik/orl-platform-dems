@@ -224,7 +224,7 @@ export function SearchModal({ isOpen, onClose }: { isOpen: boolean; onClose: () 
   const quickLinks = [
     { label: 'Otologie', href: '/specialties/otologie' },
     { label: 'Rhinologie', href: '/specialties/rhinologie' },
-    { label: 'Laryngologie', href: '/specialties/laryngologie' },
+    { label: 'Cervicologie', href: '/specialties/cervicologie' },
     { label: 'Catalogue vidéos', href: '/videos' },
   ];
 

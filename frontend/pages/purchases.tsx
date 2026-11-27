@@ -93,13 +93,13 @@ const STATUS_TONE: Record<string, { bg: string; border: string; text: string }> 
 const PACK_LABELS: Record<string, string> = {
   otologie: 'Otologie',
   rhinologie: 'Rhinologie & Sinusologie',
-  laryngologie: 'Laryngologie & Cervicologie',
+  cervicologie: 'Cervicologie',
 };
 
 const PACK_META: Record<string, { icon: string; desc: string; color: string; sub: string }> = {
   otologie: { icon: '🦻', desc: "Pathologies de l'oreille", color: 'var(--specialty-otology)', sub: 'Oreille externe, moyenne & interne' },
   rhinologie: { icon: '👃', desc: 'Nez, sinus & fosses nasales', color: 'var(--specialty-rhinology)', sub: 'Rhinologie & sinusologie complète' },
-  laryngologie: { icon: '🗣️', desc: 'Larynx, pharynx & cou', color: 'var(--specialty-laryngology)', sub: 'Voix, déglutition & cervicologie' },
+  cervicologie: { icon: '🗣️', desc: 'Larynx, pharynx & cou', color: 'var(--specialty-cervicology)', sub: 'Voix, déglutition & cervicologie' },
 };
 
 const normalizeUniqueIdList = (source: unknown): string[] => {
@@ -364,7 +364,7 @@ export default function PurchasesPage() {
     const normalized = trimmed.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
     if (normalized.includes('otolog')) return { label: 'Otologie', tone: 'otologie' as const };
     if (normalized.includes('rhino') || normalized.includes('sinuso')) return { label: 'Rhinologie', tone: 'rhinologie' as const };
-    if (normalized.includes('laryngo') || normalized.includes('cervico')) return { label: 'Laryngologie', tone: 'laryngologie' as const };
+    if (normalized.includes('cervico') || normalized.includes('cervico')) return { label: 'Cervicologie', tone: 'cervicologie' as const };
     return { label: `${trimmed.charAt(0).toUpperCase()}${trimmed.slice(1)}`, tone: 'default' as const };
   };
 

@@ -96,7 +96,7 @@ export function Navbar() {
     { name: 'Accueil', href: '/' },
     { name: 'Otologie', href: '/specialties/otologie' },
     { name: 'Rhinologie', href: '/specialties/rhinologie' },
-    { name: 'Laryngologie', href: '/specialties/laryngologie' },
+    { name: 'Cervicologie', href: '/specialties/cervicologie' },
     { name: 'Planning', href: '/planning' },
     { name: 'Tarifs', href: '/pricing' },
   ];

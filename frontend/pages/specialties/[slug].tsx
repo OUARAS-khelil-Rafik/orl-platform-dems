@@ -81,7 +81,7 @@ const formatSubspecialtyLabel = (subspecialty: string, section?: string) => {
   const s = String(subspecialty || '').trim().toLowerCase();
   if (s === 'otologie') return 'Otologie';
   if (s === 'rhinologie') return 'Rhinologie';
-  if (s === 'laryngologie') return 'Laryngologie';
+  if (s === 'cervicologie') return 'Cervicologie';
   // Pas de sous-spécialité reconnue : on affiche la section (Anatomie / Pathologie) à la place de "Autre"
   return formatSectionLabel(section || '');
 };
@@ -94,7 +94,7 @@ const getSubspecialtyBadgeClass = (subspecialty: string, section?: string) => {
   if (s === 'rhinologie') {
     return 'bg-cyan-500/90 text-white border-cyan-300/80';
   }
-  if (s === 'laryngologie') {
+  if (s === 'cervicologie') {
     return 'bg-rose-500/90 text-white border-rose-300/80';
   }
   // Fallback : utiliser la couleur de la section (Anatomie = cyan, Pathologie = ambré)
@@ -274,11 +274,11 @@ const SPECIALTIES = {
     color: 'from-cyan-500 to-blue-500',
     chipClass: 'specialty-glow-rhinology',
   },
-  laryngologie: {
-    title: 'Laryngologie & Cervicologie',
-    desc: 'Voie laryngo-cervicale: voix, déglutition, oncologie et stratégie clinique.',
+  cervicologie: {
+    title: 'Cervicologie',
+    desc: 'Voie cervico-cervicale: voix, déglutition, oncologie et stratégie clinique.',
     color: 'from-rose-500 to-pink-500',
-    chipClass: 'specialty-glow-laryngology',
+    chipClass: 'specialty-glow-cervicology',
   },
 };
 

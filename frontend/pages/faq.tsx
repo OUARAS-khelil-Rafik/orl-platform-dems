@@ -45,7 +45,7 @@ const FAQS: FaqItem[] = [
     category: 'acces',
     categoryLabel: 'Accès & comptes',
     q: 'Comment accéder aux vidéos payantes ?',
-    a: 'Vous pouvez acheter une vidéo à l’unité, un pack de spécialité (Otologie, Rhinologie, Laryngologie) ou souscrire à l’abonnement VIP Plus qui débloque l’intégralité de la plateforme. Une fois le paiement vérifié par un administrateur, l’accès apparaît automatiquement dans Mon Espace et notifié.',
+    a: 'Vous pouvez acheter une vidéo à l’unité, un pack de spécialité (Otologie, Rhinologie, Cervicologie) ou souscrire à l’abonnement VIP Plus qui débloque l’intégralité de la plateforme. Une fois le paiement vérifié par un administrateur, l’accès apparaît automatiquement dans Mon Espace et notifié.',
     icon: KeyRound,
   },
   {

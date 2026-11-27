@@ -74,11 +74,11 @@ export function SeedDataButton() {
           title: "Laryngoscopie indirecte et directe",
           description: "Comparaison des techniques de visualisation du larynx et des cordes vocales en pratique courante.",
           url: "https://www.youtube.com/watch?v=0EdDJNqdEYY",
-          subspecialty: "laryngologie",
+          subspecialty: "cervicologie",
           section: "anatomie",
           isFreeDemo: false,
           price: 3000,
-          packId: "laryngologie",
+          packId: "cervicologie",
           createdAt: now
         }
       ];
@@ -202,7 +202,7 @@ export function SeedDataButton() {
           discussion:
             "L'indication chirurgicale doit être posée avec prudence après un essai bien conduit de rééducation vocale.",
           images: ["https://picsum.photos/seed/laryn1/800/600"],
-          reference: "Cours de laryngologie DEMS – dysphonies fonctionnelles.",
+          reference: "Cours de cervicologie DEMS – dysphonies fonctionnelles.",
           questions: [
             {
               id: "case3-q1",
@@ -285,7 +285,7 @@ export function SeedDataButton() {
           explanation:
             "La dysphonie chronique d'effort chez un professionnel de la voix est typique des nodules bénins.",
           images: ["https://picsum.photos/seed/qcm-voice/800/600"],
-          reference: "Cours de laryngologie DEMS – dysphonies fonctionnelles",
+          reference: "Cours de cervicologie DEMS – dysphonies fonctionnelles",
           createdAt: now,
         },
       ];
@@ -317,7 +317,7 @@ export function SeedDataButton() {
           question: "Pourquoi la rééducation vocale est-elle prioritaire avant toute chirurgie des nodules bénins ?",
           answer:
             "Parce qu'elle corrige les comportements vocaux à risque, réduit l'inflammation phonotraumatique et permet souvent une amélioration clinique sans geste invasif.",
-          reference: "Cours de laryngologie DEMS – prise en charge de la dysphonie fonctionnelle.",
+          reference: "Cours de cervicologie DEMS – prise en charge de la dysphonie fonctionnelle.",
           createdAt: now,
         },
       ];
@@ -359,7 +359,7 @@ export function SeedDataButton() {
             { number: 1, x: 40, y: 40, label: "Cordes vocales", description: "Structures vibratiles responsables de la phonation." },
             { number: 2, x: 65, y: 55, label: "Nodules bénins", description: "Épaississements symétriques liés au surmenage vocal." }
           ],
-          reference: "Cours de laryngologie DEMS - schémas",
+          reference: "Cours de cervicologie DEMS - schémas",
           createdAt: now,
         },
       ];

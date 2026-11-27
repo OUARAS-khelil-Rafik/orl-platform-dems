@@ -64,7 +64,7 @@ const mockUsers: User[] = [
 const mockVideos: Video[] = [
   { id: 'video-1', title: 'Otologie Avancée' },
   { id: 'video-2', title: 'Rhinologie Clinique' },
-  { id: 'video-3', title: 'Laryngologie Pratique' },
+  { id: 'video-3', title: 'Cervicologie Pratique' },
 ];
 
 const mockAdminUser: User = {

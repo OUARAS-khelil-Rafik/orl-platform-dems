@@ -347,10 +347,10 @@ const getUnfinishedVideoTheme = (subspecialtyLabel: string) => {
 
   if (normalized.includes('lary')) {
     return {
-      chipClass: 'specialty-glow-laryngology',
-      cardClass: 'border-[color-mix(in_oklab,var(--specialty-laryngology)_36%,var(--app-border)_64%)] bg-[linear-gradient(180deg,color-mix(in_oklab,var(--specialty-laryngology)_14%,var(--app-surface)_86%)_0%,color-mix(in_oklab,var(--specialty-laryngology)_24%,var(--app-surface-alt)_76%)_100%)]',
-      stripeClass: 'bg-[linear-gradient(90deg,color-mix(in_oklab,var(--specialty-laryngology)_84%,#ec4899_16%),color-mix(in_oklab,var(--specialty-laryngology)_68%,#db2777_32%))]',
-      ctaClass: 'text-[color-mix(in_oklab,var(--specialty-laryngology)_78%,var(--app-text)_22%)]',
+      chipClass: 'specialty-glow-cervicology',
+      cardClass: 'border-[color-mix(in_oklab,var(--specialty-cervicology)_36%,var(--app-border)_64%)] bg-[linear-gradient(180deg,color-mix(in_oklab,var(--specialty-cervicology)_14%,var(--app-surface)_86%)_0%,color-mix(in_oklab,var(--specialty-cervicology)_24%,var(--app-surface-alt)_76%)_100%)]',
+      stripeClass: 'bg-[linear-gradient(90deg,color-mix(in_oklab,var(--specialty-cervicology)_84%,#ec4899_16%),color-mix(in_oklab,var(--specialty-cervicology)_68%,#db2777_32%))]',
+      ctaClass: 'text-[color-mix(in_oklab,var(--specialty-cervicology)_78%,var(--app-text)_22%)]',
     };
   }
 
@@ -1991,11 +1991,11 @@ export default function HomePage() {
       href: '/specialties/rhinologie',
     },
     {
-      title: 'Laryngologie & Cervicologie',
+      title: 'Cervicologie',
       desc: 'Larynx, pharynx, cou et oncologie cervico-faciale avec approche clinique complète.',
       icon: LarynxFlatIcon,
       gradient: 'from-orange-700 to-amber-600',
-      href: '/specialties/laryngologie',
+      href: '/specialties/cervicologie',
     },
   ];
 
@@ -2035,7 +2035,7 @@ export default function HomePage() {
   ];
 
   const journey = [
-    { step: '01', title: 'Choisissez votre spécialité', text: 'Otologie, Rhinologie ou Laryngologie selon votre priorité actuelle.' },
+    { step: '01', title: 'Choisissez votre spécialité', text: 'Otologie, Rhinologie ou Cervicologie selon votre priorité actuelle.' },
     { step: '02', title: 'Alternez cours et cas', text: 'Passez immédiatement de la théorie à la décision clinique.' },
     { step: '03', title: 'Validez par évaluation active', text: 'QCM et QROC pour fixer les automatismes utiles.' },
     { step: '04', title: 'Consolidez avec les schémas', text: 'Repères visuels et anatomiques pour une rétention rapide.' },

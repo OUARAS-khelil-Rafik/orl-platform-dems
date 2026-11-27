@@ -65,7 +65,7 @@ const formatSubspecialtyLabel = (sub?: string) => {
   const s = String(sub || '').trim().toLowerCase();
   if (s.includes('otolog')) return 'Otologie';
   if (s.includes('rhino') || s.includes('sinuso')) return 'Rhinologie';
-  if (s.includes('laryngo') || s.includes('cervico')) return 'Laryngologie';
+  if (s.includes('cervico') || s.includes('cervico')) return 'Cervicologie';
   return s ? String(sub || '').charAt(0).toUpperCase() + String(sub || '').slice(1) : '-';
 };
 

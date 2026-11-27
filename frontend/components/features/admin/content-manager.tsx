@@ -3414,7 +3414,7 @@ export function AdminContentManager() {
                     >
                       <option value="otologie">Otologie</option>
                       <option value="rhinologie">Rhinologie</option>
-                      <option value="laryngologie">Laryngologie</option>
+                      <option value="cervicologie">Cervicologie</option>
                     </select>
                   </div>
 

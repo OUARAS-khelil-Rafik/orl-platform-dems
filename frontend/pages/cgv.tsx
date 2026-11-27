@@ -194,7 +194,7 @@ export default function CgvPage() {
 
             <Section id="objet" number="01" title="Objet & définitions" icon={FileText} activeId={activeId}>
               <p>
-                DEMS ENT est une plateforme d’excellence dédiée à la préparation au concours DEMS en ORL (Otologie, Rhinologie & Sinusologie, Laryngologie & Cervicologie). Les présentes CGV encadrent toute commande passée sur la plateforme.
+                DEMS ENT est une plateforme d’excellence dédiée à la préparation au concours DEMS en ORL (Otologie, Rhinologie & Sinusologie, Cervicologie). Les présentes CGV encadrent toute commande passée sur la plateforme.
               </p>
               <ul>
                 <li><strong>Utilisateur</strong> : toute personne disposant d’un compte DEMS ENT.</li>

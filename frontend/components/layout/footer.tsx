@@ -24,7 +24,7 @@ export function Footer() {
             <span className="font-bold text-xl tracking-tight text-(--footer-text)">DEMS ENT</span>
           </Link>
           <p className="text-sm leading-relaxed text-(--footer-muted)">
-            Plateforme d'excellence pour la préparation au concours DEMS en Otorhinolaryngologie.
+            Plateforme d'excellence pour la préparation au concours DEMS en Otorhinocervicologie.
           </p>
         </div>
 
@@ -33,7 +33,7 @@ export function Footer() {
           <ul className="space-y-2 text-sm">
             <li><Link href="/specialties/otologie" className="transition-opacity hover:opacity-80 text-(--footer-link)">Otologie</Link></li>
             <li><Link href="/specialties/rhinologie" className="transition-opacity hover:opacity-80 text-(--footer-link)">Rhinologie et Sinusologie</Link></li>
-            <li><Link href="/specialties/laryngologie" className="transition-opacity hover:opacity-80 text-(--footer-link)">Laryngologie et Cervicologie</Link></li>
+            <li><Link href="/specialties/cervicologie" className="transition-opacity hover:opacity-80 text-(--footer-link)">Cervicologie et Cervicologie</Link></li>
           </ul>
         </div>
 

@@ -15,10 +15,10 @@ const specialties = [
     chipClass: 'specialty-glow-rhinology',
   },
   {
-    slug: 'laryngologie',
-    label: 'Laryngologie',
+    slug: 'cervicologie',
+    label: 'Cervicologie',
     subtitle: 'Voix, déglutition et pathologies cervicales',
-    chipClass: 'specialty-glow-laryngology',
+    chipClass: 'specialty-glow-cervicology',
   },
 ];
 
