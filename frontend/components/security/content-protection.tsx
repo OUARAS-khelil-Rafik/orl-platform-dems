@@ -67,12 +67,8 @@ export function ContentProtection({ isAdmin: isAdminProp }: ContentProtectionPro
   const { profile } = useAuth();
 
   // L'administrateur est exempté de toute restriction : captures d'écran,
-  // copier-coller, clic droit, impression et glisser-déposer lui sont autorisés.
+  // copier-coller, clic droit, impression, sélection souris et glisser-déposer lui sont autorisés.
   const isAdmin = isAdminProp ?? profile?.role === 'admin';
-
-  if (isAdmin) {
-    return null;
-  }
 
   const [shieldMessage, setShieldMessage] = useState(SHIELD_IDLE_MESSAGE);
   const [isShieldVisible, setIsShieldVisible] = useState(false);
@@ -101,6 +97,15 @@ export function ContentProtection({ isAdmin: isAdminProp }: ContentProtectionPro
   }, []);
 
   useEffect(() => {
+    // Quand l'utilisateur est admin : aucune restriction. On s'assure que
+    // la classe et les listeners sont bien retirés (cas où le profil se
+    // charge après le premier rendu).
+    if (isAdmin) {
+      document.body.classList.remove('content-protection-enabled');
+      return;
+    }
+
+    // Utilisateur non-admin : activer la protection de contenu.
     document.body.classList.add('content-protection-enabled');
 
     const handleContextMenu = (event: MouseEvent) => {
@@ -209,7 +214,11 @@ export function ContentProtection({ isAdmin: isAdminProp }: ContentProtectionPro
         window.clearTimeout(timeoutRef.current);
       }
     };
-  }, [hideShield, showShield]);
+  }, [isAdmin, hideShield, showShield]);
+
+  if (isAdmin) {
+    return null;
+  }
 
   return (
     <div
