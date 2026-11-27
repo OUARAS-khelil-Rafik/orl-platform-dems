@@ -58,14 +58,9 @@ type EditableCaseQuestion = {
   answerStatus?: AnswerStatus;
 };
 
+// Statut de la réponse NORMALISÉ : 'Pas encore répondu' vs 'Terminé'.
 const getQcmStatusLabel = (status: string) => {
-  const labels: Record<string, string> = {
-    pas_encore: 'Pas encore',
-    en_cours: 'En cours',
-    prochainement: 'Prochainement',
-    termine: 'Terminé',
-  };
-  return labels[status] || status;
+  return status === 'termine' ? 'Terminé' : 'Pas encore répondu';
 };
 
 interface VideoFormData {
@@ -3827,10 +3822,8 @@ export function AdminContentManager() {
                         title="Statut de la réponse"
                         aria-label="Statut de la réponse du QCM"
                       >
-                        <option value="pas_encore">Pas encore</option>
-                        <option value="en_cours">En cours</option>
-                        <option value="prochainement">Prochainement</option>
-                        <option value="termine">Terminé</option>
+                        <option value="pas_encore">Pas encore répondu</option>
+                                                                        <option value="termine">Terminé</option>
                       </select>
                       <p className="text-xs text-slate-500">
                         Indique si la réponse est déjà définie (terminé) ou à venir (pas encore / en cours / prochainement).
@@ -4166,10 +4159,8 @@ export function AdminContentManager() {
                         title="Statut de la réponse"
                         aria-label="Statut de la réponse du QROC"
                       >
-                        <option value="pas_encore">Pas encore</option>
-                        <option value="en_cours">En cours</option>
-                        <option value="prochainement">Prochainement</option>
-                        <option value="termine">Terminé</option>
+                        <option value="pas_encore">Pas encore répondu</option>
+                                                                        <option value="termine">Terminé</option>
                       </select>
                       <p className="text-xs text-slate-500">
                         Indique si la réponse est déjà rédigée (terminé) ou à venir (pas encore / en cours / prochainement).
@@ -4772,10 +4763,8 @@ export function AdminContentManager() {
                                     }
                                     className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs text-slate-700"
                                   >
-                                    <option value="pas_encore">Pas encore</option>
-                                    <option value="en_cours">En cours</option>
-                                    <option value="prochainement">Prochainement</option>
-                                    <option value="termine">Terminé</option>
+                                    <option value="pas_encore">Pas encore répondu</option>
+                                                                                                            <option value="termine">Terminé</option>
                                   </select>
                                 </div>
                                 </>
@@ -4809,10 +4798,8 @@ export function AdminContentManager() {
                                       }
                                       className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs text-slate-700"
                                     >
-                                      <option value="pas_encore">Pas encore</option>
-                                      <option value="en_cours">En cours</option>
-                                      <option value="prochainement">Prochainement</option>
-                                      <option value="termine">Terminé</option>
+                                      <option value="pas_encore">Pas encore répondu</option>
+                                                                                                                  <option value="termine">Terminé</option>
                                     </select>
                                   </div>
                                 </>

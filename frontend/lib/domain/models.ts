@@ -32,7 +32,7 @@ export interface VideoModel {
   updatedAt?: string;
 }
 
-export type AnswerStatus = 'pas_encore' | 'en_cours' | 'prochainement' | 'termine';
+export type AnswerStatus = 'pas_encore' | 'termine';
 
 export interface QcmModel {
   id: string;

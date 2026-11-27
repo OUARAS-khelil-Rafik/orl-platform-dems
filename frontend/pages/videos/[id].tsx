@@ -10,6 +10,7 @@ import SeamlessPlayer from '@/components/features/video/seamless-player';
 import { canAccessVideo, isVipPlus } from '@/lib/security/access-control';
 import type {
   CaseQuestionModel,
+  CaseQuestionOpen,
   CaseQuestionQcm,
   CaseQuestionSelect,
   CaseQuestionUiState,
@@ -100,14 +101,13 @@ const extractYouTubeVideoId = (url: string) => {
   return null;
 };
 
+// Statut de la réponse NORMALISÉ : seules deux valeurs sont affichées.
+//   'Pas encore répondu' (= pas_encore / en_cours / prochainement / réponse vide / tous FALSE)
+//   'Terminé'            (= termine, une réponse est définie)
+const PAS_ENCORE_REPONDU_LABEL = 'Pas encore répondu';
+
 const getQcmStatusLabel = (status: string) => {
-  const labels: Record<string, string> = {
-    pas_encore: 'Pas encore',
-    en_cours: 'En cours',
-    prochainement: 'Prochainement',
-    termine: 'Terminé',
-  };
-  return labels[status] || status;
+  return status === 'termine' ? 'Terminé' : PAS_ENCORE_REPONDU_LABEL;
 };
 
 const getQcmStatusBadgeClass = (status: string) => {
@@ -115,24 +115,15 @@ const getQcmStatusBadgeClass = (status: string) => {
   if (status === 'termine') {
     return 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-800';
   }
-  if (status === 'en_cours') {
-    return 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-800';
-  }
-  if (status === 'prochainement') {
-    return 'bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 border border-amber-100 dark:border-amber-800';
-  }
-  // pas_encore
+  // Pas encore répondu (pas_encore / en_cours / prochainement…)
   return base;
 };
 
 const getQcmStatusRemark = (status: string) => {
-  const remarks: Record<string, string> = {
-    pas_encore: 'La réponse n’est pas encore définie. Ce QCM est publié en attendant le corrigé.',
-    en_cours: 'La réponse est en cours de rédaction. Ce QCM est publié en attendant le corrigé.',
-    prochainement: 'La réponse sera disponible prochainement. Ce QCM est publié en attendant le corrigé.',
-    termine: '',
-  };
-  return remarks[status] || '';
+  if (status === 'termine') {
+    return '';
+  }
+  return 'La réponse n’est pas encore définie. Ce contenu est publié en attendant le corrigé.';
 };
 
 export default function VideoPage() {
@@ -1071,6 +1062,14 @@ export default function VideoPage() {
                                       const isAnswerDefined =
                                         isQcmOrSelect &&
                                         (q as CaseQuestionQcm | CaseQuestionSelect).qcmStatus === 'termine';
+                                      // QROC (kind 'open') : réponse définie si answerStatus === 'termine'.
+                                      const isOpenAnswerDefined =
+                                        kind === 'open' &&
+                                        (q as CaseQuestionOpen).answerStatus === 'termine';
+                                      // Réponse pas encore définie (vide / pas encore / tous FALSE) => étiquette "Pas encore répondu",
+                                      // comme dans les parties QCM et QROC.
+                                      const isPasEncoreRepondu =
+                                        kind === 'open' ? !isOpenAnswerDefined : !isAnswerDefined;
                                       const correctIndexes: number[] = isAnswerDefined
                                         ? (Array.isArray(q.correctOptionIndexes) && q.correctOptionIndexes.length > 0
                                             ? q.correctOptionIndexes
@@ -1168,14 +1167,13 @@ export default function VideoPage() {
                                                     : 'QROC'}
                                                 </span>
                                               </div>
+                                              {isPasEncoreRepondu && !validated && (
+                                                <span className="cas-q-status-badge inline-flex mt-0.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-[var(--app-surface-alt)] text-[var(--app-muted)] border border-[var(--app-border)]">
+                                                  Pas encore répondu
+                                                </span>
+                                              )}
                                               {validated && (
                                                 <div className="ml-auto flex items-center">
-                                                  {isCorrect === true && (
-                                                    <span className="inline-flex items-center gap-1 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded-full text-[10px] font-semibold">
-                                                      <CheckCircle2 className="w-3 h-3" />
-                                                      Correct
-                                                    </span>
-                                                  )}
                                                   {isCorrect === false && (
                                                     <span className="inline-flex items-center gap-1 bg-amber-500/15 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-full text-[10px] font-semibold">
                                                       <AlertCircle className="w-3 h-3" />
@@ -1316,6 +1314,12 @@ export default function VideoPage() {
 
                                             {kind === 'select' && (
                                               <div className="space-y-2.5">
+                                                {(q?.qcmStatus && q.qcmStatus !== 'termine') && (
+                                                  <div className="video-inline-alert video-inline-alert--info rounded-xl border p-3 text-sm">
+                                                    <p className="font-medium text-[var(--app-text)]">{getQcmStatusRemark(q?.qcmStatus)}</p>
+                                                  </div>
+                                              )}
+
                                                 <label className="cas-answer-instruction block">
                                                   Choisissez la réponse la plus pertinente.
                                                 </label>
@@ -1412,6 +1416,11 @@ export default function VideoPage() {
                                                     <SendHorizontal className="w-4 h-4" />
                                                   </button>
                                                 </div>
+                                              </div>
+                                            )}
+                                            {(q.qcmStatus && q.qcmStatus !== 'termine') && (
+                                              <div className="video-inline-alert video-inline-alert--info rounded-xl border p-3 text-sm mb-3">
+                                                <p className="font-medium text-[var(--app-text)]">{getQcmStatusRemark(q.qcmStatus)}</p>
                                               </div>
                                             )}
                                           
@@ -1631,7 +1640,7 @@ export default function VideoPage() {
                                   ) : result.isCorrect ? (
                                     <span className="inline-flex items-center gap-1 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded-full text-[10px] font-semibold">
                                       <CircleCheck className="w-3 h-3" />
-                                      Correct
+                                      Répondu
                                     </span>
                                   ) : (
                                     <span className="inline-flex items-center gap-1 bg-amber-500/15 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-full text-[10px] font-semibold">
@@ -1903,6 +1912,11 @@ export default function VideoPage() {
                                     {getQcmStatusLabel(item.answerStatus)}
                                   </span>
                                 )}
+                                {(item.answerStatus && item.answerStatus !== 'termine' && item.kind === 'open') && (
+                                  <div className="video-inline-alert video-inline-alert--info rounded-xl border p-3 text-sm">
+                                    <p className="font-medium text-[var(--app-text)]">{getQcmStatusRemark(item.answerStatus)}</p>
+                                  </div>
+                                )}
                               </div>
                             </div>
 
@@ -2036,7 +2050,8 @@ export default function VideoPage() {
                     {(() => {
                       const index = Math.min(activeDiagramIndex, diagrams.length - 1);
                       const d = diagrams[index];
-                      const showAnswers = diagramAnswersVisible[d.id];
+      const showAnswers = diagramAnswersVisible[d.id];
+      const isSchemaDefined = d.title && d.title.trim().length > 0;
 
                       return (
                         <>
@@ -2057,6 +2072,13 @@ export default function VideoPage() {
                                   <span>Mettez un titre et légendez la figure suivante :</span>
                                 </p>
                               </div>
+                              {(!isSchemaDefined && (
+                                <div className="video-inline-alert video-inline-alert--info rounded-xl border p-3 text-sm mb-3">
+                                  <p className="font-medium text-[var(--app-text)]">
+                                    La réponse n'est pas encore définie. Ce contenu est publié en attendant le corrigé.
+                                  </p>
+                                </div>
+                              ))}
 
                               <div className="video-schema-figure relative aspect-video w-full rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-alt)] overflow-hidden">
                                 <Image
