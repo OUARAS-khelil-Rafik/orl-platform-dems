@@ -902,6 +902,7 @@ export function Navbar() {
                               src={profile.photoURL}
                               alt={profile.displayName}
                               fill
+                              unoptimized
                               sizes="32px"
                               className="object-cover"
                               onError={(event) => applyImageFallback(event, AVATAR_FALLBACK_SRC)}
@@ -1117,6 +1118,7 @@ export function Navbar() {
                             src={profile.photoURL}
                             alt={profile.displayName}
                             fill
+                            unoptimized
                             sizes="40px"
                             className="object-cover"
                             onError={(event) => applyImageFallback(event, AVATAR_FALLBACK_SRC)}

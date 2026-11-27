@@ -951,6 +951,7 @@ export default function UserDashboard() {
                           src={profile.photoURL}
                           alt={profile.displayName}
                           fill
+                          unoptimized
                           loading="eager"
                           fetchPriority="high"
                           sizes="160px"
