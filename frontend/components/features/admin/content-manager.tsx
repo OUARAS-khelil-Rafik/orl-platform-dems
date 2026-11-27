@@ -732,30 +732,43 @@ const mapImportedClinicalCaseObject = (row: Record<string, SpreadsheetCell>): Cl
     reference: normalizeImportValue(getImportFieldValue(row, ['REFERENCES (CAS CLINIQUE)', 'RÉFÉRENCES (CAS CLINIQUE)', 'REFERENCES', 'RÉFÉRENCES', 'reference'])),
     subspecialty: normalizeImportValue(getImportFieldValue(row, ['SOUS-SPECIALITE (CAS CLINIQUE)', 'SOUS-SPÉCIALITÉ (CAS CLINIQUE)', 'SOUS SPECIALITE (CAS CLINIQUE)', 'SUBSPECIALITE (CAS CLINIQUE)', 'SOUS-SPECIALITE', 'SOUS-SPÉCIALITÉ', 'SOUS SPECIALITE', 'SUBSPECIALITE', 'subspecialty'])),
     section: normalizeImportValue(getImportFieldValue(row, ['SECTION (CAS CLINIQUE)', 'SECTION', 'section'])),
-    qcmNumber: normalizeImportValue(getImportFieldValue(row, ['N QCM', 'N° QCM', 'qcmNumber'])),
-    qcmQuestion: normalizeImportValue(getImportFieldValue(row, ['ENONCE (QCM)', 'ÉNONCÉ (QCM)', 'ENONCE QCM', 'qcmQuestion'])),
-    qcmImageLinks: normalizeImportValue(getImportFieldValue(row, ['LIEN IMAGES (QCM) (Optionnelle)', 'LIEN IMAGES (QCM)', 'IMAGES QCM', 'qcmImageLinks'])),
+    qcmNumber: normalizeImportValue(getImportFieldValue(row, ['N QCM', 'N° QCM', 'NUMERO QCM', 'NUMÉRO QCM', 'qcmNumber'])),
+    qcmQuestion: normalizeImportValue(getImportFieldValue(row, ['ENONCE (QCM)', 'ÉNONCÉ (QCM)', 'ENONCE QCM', 'QUESTION (QCM)', 'QUESTION QCM', 'QCM', 'qcmQuestion'])),
+    qcmImageLinks: normalizeImportValue(getImportFieldValue(row, ['LIEN IMAGES (QCM) (Optionnelle)', 'LIEN IMAGES (QCM)', 'LIENS IMAGES (QCM)', 'IMAGES QCM', 'qcmImageLinks'])),
     qcmType: normalizeImportValue(getImportFieldValue(row, ['TYPE QCM', 'TYPE', 'qcmType'])),
     qcmOptions: qcmOptionPairs.map((entry) => entry.option),
+    // Correspondance identique aux parties QCM : réponse vide / FALSE => aucune bonne réponse,
+    // mais la question reste importée (statut "pas_encore"). On ne sélectionne jamais rien par défaut.
     qcmCorrectOptionIndexes: qcmOptionPairs
       .map((entry, index) => (entry.answer ? index : -1))
       .filter((index) => index >= 0),
-    qcmExplanation: normalizeImportValue(getImportFieldValue(row, ['COMMENTAIRE (QCM)', 'COMMENTAIRE', 'EXPLICATION QCM', 'qcmExplanation'])),
-    qcmReference: normalizeImportValue(getImportFieldValue(row, ['REFERENCES (QCM)', 'RÉFÉRENCES (QCM)', 'qcmReference'])),
-    openNumber: normalizeImportValue(getImportFieldValue(row, ['N QROC', 'N° QROC', 'openNumber'])),
-    openQuestion: normalizeImportValue(getImportFieldValue(row, ['ENONCE (QROC)', 'ÉNONCÉ (QROC)', 'ENONCE QROC', 'openQuestion'])),
-    openAnswer: normalizeImportValue(getImportFieldValue(row, ['REPONSE (QROC)', 'RÉPONSE (QROC)', 'REPONSE QROC', 'openAnswer'])),
-    openImageLinks: normalizeImportValue(getImportFieldValue(row, ['LIEN IMAGES (QROC) (Optionnelle)', 'LIEN IMAGES (QROC)', 'IMAGES QROC', 'openImageLinks'])),
-    selectQuestion: normalizeImportValue(getImportFieldValue(row, ['ENONCE (SELECTEUR)', 'ÉNONCÉ (SÉLECTEUR)', 'ENONCE SELECTEUR', 'selectQuestion'])),
-    selectImageLinks: normalizeImportValue(getImportFieldValue(row, ['LIEN IMAGES (SELECTEUR) (Optionnelle)', 'LIEN IMAGES (SÉLECTEUR)', 'LIEN IMAGES SELECTEUR', 'selectImageLinks'])),
+    qcmExplanation: normalizeImportValue(getImportFieldValue(row, ['COMMENTAIRE (QCM)', 'COMMENTAIRE', 'EXPLICATION QCM', 'EXPLICATION (QCM)', 'CORRIGE (QCM)', 'CORRIGÉ (QCM)', 'qcmExplanation'])),
+    qcmReference: normalizeImportValue(getImportFieldValue(row, ['REFERENCES (QCM)', 'RÉFÉRENCES (QCM)', 'REFERENCES', 'RÉFÉRENCES', 'qcmReference'])),
+    openNumber: normalizeImportValue(getImportFieldValue(row, ['N QROC', 'N° QROC', 'NUMERO QROC', 'NUMÉRO QROC', 'openNumber'])),
+    openQuestion: normalizeImportValue(getImportFieldValue(row, ['ENONCE (QROC)', 'ÉNONCÉ (QROC)', 'ENONCE QROC', 'QUESTION (QROC)', 'QUESTION QROC', 'QROC', 'openQuestion'])),
+    // Réponse QROC vide autorisée : la question reste importée (statut "pas_encore"), comme dans la partie QROC.
+    openAnswer: normalizeImportValue(getImportFieldValue(row, ['REPONSE (QROC)', 'RÉPONSE (QROC)', 'REPONSE QROC', 'RÉPONSE QROC', 'ANSWER QROC', 'CORRIGE (QROC)', 'CORRIGÉ (QROC)', 'openAnswer'])),
+    openImageLinks: normalizeImportValue(getImportFieldValue(row, ['LIEN IMAGES (QROC) (Optionnelle)', 'LIEN IMAGES (QROC)', 'LIENS IMAGES (QROC)', 'IMAGES QROC', 'openImageLinks'])),
+    selectQuestion: normalizeImportValue(getImportFieldValue(row, ['ENONCE (SELECTEUR)', 'ÉNONCÉ (SÉLECTEUR)', 'ENONCE SELECTEUR', 'QUESTION (SELECTEUR)', 'QUESTION SELECTEUR', 'SELECTEUR', 'selectQuestion'])),
+    selectImageLinks: normalizeImportValue(getImportFieldValue(row, ['LIEN IMAGES (SELECTEUR) (Optionnelle)', 'LIEN IMAGES (SÉLECTEUR)', 'LIEN IMAGES SELECTEUR', 'LIENS IMAGES (SELECTEUR)', 'selectImageLinks'])),
     selectOptions: selectOptionPairs.map((entry) => entry.option),
+    // Sélecteur : bonne réponse vide => aucune sélection par défaut, la question reste importée.
     selectCorrectOptionIndexes: selectOptionPairs
       .map((entry, index) => (entry.answer ? index : -1))
       .filter((index) => index >= 0),
-    selectExplanation: normalizeImportValue(getImportFieldValue(row, ['EXPLICATION (SELECTEUR)', 'EXPLICATION (SÉLECTEUR)', 'EXPLICATION SELECTEUR', 'selectExplanation'])),
+    selectExplanation: normalizeImportValue(getImportFieldValue(row, ['EXPLICATION (SELECTEUR)', 'EXPLICATION (SÉLECTEUR)', 'EXPLICATION SELECTEUR', 'COMMENTAIRE (SELECTEUR)', 'selectExplanation'])),
   };
 
-  if (!payload.videoTitle && !payload.description && !payload.qcmQuestion && !payload.openQuestion && !payload.selectQuestion) {
+  // Ne jamais ignorer une ligne de cas clinique contenant une question (QCM / QROC / sélecteur),
+  // même si les réponses sont vides (pas de réponse) : on applique la même logique que les parties QCM et QROC.
+  const hasClinicalQuestion = Boolean(
+    payload.qcmQuestion ||
+    payload.openQuestion ||
+    payload.openAnswer ||
+    payload.selectQuestion,
+  );
+
+  if (!payload.videoTitle && !payload.description && !hasClinicalQuestion) {
     return null;
   }
 
@@ -1468,7 +1481,7 @@ export function AdminContentManager() {
         ? ` ${result.createdVideos} vidéo(s) placeholder créée(s).`
         : '';
       const skippedText = result.skippedDuplicates > 0
-        ? ` ${result.skippedDuplicates} doublon(s) ignoré(s).`
+        ? ` ${result.skippedDuplicates} doublon(s) écrasé(s).`
         : '';
       const invalidText = invalidCount > 0
         ? ` ${invalidCount} ligne(s) invalide(s).`
@@ -1483,7 +1496,7 @@ export function AdminContentManager() {
             ? `Vidéos préparées: ${result.createdVideoTitles.slice(0, 5).join(', ')}${result.createdVideoTitles.length > 5 ? '…' : ''}`
             : '',
           result.duplicateRows.length > 0
-            ? `Doublons ignorés: ${result.duplicateRows.slice(0, 3).map((row) => row.qcmNumber ? `QCM ${row.qcmNumber}` : row.question).join(', ')}${result.duplicateRows.length > 3 ? '…' : ''}`
+            ? `Doublons écrasés: ${result.duplicateRows.slice(0, 3).map((row) => row.qcmNumber ? `QCM ${row.qcmNumber}` : row.question).join(', ')}${result.duplicateRows.length > 3 ? '…' : ''}`
             : '',
           invalidCount > 0
             ? `Lignes invalides: ${result.invalidRows.slice(0, 3).map((row) => row.rowIndex ? `ligne ${row.rowIndex} (${row.message})` : row.message).join(', ')}${invalidCount > 3 ? '…' : ''}`
@@ -1834,7 +1847,7 @@ export function AdminContentManager() {
         ? ` ${result.createdVideos} vidéo(s) placeholder créée(s).`
         : '';
       const skippedText = result.skippedDuplicates > 0
-        ? ` ${result.skippedDuplicates} doublon(s) ignoré(s).`
+        ? ` ${result.skippedDuplicates} doublon(s) écrasé(s).`
         : '';
       const invalidText = invalidCount > 0
         ? ` ${invalidCount} ligne(s) invalide(s).`
@@ -1849,7 +1862,7 @@ export function AdminContentManager() {
             ? `Vidéos préparées: ${result.createdVideoTitles.slice(0, 5).join(', ')}${result.createdVideoTitles.length > 5 ? '…' : ''}`
             : '',
           result.duplicateRows.length > 0
-            ? `Doublons ignorés: ${result.duplicateRows.slice(0, 3).map((row) => row.qrocNumber ? `QROC ${row.qrocNumber}` : row.question).join(', ')}${result.duplicateRows.length > 3 ? '…' : ''}`
+            ? `Doublons écrasés: ${result.duplicateRows.slice(0, 3).map((row) => row.qrocNumber ? `QROC ${row.qrocNumber}` : row.question).join(', ')}${result.duplicateRows.length > 3 ? '…' : ''}`
             : '',
           invalidCount > 0
             ? `Lignes invalides: ${result.invalidRows.slice(0, 3).map((row) => row.rowIndex ? `ligne ${row.rowIndex} (${row.message})` : row.message).join(', ')}${invalidCount > 3 ? '…' : ''}`
@@ -2005,7 +2018,7 @@ export function AdminContentManager() {
         ? ` ${result.createdVideos} vidéo(s) placeholder créée(s).`
         : '';
       const skippedText = result.skippedDuplicates > 0
-        ? ` ${result.skippedDuplicates} doublon(s) ignoré(s).`
+        ? ` ${result.skippedDuplicates} doublon(s) écrasé(s).`
         : '';
       const imageText = result.uploadedImages > 0
         ? ` ${result.uploadedImages} image(s) Drive uploadée(s).`
@@ -2030,7 +2043,7 @@ export function AdminContentManager() {
 
       if (result.duplicateRows.length > 0) {
         caseSummaryParts.push(
-          `Doublons ignorés (${result.duplicateRows.length}): ${result.duplicateRows.slice(0, 3).map((row) => row.caseNumber ? `Cas ${row.caseNumber}` : row.title).join(', ')}${result.duplicateRows.length > 3 ? ' …' : ''}`,
+          `Doublons écrasés (${result.duplicateRows.length}): ${result.duplicateRows.slice(0, 3).map((row) => row.caseNumber ? `Cas ${row.caseNumber}` : row.title).join(', ')}${result.duplicateRows.length > 3 ? ' …' : ''}`,
         );
       }
 
@@ -5426,3 +5439,5 @@ export function AdminContentManager() {
     </div>
   );
 }
+
+export { parseClinicalCaseImportFile, mapImportedClinicalCaseObject };

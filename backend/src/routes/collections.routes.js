@@ -148,6 +148,16 @@ const trimStringIfNeeded = (value) => {
   return typeof value === 'string' ? value.trim() : value;
 };
 
+// Mettre à jour un document par _id en acceptant à la fois _id string et ObjectId.
+const updateOneById = async (db, collectionName, id, update) => {
+  const collection = db.collection(collectionName);
+  const byStringId = await collection.updateOne({ _id: id }, update);
+  if (byStringId.matchedCount > 0 || !ObjectId.isValid(id)) {
+    return byStringId;
+  }
+  return collection.updateOne({ _id: new ObjectId(id) }, update);
+};
+
 const dedupeStringArray = (values = []) => {
   const seen = new Set();
   const output = [];
@@ -167,6 +177,8 @@ const dedupeStringArray = (values = []) => {
 
 const truthyAnswerValues = new Set(['true', 'vrai', 'yes', 'oui', '1', 'x']);
 const falseyAnswerValues = new Set(['false', 'faux', 'no', 'non', '0']);
+// Réponse texte considérée comme « pas de réponse » : vide OU booléen FALSE (faux), insensible à la casse.
+const blankAnswerTokens = new Set(['false', 'faux']);
 
 const normalizeImportedAnswer = (value) => {
   const normalized = normalizeComparableText(value);
@@ -184,6 +196,30 @@ const normalizeImportedAnswer = (value) => {
 
   return false;
 };
+
+// ─────────────────────────────────────────────────────────────────────────
+// Logique de statut de réponse (unifiée QCM / Cas Clinique / QROC / Schéma) :
+//   • réponse vide (rien saisi)            -> 'pas_encore' (Statut : Pas encore)
+//   • réponses toutes 'FALSE' / 'faux'     -> 'pas_encore' (Statut : Pas encore)
+//   • sinon (une bonne réponse est définie) -> 'termine'   (Statut : Terminé)
+// ─────────────────────────────────────────────────────────────────────────
+
+// QCM / sélecteur : une bonne réponse est définie si une option correcte est sélectionnée.
+const hasSelectedCorrectAnswer = ({ correctOptionIndexes, correctOptionIndex } = {}) => {
+  const hasIndexes = Array.isArray(correctOptionIndexes) && correctOptionIndexes.some((entry) => Number.isInteger(entry) && entry >= 0);
+  const hasSingle = Number.isInteger(correctOptionIndex) || (typeof correctOptionIndex === 'number' && Number.isFinite(correctOptionIndex) && correctOptionIndex >= 0);
+  return hasIndexes || hasSingle;
+};
+
+const resolveQcmAnswerStatus = (correct = {}) => hasSelectedCorrectAnswer(correct) ? 'termine' : 'pas_encore';
+
+// QROC : réponse libre vide OU 'FALSE'/'faux' => pas de réponse ; sinon terminé.
+const isBlankOpenAnswer = (answer) => {
+  const normalized = normalizeComparableText(answer);
+  return normalized === '' || blankAnswerTokens.has(normalized);
+};
+
+const resolveOpenAnswerStatus = (answer) => isBlankOpenAnswer(answer) ? 'pas_encore' : 'termine';
 
 const normalizeImportedQcmMode = (value, correctOptionIndexes = []) => {
   const normalized = normalizeComparableText(value);
@@ -264,8 +300,8 @@ const normalizeImportedQcmRow = (row, rowIndex) => {
       : []
     : correctOptionIndexes;
 
-  // Statut de réponse du QCM : pas encore / en cours / prochainement / termine
-  const qcmStatus = normalizedCorrectOptionIndexes.length > 0 ? 'termine' : 'pas_encore';
+  // Statut de réponse du QCM : réponse vide / tous FALSE -> 'pas_encore', sinon 'termine'.
+  const qcmStatus = resolveQcmAnswerStatus({ correctOptionIndexes: normalizedCorrectOptionIndexes });
 
   return {
     row: {
@@ -322,14 +358,15 @@ const normalizeImportedOpenQuestionRow = (row, rowIndex) => {
     // Réponse vide autorisée : on marque le statut comme "pas_encore" plutôt que de rejeter.
   }
 
-  // Statut de réponse du QROC : pas encore / en cours / prochainement / termine
-  const answerStatus = answer.length > 0 ? 'termine' : 'pas_encore';
+  // Statut de réponse du QROC : réponse vide / FALSE -> 'pas_encore', sinon 'termine'.
+  const normalizedAnswer = isBlankOpenAnswer(answer) ? '' : answer;
+  const answerStatus = resolveOpenAnswerStatus(answer);
 
   return {
     row: {
       videoTitle,
       question,
-      answer,
+      answer: normalizedAnswer,
       answerStatus,
       reference: String(row.reference || '').trim(),
       qrocNumber: String(row.qrocNumber || '').trim(),
@@ -444,7 +481,7 @@ const normalizeImportedClinicalCaseRows = (rows) => {
           ? [correctOptionIndexes[0]]
           : []
         : correctOptionIndexes;
-      const qcmCaseStatus = normalizedIndexes.length > 0 ? 'termine' : 'pas_encore';
+      const qcmCaseStatus = resolveQcmAnswerStatus({ correctOptionIndexes: normalizedIndexes });
       clinicalCase.questions.push({
         id: createImportedQuestionId('qcm', questionCounter += 1),
         kind: 'qcm',
@@ -460,10 +497,12 @@ const normalizeImportedClinicalCaseRows = (rows) => {
     }
 
     const openPrompt = String(row.openQuestion || '').trim();
-    const openAnswer = String(row.openAnswer || '').trim();
+    const rawOpenAnswer = String(row.openAnswer || '').trim();
+    const openAnswer = isBlankOpenAnswer(rawOpenAnswer) ? '' : rawOpenAnswer;
     if (openPrompt || openAnswer) {
       // QROC dans cas clinique : on importe même si la réponse est manquante.
-      const openCaseStatus = openAnswer.length > 0 ? 'termine' : 'pas_encore';
+      // Réponse vide / FALSE -> 'pas_encore', sinon 'termine'.
+      const openCaseStatus = resolveOpenAnswerStatus(rawOpenAnswer);
       clinicalCase.questions.push({
         id: createImportedQuestionId('open', questionCounter += 1),
         kind: 'open',
@@ -485,14 +524,19 @@ const normalizeImportedClinicalCaseRows = (rows) => {
         : [];
 
       // Select dans cas clinique : on importe même si les options ou bonne réponse sont manquantes.
-      const selectCaseStatus = correctSelectIndexes.length > 0 ? 'termine' : 'pas_encore';
+      // Quand aucune bonne réponse n'est définie, on ne sélectionne rien par défaut (pas d'index piège).
+      const normalizedSelectIndexes = correctSelectIndexes.length > 0
+        ? [correctSelectIndexes[0]]
+        : [];
+      const selectCaseStatus = resolveQcmAnswerStatus({ correctOptionIndexes: normalizedSelectIndexes });
       clinicalCase.questions.push({
         id: createImportedQuestionId('select', questionCounter += 1),
         kind: 'select',
         prompt: selectPrompt,
         images: splitImportedLinks(row.selectImageLinks),
         options: selectOptions,
-        correctOptionIndex: correctSelectIndexes[0],
+        correctOptionIndex: normalizedSelectIndexes.length > 0 ? normalizedSelectIndexes[0] : null,
+        correctOptionIndexes: normalizedSelectIndexes,
         qcmStatus: selectCaseStatus,
         explanation: String(row.selectExplanation || '').trim(),
       });
@@ -1368,7 +1412,11 @@ const sanitizeQcmPayload = (payload) => {
     reference: trimStringIfNeeded(payload?.reference),
     subspecialty: trimStringIfNeeded(payload?.subspecialty),
     section: trimStringIfNeeded(payload?.section),
-    qcmStatus: trimStringIfNeeded(payload?.qcmStatus) || 'pas_encore',
+    // Statut de la réponse : réponse vide / tous FALSE (aucune bonne réponse) -> 'pas_encore' ; sinon 'termine'.
+    qcmStatus: hasSelectedCorrectAnswer({
+      correctOptionIndexes: payload?.correctOptionIndexes,
+      correctOptionIndex: payload?.correctOptionIndex,
+    }) ? 'termine' : 'pas_encore',
     options: Array.isArray(payload?.options)
       ? payload.options.map((entry) => trimStringIfNeeded(entry))
       : payload?.options,
@@ -1376,12 +1424,15 @@ const sanitizeQcmPayload = (payload) => {
 };
 
 const sanitizeOpenQuestionPayload = (payload) => {
+  const rawAnswer = trimStringIfNeeded(payload?.answer);
+  const answer = isBlankOpenAnswer(rawAnswer) ? '' : rawAnswer;
   return {
     ...payload,
     videoId: trimStringIfNeeded(payload?.videoId),
     question: trimStringIfNeeded(payload?.question),
-    answer: trimStringIfNeeded(payload?.answer),
-    answerStatus: trimStringIfNeeded(payload?.answerStatus) || (payload?.answer ? 'termine' : 'pas_encore'),
+    answer,
+    // Statut de la réponse : réponse vide / FALSE -> 'pas_encore', sinon 'termine'. Toujours recalculé.
+    answerStatus: resolveOpenAnswerStatus(rawAnswer),
     reference: trimStringIfNeeded(payload?.reference),
     subspecialty: trimStringIfNeeded(payload?.subspecialty),
     section: trimStringIfNeeded(payload?.section),
@@ -1406,15 +1457,13 @@ const sanitizeClinicalCaseQuestion = (question) => {
       : question.options,
   };
 
-  // Statuts de réponse selon le type de question
+  // Statut de la réponse (unifié) :
+  //   réponse vide / tous FALSE -> 'pas_encore' ; sinon -> 'termine'.
+  //   On recalcule toujours à partir des données pour garantir la cohérence.
   if (question.kind === 'qcm' || question.kind === 'select') {
-    base.qcmStatus = trimStringIfNeeded(question.qcmStatus) ||
-      (Array.isArray(question.correctOptionIndexes) && question.correctOptionIndexes.length > 0
-        ? 'termine'
-        : 'pas_encore');
+    base.qcmStatus = hasSelectedCorrectAnswer(question) ? 'termine' : 'pas_encore';
   } else if (question.kind === 'open') {
-    base.answerStatus = trimStringIfNeeded(question.answerStatus) ||
-      (question.answer && question.answer.length > 0 ? 'termine' : 'pas_encore');
+    base.answerStatus = resolveOpenAnswerStatus(base.answer);
   }
 
   return base;
@@ -1439,7 +1488,9 @@ const sanitizeClinicalCasePayload = (payload) => {
   };
 
   if (Array.isArray(payload?.questions)) {
-    const seen = new Set();
+    // Aucune question n'est ignorée. Si deux questions ont le même type + même énoncé
+    // dans un cas, la dernière ÉCRASE la précédente (comme une re-modification / re-ajout).
+    const seen = new Map();
     const questions = [];
 
     for (const entry of payload.questions) {
@@ -1454,11 +1505,13 @@ const sanitizeClinicalCasePayload = (payload) => {
         : '';
 
       if (uniqueKey && seen.has(uniqueKey)) {
+        // Écraser la question précédente identique (last wins), sans rien ignorer.
+        questions[seen.get(uniqueKey)] = normalizedQuestion;
         continue;
       }
 
       if (uniqueKey) {
-        seen.add(uniqueKey);
+        seen.set(uniqueKey, questions.length);
       }
 
       questions.push(normalizedQuestion);
@@ -1484,7 +1537,6 @@ const sanitizeDiagramPayload = (payload) => {
 
   if (Array.isArray(payload?.markers)) {
     const markers = [];
-    const seenNumbers = new Set();
 
     for (const entry of payload.markers) {
       if (!isPlainObject(entry)) {
@@ -1510,6 +1562,15 @@ const sanitizeDiagramPayload = (payload) => {
 
     markers.sort((left, right) => left.number - right.number);
     next.markers = markers.map((marker, index) => ({ ...marker, number: index + 1 }));
+  }
+
+  // Schéma : statut de la réponse. Réponse vide (aucune annotation/marqueur, ou tous FALSE)
+  // -> 'pas_encore' ; sinon -> 'termine'. Un statut explicite n'est conservé que s'il n'y a pas de marqueur.
+  const hasAnnotations = Array.isArray(next.markers) && next.markers.length > 0;
+  if (!hasAnnotations) {
+    next.diagramStatus = 'pas_encore';
+  } else if (!trimStringIfNeeded(payload?.diagramStatus)) {
+    next.diagramStatus = 'termine';
   }
 
   return next;
@@ -2103,19 +2164,20 @@ router.post('/qcms/import', authOptional, async (req, res) => {
           filter: { videoId: { $in: videoIds } },
         })
       : [];
-    const existingQcmKeys = new Set(
+    // Un QCM déjà existant (même vidéo + même énoncé) est ÉCRASÉ (remis à jour),
+    // pas ignoré. Au sein d'un même lot, la dernière ligne l'emporte.
+    const existingQcmIdByKey = new Map(
       existingQcms
         .map((entry) => {
           const videoId = String(entry?.videoId || '').trim();
           const questionKey = normalizeComparableText(entry?.question);
-          return videoId && questionKey ? `${videoId}|${questionKey}` : '';
+          return videoId && questionKey ? [`${videoId}|${questionKey}`, String(entry._id)] : null;
         })
         .filter(Boolean),
     );
 
-    const batchQcmKeys = new Set();
-    const qcmsToInsert = [];
-    const skippedDuplicates = [];
+    const qcmByKey = new Map();
+    const overwritten = [];
 
     for (const row of normalizedRows) {
       const videoId = videoByTitleKey.get(normalizeComparableText(row.videoTitle)) || '';
@@ -2131,17 +2193,7 @@ router.post('/qcms/import', authOptional, async (req, res) => {
         continue;
       }
 
-      if (existingQcmKeys.has(duplicateKey) || batchQcmKeys.has(duplicateKey)) {
-        skippedDuplicates.push({
-          videoTitle: row.videoTitle,
-          question: row.question,
-          qcmNumber: row.qcmNumber,
-        });
-        continue;
-      }
-
-      batchQcmKeys.add(duplicateKey);
-      qcmsToInsert.push({
+      const doc = {
         videoId,
         question: row.question,
         options: row.options,
@@ -2156,6 +2208,21 @@ router.post('/qcms/import', authOptional, async (req, res) => {
         section: row.section,
         createdAt: now,
         updatedAt: now,
+      };
+
+      const alreadyOverwriting = qcmByKey.has(duplicateKey);
+      if (alreadyOverwriting || existingQcmIdByKey.has(duplicateKey)) {
+        overwritten.push({
+          videoTitle: row.videoTitle,
+          question: row.question,
+          qcmNumber: row.qcmNumber,
+        });
+      }
+
+      // La dernière occurrence écrase les précédentes (au sein du lot et en base).
+      qcmByKey.set(duplicateKey, {
+        ...doc,
+        _existingId: existingQcmIdByKey.get(duplicateKey) || qcmByKey.get(duplicateKey)?._existingId || null,
       });
     }
 
@@ -2170,16 +2237,30 @@ router.post('/qcms/import', authOptional, async (req, res) => {
       }
     }
 
+    const qcmsToInsert = [];
+    for (const { _existingId, ...doc } of qcmByKey.values()) {
+      if (_existingId) {
+        // Écraser / re-modifier le QCM déjà existant (on préserve createdAt d'origine).
+        const { createdAt, ...updates } = doc;
+        await updateOneById(db, 'qcms', _existingId, { $set: updates });
+      } else {
+        qcmsToInsert.push(doc);
+      }
+    }
+
     if (qcmsToInsert.length > 0) {
       await db.collection('qcms').insertMany(qcmsToInsert, { ordered: false });
     }
 
     return res.status(201).json({
-      imported: qcmsToInsert.length,
-      skippedDuplicates: skippedDuplicates.length,
+      imported: qcmByKey.size,
+      overwritten: overwritten.length,
+      // Conservé pour compatibilité : plus rien n'est « ignoré », on écrase.
+      skippedDuplicates: 0,
       createdVideos: createdVideoTitles.length,
       invalidRows,
-      duplicateRows: skippedDuplicates,
+      duplicateRows: overwritten,
+      overwrittenRows: overwritten,
       createdVideoTitles,
     });
   } catch (error) {
@@ -2258,19 +2339,20 @@ router.post('/openQuestions/import', authOptional, async (req, res) => {
           filter: { videoId: { $in: videoIds } },
         })
       : [];
-    const existingOpenQuestionKeys = new Set(
+    // Un QROC déjà existant (même vidéo + même énoncé) est ÉCRASÉ (remis à jour),
+    // pas ignoré. Au sein d'un même lot, la dernière ligne l'emporte.
+    const existingOpenQuestionIdByKey = new Map(
       existingOpenQuestions
         .map((entry) => {
           const videoId = String(entry?.videoId || '').trim();
           const questionKey = normalizeComparableText(entry?.question);
-          return videoId && questionKey ? `${videoId}|${questionKey}` : '';
+          return videoId && questionKey ? [`${videoId}|${questionKey}`, String(entry._id)] : null;
         })
         .filter(Boolean),
     );
 
-    const batchOpenQuestionKeys = new Set();
-    const openQuestionsToInsert = [];
-    const skippedDuplicates = [];
+    const openQuestionByKey = new Map();
+    const overwritten = [];
 
     for (const row of normalizedRows) {
       const videoId = videoByTitleKey.get(normalizeComparableText(row.videoTitle)) || '';
@@ -2286,17 +2368,7 @@ router.post('/openQuestions/import', authOptional, async (req, res) => {
         continue;
       }
 
-      if (existingOpenQuestionKeys.has(duplicateKey) || batchOpenQuestionKeys.has(duplicateKey)) {
-        skippedDuplicates.push({
-          videoTitle: row.videoTitle,
-          question: row.question,
-          qrocNumber: row.qrocNumber,
-        });
-        continue;
-      }
-
-      batchOpenQuestionKeys.add(duplicateKey);
-      openQuestionsToInsert.push({
+      const doc = {
         videoId,
         question: row.question,
         answer: row.answer,
@@ -2307,6 +2379,21 @@ router.post('/openQuestions/import', authOptional, async (req, res) => {
         section: row.section,
         createdAt: now,
         updatedAt: now,
+      };
+
+      const alreadyOverwriting = openQuestionByKey.has(duplicateKey);
+      if (alreadyOverwriting || existingOpenQuestionIdByKey.has(duplicateKey)) {
+        overwritten.push({
+          videoTitle: row.videoTitle,
+          question: row.question,
+          qrocNumber: row.qrocNumber,
+        });
+      }
+
+      // La dernière occurrence écrase les précédentes (au sein du lot et en base).
+      openQuestionByKey.set(duplicateKey, {
+        ...doc,
+        _existingId: existingOpenQuestionIdByKey.get(duplicateKey) || openQuestionByKey.get(duplicateKey)?._existingId || null,
       });
     }
 
@@ -2321,16 +2408,30 @@ router.post('/openQuestions/import', authOptional, async (req, res) => {
       }
     }
 
+    const openQuestionsToInsert = [];
+    for (const { _existingId, ...doc } of openQuestionByKey.values()) {
+      if (_existingId) {
+        // Écraser / re-modifier le QROC déjà existant (on préserve createdAt d'origine).
+        const { createdAt, ...updates } = doc;
+        await updateOneById(db, 'openQuestions', _existingId, { $set: updates });
+      } else {
+        openQuestionsToInsert.push(doc);
+      }
+    }
+
     if (openQuestionsToInsert.length > 0) {
       await db.collection('openQuestions').insertMany(openQuestionsToInsert, { ordered: false });
     }
 
     return res.status(201).json({
-      imported: openQuestionsToInsert.length,
-      skippedDuplicates: skippedDuplicates.length,
+      imported: openQuestionByKey.size,
+      overwritten: overwritten.length,
+      // Conservé pour compatibilité : plus rien n'est « ignoré », on écrase.
+      skippedDuplicates: 0,
       createdVideos: createdVideoTitles.length,
       invalidRows,
-      duplicateRows: skippedDuplicates,
+      duplicateRows: overwritten,
+      overwrittenRows: overwritten,
       createdVideoTitles,
     });
   } catch (error) {
@@ -2417,19 +2518,20 @@ router.post('/clinicalCases/import', authOptional, async (req, res) => {
           filter: { videoId: { $in: videoIds } },
         })
       : [];
-    const existingCaseKeys = new Set(
+    // Un cas clinique déjà existant (même vidéo + même titre) est ÉCRASÉ (remis à jour),
+    // pas ignoré. Au sein d'un même lot, le dernier l'emporte.
+    const existingCaseIdByKey = new Map(
       existingCases
         .map((entry) => {
           const videoId = String(entry?.videoId || '').trim();
           const titleKey = normalizeComparableText(entry?.title);
-          return videoId && titleKey ? `${videoId}|${titleKey}` : '';
+          return videoId && titleKey ? [`${videoId}|${titleKey}`, String(entry._id)] : null;
         })
         .filter(Boolean),
     );
 
-    const batchCaseKeys = new Set();
-    const skippedDuplicates = [];
-    const casesToPrepare = [];
+    const caseByKey = new Map();
+    const overwritten = [];
 
     for (const clinicalCase of normalized.cases) {
       const videoId = videoByTitleKey.get(normalizeComparableText(clinicalCase.videoTitle)) || '';
@@ -2444,24 +2546,28 @@ router.post('/clinicalCases/import', authOptional, async (req, res) => {
         continue;
       }
 
-      if (existingCaseKeys.has(duplicateKey) || batchCaseKeys.has(duplicateKey)) {
-        skippedDuplicates.push({
+      const alreadyOverwriting = caseByKey.has(duplicateKey);
+      if (alreadyOverwriting || existingCaseIdByKey.has(duplicateKey)) {
+        overwritten.push({
           videoTitle: clinicalCase.videoTitle,
           title: clinicalCase.title,
           caseNumber: clinicalCase.caseNumber,
         });
-        continue;
       }
 
-      batchCaseKeys.add(duplicateKey);
-      casesToPrepare.push({
+      // La dernière occurrence écrase les précédentes (au sein du lot et en base).
+      caseByKey.set(duplicateKey, {
         ...clinicalCase,
         videoId,
+        _existingId: existingCaseIdByKey.get(duplicateKey) || caseByKey.get(duplicateKey)?._existingId || null,
       });
     }
 
+    const casesToPrepare = [...caseByKey.values()];
+
     const imageFailures = [];
     const casesToInsert = [];
+    const casesToUpdate = [];
     let uploadedImages = 0;
 
     for (const clinicalCase of casesToPrepare) {
@@ -2503,7 +2609,7 @@ router.post('/clinicalCases/import', authOptional, async (req, res) => {
         });
       }
 
-      casesToInsert.push(sanitizeClinicalCasePayload({
+      const sanitizedCase = sanitizeClinicalCasePayload({
         videoId: clinicalCase.videoId,
         title: clinicalCase.title,
         description: clinicalCase.description,
@@ -2520,7 +2626,13 @@ router.post('/clinicalCases/import', authOptional, async (req, res) => {
         questions,
         createdAt: now,
         updatedAt: now,
-      }));
+      });
+
+      if (clinicalCase._existingId) {
+        casesToUpdate.push({ _existingId: clinicalCase._existingId, doc: sanitizedCase });
+      } else {
+        casesToInsert.push(sanitizedCase);
+      }
     }
 
     // Mettre à jour les vidéos existantes avec les étiquettes de l'import (SOUS-SPÉCIALITÉ / SECTION)
@@ -2538,13 +2650,23 @@ router.post('/clinicalCases/import', authOptional, async (req, res) => {
       await db.collection('clinicalCases').insertMany(casesToInsert, { ordered: false });
     }
 
+    // Écraser / re-modifier les cas cliniques déjà existants (on préserve createdAt d'origine).
+    for (const { _existingId, doc } of casesToUpdate) {
+      const { createdAt, ...updates } = doc;
+      await updateOneById(db, 'clinicalCases', _existingId, { $set: updates });
+    }
+
     return res.status(201).json({
-      imported: casesToInsert.length,
-      skippedDuplicates: skippedDuplicates.length,
+      imported: casesToInsert.length + casesToUpdate.length,
+      added: casesToInsert.length,
+      overwritten: overwritten.length,
+      // Conservé pour compatibilité : plus rien n'est « ignoré », on écrase.
+      skippedDuplicates: 0,
       createdVideos: createdVideoTitles.length,
       uploadedImages,
       invalidRows: normalized.invalidRows,
-      duplicateRows: skippedDuplicates,
+      duplicateRows: overwritten,
+      overwrittenRows: overwritten,
       createdVideoTitles,
       imageFailures,
     });
@@ -3249,5 +3371,11 @@ export {
   extractDriveFolderResourceKey,
   normalizeDriveFolderUrl,
   isDriveFolderUrl,
+  normalizeImportedClinicalCaseRows,
+  sanitizeClinicalCasePayload,
+  normalizeImportedOpenQuestionRow,
+  sanitizeQcmPayload,
+  sanitizeOpenQuestionPayload,
+  sanitizeDiagramPayload,
 };
 export default router;
