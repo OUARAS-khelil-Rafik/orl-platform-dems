@@ -628,7 +628,7 @@ export default function CheckoutPage() {
                     Parcourez les spécialités et ajoutez des packs ou vidéos pour construire votre préparation DEMS.
                   </p>
                   <div className="mt-6 flex flex-wrap justify-center gap-2.5">
-                    <Link href="/specialties/otologie" className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold text-white shadow-sm hover:brightness-110 transition" style={{ background: 'var(--app-accent)' }}>
+                    <Link href="/specialties/otologie" className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold shadow-sm hover:brightness-110 transition" style={{ background: 'var(--app-accent)', color: 'var(--app-accent-contrast)' }}>
                       Explorer Otologie <ArrowRight className="w-4 h-4" />
                     </Link>
                     <Link href="/pricing" className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold border hover:bg-[var(--app-surface-2)] transition" style={{ borderColor: 'var(--app-border)', color: 'var(--app-text)', background: 'var(--app-surface)' }}>
@@ -750,7 +750,7 @@ export default function CheckoutPage() {
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-bold" style={{ color: 'var(--app-text)' }}>Connexion requise</p>
                       <p className="text-xs mt-1 leading-relaxed" style={{ color: subtleText }}>Connectez-vous pour finaliser votre commande et associer le reçu à votre compte.</p>
-                      <Link href="/sign-in" className="mt-3 inline-flex items-center justify-center gap-2 w-full rounded-xl px-4 py-2.5 text-sm font-bold text-white hover:brightness-110 transition" style={{ background: 'var(--app-accent)' }}>
+                      <Link href="/sign-in" className="mt-3 inline-flex items-center justify-center gap-2 w-full rounded-xl px-4 py-2.5 text-sm font-bold hover:brightness-110 transition" style={{ background: 'var(--app-accent)', color: 'var(--app-accent-contrast)' }}>
                         Se connecter <ArrowRight className="w-4 h-4" />
                       </Link>
                     </div>
@@ -792,7 +792,7 @@ export default function CheckoutPage() {
                             <Building2 className="w-4 h-4" /> BaridiMob — Informations de virement
                           </p>
                           <div className="space-y-2">
-                            <div className="flex items-center justify-between gap-2 rounded-xl px-3 py-2.5 border bg-white/90" style={{ borderColor: 'color-mix(in oklab, var(--app-warning) 22%, var(--app-border) 78%)' }}>
+                            <div className="flex items-center justify-between gap-2 rounded-xl px-3 py-2.5 border" style={{ background: 'var(--app-surface)', borderColor: 'color-mix(in oklab, var(--app-warning) 22%, var(--app-border) 78%)' }}>
                               <span className="text-[11px] font-bold uppercase tracking-wide" style={{ color: subtleText }}>RIP</span>
                               <span className="font-mono text-sm font-bold flex items-center gap-2" style={{ color: 'var(--app-text)' }}>
                                 00799999002821592660
@@ -801,7 +801,7 @@ export default function CheckoutPage() {
                                 </button>
                               </span>
                             </div>
-                            <div className="flex items-center justify-between rounded-xl px-3 py-2.5 border bg-white/90" style={{ borderColor: 'color-mix(in oklab, var(--app-warning) 22%, var(--app-border) 78%)' }}>
+                            <div className="flex items-center justify-between rounded-xl px-3 py-2.5 border" style={{ background: 'var(--app-surface)', borderColor: 'color-mix(in oklab, var(--app-warning) 22%, var(--app-border) 78%)' }}>
                               <span className="text-[11px] font-bold uppercase tracking-wide" style={{ color: subtleText }}>Montant</span>
                               <span className="text-sm font-bold" style={{ color: 'var(--app-warning)' }}>{total.toLocaleString('fr-DZ')} DA</span>
                             </div>
@@ -829,7 +829,7 @@ export default function CheckoutPage() {
                                 </span>
                               </div>
                             ))}
-                            <div className="flex items-center justify-between rounded-xl px-3 py-2.5 border bg-white/90" style={{ borderColor: 'color-mix(in oklab, var(--app-accent) 18%, var(--app-border) 82%)' }}>
+                            <div className="flex items-center justify-between rounded-xl px-3 py-2.5 border" style={{ background: 'var(--app-surface)', borderColor: 'color-mix(in oklab, var(--app-accent) 18%, var(--app-border) 82%)' }}>
                               <span className="text-[11px] font-bold uppercase tracking-wide" style={{ color: subtleText }}>Montant</span>
                               <span className="text-sm font-bold" style={{ color: 'var(--app-accent)' }}>{total.toLocaleString('fr-DZ')} DA</span>
                             </div>
@@ -974,7 +974,7 @@ export default function CheckoutPage() {
                     >
                       <tab.icon className="w-4 h-4" />
                       {tab.label}
-                      <span className={`px-1.5 py-0.5 rounded-full text-[11px] font-bold ${active ? 'bg-white/20 text-white' : ''}`} style={!active ? { background: 'color-mix(in oklab, var(--app-accent) 12%, var(--app-surface) 88%)', color: 'var(--app-accent)' } : undefined}>{tab.count}</span>
+                      <span className="px-1.5 py-0.5 rounded-full text-[11px] font-bold" style={active ? { background: 'color-mix(in oklab, var(--app-accent-contrast) 22%, transparent)', color: 'var(--app-accent-contrast)' } : { background: 'color-mix(in oklab, var(--app-accent) 12%, var(--app-surface) 88%)', color: 'var(--app-accent)' }}>{tab.count}</span>
                     </button>
                   );
                 })}
@@ -1062,7 +1062,7 @@ export default function CheckoutPage() {
                                       </span>
                                     </div>
                                   ) : (
-                                    <Link href={`/videos/${videoId}`} aria-label={`Lire ${title}`} className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 inline-flex h-12 w-12 items-center justify-center rounded-full bg-white/90 text-slate-900 border border-white shadow-lg hover:scale-105 transition-transform">
+                                    <Link href={`/videos/${videoId}`} aria-label={`Lire ${title}`} className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 inline-flex h-12 w-12 items-center justify-center rounded-full bg-[var(--app-surface)] text-[var(--app-text)] border border-[var(--app-border)] shadow-lg hover:scale-105 transition-transform">
                                       <PlayCircle className="h-6 w-6" />
                                     </Link>
                                   )}
@@ -1187,7 +1187,7 @@ export default function CheckoutPage() {
             <Link href="/pricing" className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-bold border hover:brightness-105 transition" style={{ background: 'var(--app-surface)', borderColor: 'var(--app-border)', color: 'var(--app-text)' }}>
               Tarifs
             </Link>
-            <Link href="/dashboard" className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white hover:brightness-110 transition" style={{ background: 'var(--app-accent)' }}>
+            <Link href="/dashboard" className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-bold hover:brightness-110 transition" style={{ background: 'var(--app-accent)', color: 'var(--app-accent-contrast)' }}>
               Support <ArrowRight className="w-4 h-4" />
             </Link>
           </div>
@@ -1208,7 +1208,7 @@ export default function CheckoutPage() {
                 Votre reçu a été envoyé et stocké dans <span className="font-mono text-xs px-1.5 py-0.5 rounded" style={{ background: 'color-mix(in oklab, var(--app-surface-2) 80%, white 20%)' }}>orl-platform/recu-paiement</span>.
               </p>
               <p className="text-xs mt-2" style={{ color: subtleText }}>Un administrateur va vérifier votre paiement et activer votre accès sous 24h. Vous serez notifié.</p>
-              <button onClick={() => setShowSuccess(false)} className="mt-6 w-full py-3 rounded-xl font-bold text-white hover:brightness-110 transition" style={{ background: 'var(--app-accent)' }}>
+              <button onClick={() => setShowSuccess(false)} className="mt-6 w-full py-3 rounded-xl font-bold hover:brightness-110 transition" style={{ background: 'var(--app-accent)', color: 'var(--app-accent-contrast)' }}>
                 Fermer
               </button>
               <Link href="/purchases" className="block mt-3 text-sm font-semibold hover:underline" style={{ color: 'var(--app-accent)' }}>
