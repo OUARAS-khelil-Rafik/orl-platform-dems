@@ -3826,7 +3826,7 @@ export function AdminContentManager() {
                                                                         <option value="termine">Terminé</option>
                       </select>
                       <p className="text-xs text-slate-500">
-                        Indique si la réponse est déjà définie (terminé) ou à venir (pas encore / en cours / prochainement).
+                        Indique si la réponse est déjà définie (Terminé) ou à venir (Pas encore répondu).
                       </p>
                     </div>
 
@@ -4163,7 +4163,7 @@ export function AdminContentManager() {
                                                                         <option value="termine">Terminé</option>
                       </select>
                       <p className="text-xs text-slate-500">
-                        Indique si la réponse est déjà rédigée (terminé) ou à venir (pas encore / en cours / prochainement).
+                        Indique si la réponse est déjà rédigée (Terminé) ou à venir (Pas encore répondu).
                       </p>
                     </div>
                   </div>
