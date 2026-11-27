@@ -3510,14 +3510,14 @@ export default function AdminDashboard() {
 
           {activeTab === 'discussions' && (
             <div className="space-y-4">
-              <div className="bg-white rounded-2xl shadow-md border border-slate-200 overflow-hidden">
+              <div className="bg-[var(--app-surface)] text-[var(--app-text)] rounded-2xl shadow-md border border-[var(--app-border)] overflow-hidden">
                 {discussions.length === 0 ? (
-                  <div className="p-10 text-center text-slate-500">Aucune discussion pedagogique envoyee pour le moment.</div>
+                  <div className="p-10 text-center text-[var(--app-muted)]">Aucune discussion pedagogique envoyee pour le moment.</div>
                 ) : (
                   <div className="overflow-x-auto">
                   <table className="w-full text-left border-collapse">
                     <thead>
-                      <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-medium text-sm">
+                      <tr className="bg-[var(--app-surface-alt)] border-b border-[var(--app-border)] text-[color-mix(in_oklab,var(--app-text)_70%,var(--app-muted)_30%)] font-medium text-sm">
                         <th className="p-4">Date</th>
                         <th className="p-4">Utilisateur</th>
                         <th className="p-4">Nom Cours</th>
@@ -3526,7 +3526,7 @@ export default function AdminDashboard() {
                         <th className="p-4 text-right">Action</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-200">
+                    <tbody className="divide-y divide-[var(--app-border)]">
                       {discussions.map((entry) => {
                         const discussionUser = getDiscussionUserDisplay(entry);
                         const courseTitle = getDiscussionCourseTitle(entry);
@@ -3537,26 +3537,26 @@ export default function AdminDashboard() {
                             key={`${entry.source}-${entry.id}`}
                             className={`transition-colors align-top border-l-4 ${
                               entry.isRead
-                                ? 'bg-slate-50/40 border-l-slate-200 hover:bg-slate-50'
-                                : 'bg-amber-50/60 border-l-amber-300 hover:bg-amber-50'
+                                ? 'bg-[color-mix(in_oklab,var(--app-surface-alt)_40%,var(--app-surface)_60%)] border-l-[var(--app-border)] hover:bg-[var(--app-surface-alt)]'
+                                : 'bg-[color-mix(in_oklab,var(--app-warning)_10%,var(--app-surface)_90%)] border-l-[color-mix(in_oklab,var(--app-warning)_55%,var(--app-border)_45%)] hover:bg-[color-mix(in_oklab,var(--app-warning)_16%,var(--app-surface)_84%)]'
                             }`}
                           >
-                            <td className="p-4 text-sm text-slate-600 whitespace-nowrap">
+                            <td className="p-4 text-sm text-[var(--app-muted)] whitespace-nowrap">
                               {entry.createdAt ? new Date(entry.createdAt).toLocaleString() : '-'}
                             </td>
                             <td className="p-4">
-                              <div className="font-medium text-slate-900">{discussionUser.displayName}</div>
-                              <div className="text-xs text-slate-500">{discussionUser.email}</div>
+                              <div className="font-medium text-[var(--app-text)]">{discussionUser.displayName}</div>
+                              <div className="text-xs text-[var(--app-muted)]">{discussionUser.email}</div>
                             </td>
-                            <td className="p-4 text-sm text-slate-800">
+                            <td className="p-4 text-sm text-[var(--app-text)]">
                               {courseTitle}
                             </td>
-                            <td className="p-4 text-xs text-slate-700 max-w-sm">
+                            <td className="p-4 text-xs text-[var(--app-text)] max-w-sm">
                               <p className="whitespace-pre-wrap leading-relaxed">{discussionType}</p>
                             </td>
                             <td className="p-4 max-w-xl">
                               <div
-                                className="max-h-24 overflow-y-auto pr-2 text-sm text-slate-800 leading-relaxed whitespace-pre-wrap"
+                                className="max-h-24 overflow-y-auto pr-2 text-sm text-[var(--app-text)] leading-relaxed whitespace-pre-wrap"
                                 title="Message feedback"
                                 aria-label="Message feedback"
                               >
@@ -3570,8 +3570,8 @@ export default function AdminDashboard() {
                                   onClick={() => handleToggleDiscussionRead(entry)}
                                   className={`p-2 rounded-lg transition-colors ${
                                     entry.isRead
-                                      ? 'text-amber-700 bg-amber-100 hover:bg-amber-200'
-                                      : 'text-emerald-700 bg-emerald-100 hover:bg-emerald-200'
+                                      ? 'text-[var(--app-warning)] bg-[color-mix(in_oklab,var(--app-warning)_16%,var(--app-surface)_84%)] hover:bg-[color-mix(in_oklab,var(--app-warning)_28%,var(--app-surface)_72%)]'
+                                      : 'text-[var(--app-success)] bg-[color-mix(in_oklab,var(--app-success)_16%,var(--app-surface)_84%)] hover:bg-[color-mix(in_oklab,var(--app-success)_28%,var(--app-surface)_72%)]'
                                   }`}
                                   title={entry.isRead ? 'Marquer comme non lue' : 'Marquer comme lue'}
                                   aria-label={entry.isRead ? 'Marquer comme non lue' : 'Marquer comme lue'}
@@ -3581,7 +3581,7 @@ export default function AdminDashboard() {
                                 <button
                                   type="button"
                                   onClick={() => handleDeleteDiscussion(entry)}
-                                  className="p-2 rounded-lg text-red-600 bg-red-50 hover:bg-red-100 transition-colors"
+                                  className="p-2 rounded-lg text-[var(--app-danger)] bg-[color-mix(in_oklab,var(--app-danger)_12%,var(--app-surface)_88%)] hover:bg-[color-mix(in_oklab,var(--app-danger)_22%,var(--app-surface)_78%)] transition-colors"
                                   title="Supprimer"
                                   aria-label="Supprimer"
                                 >
